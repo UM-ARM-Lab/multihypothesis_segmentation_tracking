@@ -1,0 +1,3 @@
+[submodule "Shape-completion"]
+	path = Shape-completion
+	url = git@github.com:UM-ARM-Lab/Shape-completion.git
