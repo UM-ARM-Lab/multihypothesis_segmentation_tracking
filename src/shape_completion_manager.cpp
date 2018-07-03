@@ -74,6 +74,17 @@ void getOccupancy(const om::point3d& min, const om::point3d& max, const int reso
 				{
 					double cellValue = node->getOccupancy() - 0.5;
 
+					// Temp code for testing features
+					for (unsigned int d = 0; d < octree->getTreeDepth(); ++d)
+					{
+						om::OcTreeKey key = octree->coordToKey(x, y, z, d);
+						octree->search(key, d);
+						octree->search(x, y, z, d);
+						octree->getTreeType();
+						octree->getNodeSize(d);
+						om::point3d p = octree->keyToCoord(key, d);
+					}
+
 					if (cellValue > 0)
 					{
 						fullCount++;
@@ -99,7 +110,7 @@ void getOccupancy(const om::point3d& min, const om::point3d& max, const int reso
 
 int main(int argc, char* argv[])
 {
-	ros::init(argc, argv, "test_action_sequences");
+	ros::init(argc, argv, "shape_completion_manager");
 	ros::NodeHandle nh;
 
 	localMapPub = nh.advertise<std_msgs::ByteMultiArray>("local_occupancy", 1, true);

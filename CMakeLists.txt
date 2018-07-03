@@ -9,14 +9,25 @@ add_compile_options(-std=c++11)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   octomap_ros
+  pcl_conversions
+  pcl_ros
+  roscpp
   rospy
+  sensor_msgs
 )
 
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
+macro(use_openmp)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+  set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -lgomp")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -lgomp")
+endmacro()
+
+use_openmp()
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -106,7 +117,13 @@ set(CMAKE_BUILD_TYPE Debug)
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES mps_voxels
-#  CATKIN_DEPENDS octomap_ros rospy
+  CATKIN_DEPENDS
+    octomap_ros
+    pcl_conversions
+    pcl_ros
+    roscpp
+    rospy
+    sensor_msgs
 #  DEPENDS system_lib
 )
 
@@ -148,6 +165,14 @@ add_dependencies(${PROJECT_NAME}_shape_completion_manager ${${PROJECT_NAME}_EXPO
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_shape_completion_manager
    ${catkin_LIBRARIES}
+)
+
+
+add_executable(${PROJECT_NAME}_entropy src/entropy.cpp)
+set_target_properties(${PROJECT_NAME}_entropy PROPERTIES OUTPUT_NAME entropy PREFIX "")
+add_dependencies(${PROJECT_NAME}_entropy ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_entropy
+  ${catkin_LIBRARIES}
 )
 
 #############
