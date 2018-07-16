@@ -209,6 +209,11 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 
 	// Transform point cloud to local frame
 	sensor_msgs::PointCloud2 transformedCloud;
+	if (!listener->waitForTransform(globalFrame, cloudMsg->header.frame_id, ros::Time(0), ros::Duration(5.0)))
+	{
+		ROS_WARN_STREAM("Failed to look up transform between '" << globalFrame << "' and '" << cloudMsg->header.frame_id << "'.");
+		return;
+	}
 	pcl_ros::transformPointCloud(globalFrame, *cloudMsg, transformedCloud, *listener);
 
 	pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>());
@@ -269,7 +274,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 			om::OcTreeNode* node = octree->search(pt.x, pt.y, pt.z, d);
 			if (!node)
 			{
-				ROS_ERROR_STREAM("Octree does not contain (" << pt.x << ", " << pt.y << ", " << pt.z << ")!");
+				ROS_ERROR_STREAM_ONCE("Octree does not contain (" << pt.x << ", " << pt.y << ", " << pt.z << ")!");
 				continue;
 			}
 			cellMembers[node][clusters.assignments[idx]]++;
