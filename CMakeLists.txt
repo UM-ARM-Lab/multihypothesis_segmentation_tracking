@@ -14,9 +14,12 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   sensor_msgs
+  tf
+  tf_conversions
 )
 
-set(CMAKE_BUILD_TYPE Release)
+#set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE Debug)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -124,6 +127,8 @@ catkin_package(
     roscpp
     rospy
     sensor_msgs
+    tf
+    tf_conversions
 #  DEPENDS system_lib
 )
 
