@@ -1,0 +1,411 @@
+Panels:
+  - Class: rviz/Displays
+    Help Height: 78
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+      Splitter Ratio: 0.5
+    Tree Height: 843
+  - Class: rviz/Selection
+    Name: Selection
+  - Class: rviz/Tool Properties
+    Expanded:
+      - /2D Pose Estimate1
+      - /2D Nav Goal1
+      - /Publish Point1
+    Name: Tool Properties
+    Splitter Ratio: 0.588679016
+  - Class: rviz/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+  - Class: rviz/Time
+    Experimental: false
+    Name: Time
+    SyncMode: 0
+    SyncSource: PointCloud2
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.5
+      Cell Size: 1
+      Class: rviz/Grid
+      Color: 160; 160; 164
+      Enabled: true
+      Line Style:
+        Line Width: 0.0299999993
+        Value: Lines
+      Name: Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 10
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz/TF
+      Enabled: true
+      Frame Timeout: 15
+      Frames:
+        All Enabled: true
+        World:
+          Value: true
+        deposit_location:
+          Value: true
+        discard_location:
+          Value: true
+        kinect2_roof_link:
+          Value: true
+        kinect2_victor_head_ir_optical_frame:
+          Value: true
+        kinect2_victor_head_link:
+          Value: true
+        kinect2_victor_head_rgb_optical_frame:
+          Value: true
+        mocap_FoldingTableSurface_FoldingTableSurface:
+          Value: true
+        mocap_Kinect2BlockRoof_Kinect2BlockRoof:
+          Value: true
+        mocap_Kinect2VictorHead_Kinect2VictorHead:
+          Value: true
+        mocap_ValPedestal_ValPedestal:
+          Value: true
+        mocap_VictorTorso_VictorTorso:
+          Value: true
+        mocap_world:
+          Value: true
+        table_footprint:
+          Value: true
+        table_surface:
+          Value: true
+        tool_changer_coupler:
+          Value: true
+        victor_base_plate:
+          Value: true
+        victor_base_plate_mount:
+          Value: true
+        victor_left_arm_flange:
+          Value: true
+        victor_left_arm_flange_kuka:
+          Value: true
+        victor_left_arm_link_0:
+          Value: true
+        victor_left_arm_link_1:
+          Value: true
+        victor_left_arm_link_2:
+          Value: true
+        victor_left_arm_link_3:
+          Value: true
+        victor_left_arm_link_4:
+          Value: true
+        victor_left_arm_link_5:
+          Value: true
+        victor_left_arm_link_6:
+          Value: true
+        victor_left_arm_link_7:
+          Value: true
+        victor_left_arm_mount:
+          Value: true
+        victor_left_arm_world_frame_kuka:
+          Value: true
+        victor_left_gripper_fingerA_base:
+          Value: true
+        victor_left_gripper_fingerA_dist:
+          Value: true
+        victor_left_gripper_fingerA_med:
+          Value: true
+        victor_left_gripper_fingerA_prox:
+          Value: true
+        victor_left_gripper_fingerB_base:
+          Value: true
+        victor_left_gripper_fingerB_dist:
+          Value: true
+        victor_left_gripper_fingerB_med:
+          Value: true
+        victor_left_gripper_fingerB_prox:
+          Value: true
+        victor_left_gripper_fingerC_base:
+          Value: true
+        victor_left_gripper_fingerC_dist:
+          Value: true
+        victor_left_gripper_fingerC_med:
+          Value: true
+        victor_left_gripper_fingerC_prox:
+          Value: true
+        victor_left_gripper_mounting_bracket:
+          Value: true
+        victor_left_gripper_palm:
+          Value: true
+        victor_left_gripper_palm_surface:
+          Value: true
+        victor_left_gripper_palm_surface_kuka:
+          Value: true
+        victor_pedestal:
+          Value: true
+        victor_right_arm_flange:
+          Value: true
+        victor_right_arm_flange_kuka:
+          Value: true
+        victor_right_arm_link_0:
+          Value: true
+        victor_right_arm_link_1:
+          Value: true
+        victor_right_arm_link_2:
+          Value: true
+        victor_right_arm_link_3:
+          Value: true
+        victor_right_arm_link_4:
+          Value: true
+        victor_right_arm_link_5:
+          Value: true
+        victor_right_arm_link_6:
+          Value: true
+        victor_right_arm_link_7:
+          Value: true
+        victor_right_arm_mount:
+          Value: true
+        victor_right_arm_world_frame_kuka:
+          Value: true
+        victor_right_gripper_fingerA_base:
+          Value: true
+        victor_right_gripper_fingerA_dist:
+          Value: true
+        victor_right_gripper_fingerA_med:
+          Value: true
+        victor_right_gripper_fingerA_prox:
+          Value: true
+        victor_right_gripper_fingerB_base:
+          Value: true
+        victor_right_gripper_fingerB_dist:
+          Value: true
+        victor_right_gripper_fingerB_med:
+          Value: true
+        victor_right_gripper_fingerB_prox:
+          Value: true
+        victor_right_gripper_fingerC_base:
+          Value: true
+        victor_right_gripper_fingerC_dist:
+          Value: true
+        victor_right_gripper_fingerC_med:
+          Value: true
+        victor_right_gripper_fingerC_prox:
+          Value: true
+        victor_right_gripper_mounting_bracket:
+          Value: true
+        victor_right_gripper_palm:
+          Value: true
+        victor_right_gripper_palm_surface:
+          Value: true
+        victor_right_gripper_palm_surface_kuka:
+          Value: true
+        victor_root:
+          Value: true
+        world_origin:
+          Value: true
+      Marker Scale: 1
+      Name: TF
+      Show Arrows: true
+      Show Axes: true
+      Show Names: true
+      Tree:
+        mocap_world:
+          mocap_FoldingTableSurface_FoldingTableSurface:
+            table_surface:
+              deposit_location:
+                {}
+              discard_location:
+                {}
+              table_footprint:
+                {}
+          mocap_Kinect2BlockRoof_Kinect2BlockRoof:
+            kinect2_roof_link:
+              {}
+          mocap_Kinect2VictorHead_Kinect2VictorHead:
+            kinect2_victor_head_link:
+              kinect2_victor_head_rgb_optical_frame:
+                kinect2_victor_head_ir_optical_frame:
+                  {}
+          mocap_ValPedestal_ValPedestal:
+            {}
+          mocap_VictorTorso_VictorTorso:
+            victor_root:
+              victor_pedestal:
+                victor_base_plate_mount:
+                  victor_base_plate:
+                    victor_left_arm_mount:
+                      victor_left_arm_link_0:
+                        victor_left_arm_link_1:
+                          victor_left_arm_link_2:
+                            victor_left_arm_link_3:
+                              victor_left_arm_link_4:
+                                victor_left_arm_link_5:
+                                  victor_left_arm_link_6:
+                                    victor_left_arm_link_7:
+                                      victor_left_arm_flange:
+                                        victor_left_arm_flange_kuka:
+                                          {}
+                                        victor_left_gripper_mounting_bracket:
+                                          victor_left_gripper_palm:
+                                            victor_left_gripper_fingerA_base:
+                                              victor_left_gripper_fingerA_prox:
+                                                victor_left_gripper_fingerA_med:
+                                                  victor_left_gripper_fingerA_dist:
+                                                    {}
+                                            victor_left_gripper_fingerB_base:
+                                              victor_left_gripper_fingerB_prox:
+                                                victor_left_gripper_fingerB_med:
+                                                  victor_left_gripper_fingerB_dist:
+                                                    {}
+                                            victor_left_gripper_fingerC_base:
+                                              victor_left_gripper_fingerC_prox:
+                                                victor_left_gripper_fingerC_med:
+                                                  victor_left_gripper_fingerC_dist:
+                                                    {}
+                                            victor_left_gripper_palm_surface:
+                                              victor_left_gripper_palm_surface_kuka:
+                                                {}
+                      victor_left_arm_world_frame_kuka:
+                        {}
+                    victor_right_arm_mount:
+                      victor_right_arm_link_0:
+                        victor_right_arm_link_1:
+                          victor_right_arm_link_2:
+                            victor_right_arm_link_3:
+                              victor_right_arm_link_4:
+                                victor_right_arm_link_5:
+                                  victor_right_arm_link_6:
+                                    victor_right_arm_link_7:
+                                      victor_right_arm_flange:
+                                        victor_right_arm_flange_kuka:
+                                          {}
+                                        victor_right_gripper_mounting_bracket:
+                                          victor_right_gripper_palm:
+                                            victor_right_gripper_fingerA_base:
+                                              victor_right_gripper_fingerA_prox:
+                                                victor_right_gripper_fingerA_med:
+                                                  victor_right_gripper_fingerA_dist:
+                                                    {}
+                                            victor_right_gripper_fingerB_base:
+                                              victor_right_gripper_fingerB_prox:
+                                                victor_right_gripper_fingerB_med:
+                                                  victor_right_gripper_fingerB_dist:
+                                                    {}
+                                            victor_right_gripper_fingerC_base:
+                                              victor_right_gripper_fingerC_prox:
+                                                victor_right_gripper_fingerC_med:
+                                                  victor_right_gripper_fingerC_dist:
+                                                    {}
+                                            victor_right_gripper_palm_surface:
+                                              victor_right_gripper_palm_surface_kuka:
+                                                {}
+                      victor_right_arm_world_frame_kuka:
+                        {}
+          world_origin:
+            {}
+      Update Interval: 0
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /occupied_cells_vis_array
+      Name: MarkerArray
+      Namespaces:
+        map: true
+      Queue Size: 100
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: RGB8
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 4096
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: PointCloud2
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.00999999978
+      Style: Points
+      Topic: /kinect2_victor_head/qhd/points
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Default Light: true
+    Fixed Frame: table_surface
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/FocusCamera
+    - Class: rviz/Measure
+    - Class: rviz/SetInitialPose
+      Topic: /initialpose
+    - Class: rviz/SetGoal
+      Topic: /move_base_simple/goal
+    - Class: rviz/PublishPoint
+      Single click: true
+      Topic: /clicked_point
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 2.91217351
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.0599999987
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Focal Point:
+        X: 0.0139476666
+        Y: -0.00890940055
+        Z: 0.0202330593
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.0500000007
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.00999999978
+      Pitch: 0.610200942
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz)
+      Yaw: 5.22859907
+    Saved: ~
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 1056
+  Hide Left Dock: false
+  Hide Right Dock: true
+  QMainWindow State: 000000ff00000000fd00000004000000000000016a000003dafc0200000009fb0000001200530065006c0065006300740069006f006e00000001e10000009b0000006100fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb000000100044006900730070006c0061007900730100000028000003da000000d700fffffffb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb0000000a0047007200610073007001000002fa000001080000000000000000000000010000010f000003dafc0200000003fb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000000a005600690065007700730000000028000003da000000ad00fffffffb0000001200530065006c0065006300740069006f006e010000025a000000b200000000000000000000000200000490000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e100000197000000030000073f0000003efc0100000002fb0000000800540069006d006500000000000000073f0000030000fffffffb0000000800540069006d00650100000000000004500000000000000000000005cf000003da00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Selection:
+    collapsed: false
+  Time:
+    collapsed: false
+  Tool Properties:
+    collapsed: false
+  Views:
+    collapsed: true
+  Width: 1855
+  X: 1985
+  Y: 24

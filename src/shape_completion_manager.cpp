@@ -235,9 +235,9 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 	seg.setInputCloud (cropped_cloud);
 	seg.segment (*table_inliers, *coefficients);
 
-	if (table_inliers->indices.size () == 0)
+	if (table_inliers->indices.empty())
 	{
-		ROS_WARN("Could not estimate a planar model for the given dataset.");
+		ROS_WARN("Could not estimate a planar model for the given scene.");
 		return;
 	}
 
