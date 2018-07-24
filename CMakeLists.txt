@@ -8,6 +8,7 @@ add_compile_options(-std=c++11)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
+  image_geometry
   octomap_ros
   pcl_conversions
   pcl_ros
@@ -121,6 +122,7 @@ catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES mps_voxels
   CATKIN_DEPENDS
+    image_geometry
     octomap_ros
     pcl_conversions
     pcl_ros
@@ -139,13 +141,19 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
+  include
+)
+include_directories(SYSTEM
   ${catkin_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
-# add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/mps_voxels.cpp
-# )
+add_library(${PROJECT_NAME}
+  src/${PROJECT_NAME}/octree_utils.cpp
+)
+target_link_libraries(${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -169,7 +177,8 @@ add_dependencies(${PROJECT_NAME}_shape_completion_manager ${${PROJECT_NAME}_EXPO
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_shape_completion_manager
-   ${catkin_LIBRARIES}
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
 )
 
 
@@ -177,8 +186,23 @@ add_executable(${PROJECT_NAME}_entropy src/entropy.cpp)
 set_target_properties(${PROJECT_NAME}_entropy PROPERTIES OUTPUT_NAME entropy PREFIX "")
 add_dependencies(${PROJECT_NAME}_entropy ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME}_entropy
+  ${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
+
+
+add_executable(${PROJECT_NAME}_explorer src/explorer.cpp)
+set_target_properties(${PROJECT_NAME}_explorer PROPERTIES OUTPUT_NAME explorer PREFIX "")
+add_dependencies(${PROJECT_NAME}_explorer ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_explorer
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+
+# Notify any IDE that headers are part of project
+file(GLOB_RECURSE IncludeFiles "include/*")
+add_custom_target(${PROJECT_NAME}_headers SOURCES ${IncludeFiles})
+
 
 #############
 ## Install ##

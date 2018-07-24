@@ -1,6 +1,8 @@
-#include <octomap/octomap.h>
-#include <octomap_msgs/conversions.h>
-#include <octomap_msgs/GetOctomap.h>
+
+#include "mps_voxels/octree_utils.h"
+//#include <octomap/octomap.h>
+//#include <octomap_msgs/conversions.h>
+//#include <octomap_msgs/GetOctomap.h>
 #include <Eigen/Geometry>
 
 #include <std_msgs/ByteMultiArray.h>
@@ -11,31 +13,8 @@
 
 namespace om = octomap;
 
-ros::ServiceClient mapClient;
+std::shared_ptr<OctreeRetriever> mapClient;
 ros::Publisher localMapPub;
-
-std::pair<std::shared_ptr<om::OcTree>, std::string> getOctree()
-{
-	octomap_msgs::GetOctomapRequest req;
-	octomap_msgs::GetOctomapResponse resp;
-	bool callSucceeded = mapClient.call(req, resp);
-	if (!callSucceeded)
-	{
-		ROS_ERROR("Unable to call Octomap service.");
-		return {std::shared_ptr<om::OcTree>(), resp.map.header.frame_id};
-	}
-
-	std::shared_ptr<octomap::AbstractOcTree> abstractTree(octomap_msgs::msgToMap(resp.map));
-	std::shared_ptr<om::OcTree> octree = std::dynamic_pointer_cast<om::OcTree>(abstractTree);
-
-	if (!octree)
-	{
-		ROS_ERROR("Unable to downcast abstract octree to concrete tree.");
-		return {std::shared_ptr<om::OcTree>(), resp.map.header.frame_id};
-	}
-
-	return {octree, resp.map.header.frame_id};
-}
 
 // min and max now specified in camera frame
 void getOccupancy(const Eigen::Vector3f& min, const Eigen::Vector3f& max, const Eigen::Affine3f& worldTcamera, std::shared_ptr<om::OcTree>& octree, const int resolution = 64)
@@ -173,7 +152,7 @@ void getAABB(const pcl::PointCloud<PointT>& members, Eigen::Vector3f& min, Eigen
 void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 {
 	// Get Octree
-	auto octreeInfo = getOctree();
+	auto octreeInfo = mapClient->getOctree();
 	std::shared_ptr<om::OcTree> octree = octreeInfo.first;
 	std::string globalFrame = octreeInfo.second;
 	if (!octree)
@@ -301,11 +280,7 @@ int main(int argc, char* argv[])
 	listener = std::make_shared<tf::TransformListener>();
 
 	localMapPub = nh.advertise<std_msgs::ByteMultiArray>("local_occupancy", 1, true);
-	mapClient = nh.serviceClient<octomap_msgs::GetOctomap>("/octomap_binary");
-	if (!mapClient.waitForExistence(ros::Duration(10)))
-	{
-		ROS_WARN("Map server not connected.");
-	}
+	mapClient = std::make_shared<OctreeRetriever>(nh);
 
 	ros::Subscriber sub = nh.subscribe ("kinect2_victor_head/qhd/points", 1, cloud_cb);
 

@@ -1,0 +1,90 @@
+digraph g {
+    label="MPS Architecture";
+    rankdir=LR;
+    // splines=ortho;
+
+    node [shape="ellipse"];
+    camera;
+    flow;
+    octomap;
+    robot;
+    subgraph cluster_vision {
+        label="mps_vision";
+        style="dashed";
+
+        node [shape="ellipse"];
+        segment;
+    }
+    subgraph cluster_voxels {
+        label="mps_voxels";
+        style="dashed";
+
+        node [shape="ellipse"];
+        completion [label="shape\ncompletion"];
+        explorer [label="exploration\nplanner"];
+
+        node [shape="box"];
+        hypothesis [label="voxel\nhypothesis"];
+    }
+
+    subgraph cluster_motion {
+        label="mps_motion";
+        style="dashed";
+
+        node [shape="ellipse"];
+        em [label="model\nfitting"];
+        motion [label="motion\nplanner"];
+
+        node [shape="box"];
+        model [label="motion\nmodel"];
+    }
+
+    node [shape="box"];
+    rgbd [label="rgbd/\npointcloud"];
+    vector [label="vector\nfield"];
+    octree;
+    segmentation;
+    
+    target [label="target\nvoxel"];
+    control [label="control"];
+
+    camera->rgbd;
+    rgbd->flow;
+    flow->vector;
+    vector->em;
+    rgbd->octomap;
+    octomap->octree;
+    rgbd->segment;
+    segment->segmentation;
+    octree->completion;
+    segmentation->completion;
+    segmentation->em;
+    em->model;
+    completion->hypothesis;
+    segmentation->explorer;
+    octree->explorer;
+    hypothesis->explorer;
+    explorer->target;
+    model->motion;
+    target->motion;
+    motion->control;
+    control->robot;
+
+    subgraph cluster_legend{
+        label="Legend";
+        process [shape="ellipse"];
+        data [shape="box"];
+    }
+
+    { rank=same; vector, segmentation, octree }
+
+    // Feedback path
+    // cn1 [label="", shape="point"];
+    // { rank=same; cn1, robot }
+    // robot->cn1;
+    // cn2 [label="", shape="point"];
+    // { rank=same; camera, cn2 }
+    // cn2->cn1 [dir=back];
+    // cn2->camera;
+    // camera->cn1 [dir="back"];
+}
