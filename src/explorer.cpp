@@ -132,7 +132,7 @@ void camera_cb(const sensor_msgs::CameraInfoConstPtr& info_msg)
 						//This cell is unknown
 						octomap::point3d coord = octree->keyToCoord(octree->coordToKey(ix, iy, iz, d), d);
 						occluded_pts.push_back(coord);
-						occlusionTree->setNodeValue(coord, 0, false);
+						occlusionTree->setNodeValue(coord, std::numeric_limits<float>::infinity(), false);
 					}
 				}
 			}

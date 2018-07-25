@@ -17,7 +17,9 @@ std::shared_ptr<OctreeRetriever> mapClient;
 ros::Publisher localMapPub;
 
 // min and max now specified in camera frame
-void getOccupancy(const Eigen::Vector3f& min, const Eigen::Vector3f& max, const Eigen::Affine3f& worldTcamera, std::shared_ptr<om::OcTree>& octree, const int resolution = 64)
+void getOccupancy(const Eigen::Vector3f& min, const Eigen::Vector3f& max, const Eigen::Affine3f& worldTcamera,
+                  std::shared_ptr<om::OcTree>& octree, std::shared_ptr<om::OcTree>& subtree,
+                  const int resolution = 64)
 {
 	assert(resolution > 0);
 	assert(max.x() > min.x());
@@ -35,6 +37,10 @@ void getOccupancy(const Eigen::Vector3f& min, const Eigen::Vector3f& max, const 
 //	}
 
 	std::cerr << octree->getNumLeafNodes() << ", " << octree->getResolution() << std::endl;
+	if (subtree)
+	{
+		std::cerr << subtree->getNumLeafNodes() << ", " << subtree->getResolution() << std::endl;
+	}
 
 	std_msgs::ByteMultiArray arrayMsg;
 	std_msgs::MultiArrayDimension dim;
@@ -70,6 +76,9 @@ void getOccupancy(const Eigen::Vector3f& min, const Eigen::Vector3f& max, const 
 				}
 				else
 				{
+					om::OcTreeNode* local_node = subtree->search(queryPoint.x(), queryPoint.y(), queryPoint.z());
+					bool existsInLocalTree = ((local_node) ? (local_node->getOccupancy()>0.5) : false);
+
 					double cellValue = node->getOccupancy() - 0.5;
 
 //					// Temp code for testing features
@@ -83,7 +92,7 @@ void getOccupancy(const Eigen::Vector3f& min, const Eigen::Vector3f& max, const 
 //						om::point3d p = octree->keyToCoord(key, d);
 //					}
 
-					if (cellValue > 0)
+					if (cellValue > 0 && existsInLocalTree)
 					{
 						fullCount++;
 						arrayMsg.data.push_back(1);
@@ -95,7 +104,7 @@ void getOccupancy(const Eigen::Vector3f& min, const Eigen::Vector3f& max, const 
 					}
 					else
 					{
-						std::cerr << "Uncertain value at " << x << ", " << y << ", " << z << std::endl;
+//						std::cerr << "Uncertain value at " << x << ", " << y << ", " << z << std::endl;
 						arrayMsg.data.push_back(0);
 					}
 				}
@@ -103,7 +112,8 @@ void getOccupancy(const Eigen::Vector3f& min, const Eigen::Vector3f& max, const 
 		}
 	}
 	std::cerr << "Results are " << fullCount<< ", " << emptyCount << ", " << unknownCount << std::endl;
-	localMapPub.publish(arrayMsg);
+	if (fullCount > 0)
+		localMapPub.publish(arrayMsg);
 }
 
 // Point cloud utilities
@@ -182,13 +192,13 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 
 	tf::StampedTransform tableFrameInCameraCoordinates;
 	listener->lookupTransform(globalFrame, cloudMsg->header.frame_id, ros::Time(0), tableFrameInCameraCoordinates);
-	Eigen::Affine3d tablePose;
-	tf::transformTFToEigen(tableFrameInCameraCoordinates, tablePose);
+	Eigen::Affine3d worldTcamera;
+	tf::transformTFToEigen(tableFrameInCameraCoordinates, worldTcamera);
 
 	pcl::CropBox<PointT> boxFilter;
 	boxFilter.setMin(minExtent);
 	boxFilter.setMax(maxExtent);
-	boxFilter.setTransform(tablePose.cast<float>());
+	boxFilter.setTransform(worldTcamera.cast<float>());
 	boxFilter.setInputCloud(cloud);
 	boxFilter.filter(*cropped_cloud);
 
@@ -268,7 +278,20 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 			}
 		}
 
-		getOccupancy(min, max, tablePose.cast<float>(), octree);
+		std::shared_ptr<om::OcTree> subtree(octree->create());
+		for (const PointT& pt : *cluster_cloud)
+		{
+			Eigen::Vector3f worldPt = worldTcamera.cast<float>() * pt.getVector3fMap();
+			assert(worldPt.cwiseMax(maxExtent.head<3>()) == maxExtent.head<3>());
+			assert(worldPt.cwiseMin(minExtent.head<3>()) == minExtent.head<3>());
+
+			om::OcTreeNode* node = subtree->setNodeValue(worldPt.x(), worldPt.y(), worldPt.z(), std::numeric_limits<float>::infinity(), false);
+//			assert(node);
+//			assert(node->getOccupancy() > 0.5);
+//			assert(octree->search(worldPt.x(), worldPt.y(), worldPt.z())->getOccupancy() > 0.5); // May fail if server is behind
+//			assert(subtree->search(worldPt.x(), worldPt.y(), worldPt.z())->getOccupancy() > 0.5);
+		}
+		getOccupancy(min, max, worldTcamera.cast<float>(), octree, subtree);
 	}
 }
 
