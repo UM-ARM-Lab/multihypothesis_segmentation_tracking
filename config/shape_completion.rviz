@@ -5,6 +5,7 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
+        - /PointCloud21/Status1
       Splitter Ratio: 0.5
     Tree Height: 843
   - Class: rviz/Selection
@@ -52,8 +53,6 @@ Visualization Manager:
       Frame Timeout: 15
       Frames:
         All Enabled: true
-        World:
-          Value: true
         deposit_location:
           Value: true
         discard_location:
@@ -81,8 +80,6 @@ Visualization Manager:
         table_footprint:
           Value: true
         table_surface:
-          Value: true
-        tool_changer_coupler:
           Value: true
         victor_base_plate:
           Value: true
@@ -206,7 +203,7 @@ Visualization Manager:
           Value: true
         world_origin:
           Value: true
-      Marker Scale: 1
+      Marker Scale: 0.300000012
       Name: TF
       Show Arrows: true
       Show Axes: true
@@ -338,13 +335,21 @@ Visualization Manager:
       Position Transformer: XYZ
       Queue Size: 10
       Selectable: true
-      Size (Pixels): 3
+      Size (Pixels): 2
       Size (m): 0.00999999978
       Style: Points
       Topic: /kinect2_victor_head/qhd/points
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /predicted_points
+      Name: MarkerArray
+      Namespaces:
+        occlusion: true
+      Queue Size: 100
       Value: true
   Enabled: true
   Global Options:
@@ -371,7 +376,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 2.91217351
+      Distance: 1.78810763
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.0599999987
         Stereo Focal Distance: 1
@@ -386,10 +391,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.00999999978
-      Pitch: 0.610200942
+      Pitch: 0.330200195
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 5.22859907
+      Yaw: 1.30045676
     Saved: ~
 Window Geometry:
   Displays:
