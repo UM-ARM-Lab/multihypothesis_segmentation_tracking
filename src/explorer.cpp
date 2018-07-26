@@ -26,59 +26,15 @@ ros::Publisher octreePub;
 ros::Publisher targetPub;
 std::shared_ptr<tf::TransformListener> listener;
 
-#include <visualization_msgs/MarkerArray.h>
 void publishOctree(std::shared_ptr<octomap::OcTree>& tree, const std::string& globalFrame)
 {
 	bool publishMarkerArray = (octreePub.getNumSubscribers()>0);
 
-	visualization_msgs::MarkerArray occupiedNodesVis;
-	occupiedNodesVis.markers.resize(tree->getTreeDepth()+1);
-
 	if (publishMarkerArray)
 	{
-
-		for (octomap::OcTree::iterator it = tree->begin(tree->getTreeDepth()),
-			     end = tree->end(); it != end; ++it)
-		{
-			if (tree->isNodeOccupied(*it))
-			{
-				unsigned idx = it.getDepth();
-
-				geometry_msgs::Point cubeCenter;
-				cubeCenter.x = it.getX();
-				cubeCenter.y = it.getY();
-				cubeCenter.z = it.getZ();
-
-				occupiedNodesVis.markers[idx].points.push_back(cubeCenter);
-			}
-		}
-
-		for (unsigned i = 0; i<occupiedNodesVis.markers.size(); ++i)
-		{
-			double size = tree->getNodeSize(i);
-
-			occupiedNodesVis.markers[i].header.frame_id = globalFrame;
-			occupiedNodesVis.markers[i].header.stamp = ros::Time::now();
-			occupiedNodesVis.markers[i].ns = "occlusion";
-			occupiedNodesVis.markers[i].id = i;
-			occupiedNodesVis.markers[i].type = visualization_msgs::Marker::CUBE_LIST;
-			occupiedNodesVis.markers[i].scale.x = size;
-			occupiedNodesVis.markers[i].scale.y = size;
-			occupiedNodesVis.markers[i].scale.z = size;
-//			if (!m_useColoredMap)
-			occupiedNodesVis.markers[i].color.r = 0;
-			occupiedNodesVis.markers[i].color.g = 0.2;
-			occupiedNodesVis.markers[i].color.b = 1;
-			occupiedNodesVis.markers[i].color.a = 1;
-
-			if (occupiedNodesVis.markers[i].points.size()>0)
-				occupiedNodesVis.markers[i].action = visualization_msgs::Marker::ADD;
-			else
-				occupiedNodesVis.markers[i].action = visualization_msgs::Marker::DELETE;
-		}
+		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(tree, globalFrame);
 
 		octreePub.publish(occupiedNodesVis);
-
 	}
 }
 

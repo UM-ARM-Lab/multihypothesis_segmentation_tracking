@@ -1,5 +1,6 @@
 
 #include "mps_voxels/octree_utils.h"
+#include <mps_voxels/CompleteShape.h>
 //#include <octomap/octomap.h>
 //#include <octomap_msgs/conversions.h>
 //#include <octomap_msgs/GetOctomap.h>
@@ -14,7 +15,20 @@
 namespace om = octomap;
 
 std::shared_ptr<OctreeRetriever> mapClient;
-ros::Publisher localMapPub;
+ros::ServiceClient completionClient;
+ros::Publisher octreePub;
+
+void publishOctree(std::shared_ptr<octomap::OcTree>& tree, const std::string& globalFrame)
+{
+	bool publishMarkerArray = (octreePub.getNumSubscribers()>0);
+
+	if (publishMarkerArray)
+	{
+		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(tree, globalFrame);
+
+		octreePub.publish(occupiedNodesVis);
+	}
+}
 
 // min and max now specified in camera frame
 void getOccupancy(const Eigen::Vector3f& min, const Eigen::Vector3f& max, const Eigen::Affine3f& worldTcamera,
@@ -42,15 +56,16 @@ void getOccupancy(const Eigen::Vector3f& min, const Eigen::Vector3f& max, const 
 		std::cerr << subtree->getNumLeafNodes() << ", " << subtree->getResolution() << std::endl;
 	}
 
-	std_msgs::ByteMultiArray arrayMsg;
+	mps_voxels::CompleteShapeRequest req;
+//	std_msgs::ByteMultiArray arrayMsg;
 	std_msgs::MultiArrayDimension dim;
 
 	dim.label = "x"; dim.size = (unsigned)resolution; dim.stride = (unsigned)resolution*resolution*resolution;
-	arrayMsg.layout.dim.push_back(dim);
+	req.observation.layout.dim.push_back(dim);
 	dim.label = "y"; dim.size = (unsigned)resolution; dim.stride = (unsigned)resolution*resolution;
-	arrayMsg.layout.dim.push_back(dim);
+	req.observation.layout.dim.push_back(dim);
 	dim.label = "z"; dim.size = (unsigned)resolution; dim.stride = (unsigned)resolution;
-	arrayMsg.layout.dim.push_back(dim);
+	req.observation.layout.dim.push_back(dim);
 
 	int emptyCount = 0;
 	int fullCount = 0;
@@ -72,7 +87,7 @@ void getOccupancy(const Eigen::Vector3f& min, const Eigen::Vector3f& max, const 
 				{
 					//This cell is unknown
 					unknownCount++;
-					arrayMsg.data.push_back(0);
+					req.observation.data.push_back(0);
 				}
 				else
 				{
@@ -95,25 +110,66 @@ void getOccupancy(const Eigen::Vector3f& min, const Eigen::Vector3f& max, const 
 					if (cellValue > 0 && existsInLocalTree)
 					{
 						fullCount++;
-						arrayMsg.data.push_back(1);
+						req.observation.data.push_back(1);
 					}
 					else if (cellValue < 0)
 					{
 						emptyCount++;
-						arrayMsg.data.push_back(-1);
+						req.observation.data.push_back(-1);
 					}
 					else
 					{
 //						std::cerr << "Uncertain value at " << x << ", " << y << ", " << z << std::endl;
-						arrayMsg.data.push_back(0);
+						req.observation.data.push_back(0);
 					}
 				}
 			}
 		}
 	}
 	std::cerr << "Results are " << fullCount<< ", " << emptyCount << ", " << unknownCount << std::endl;
-	if (fullCount > 0)
-		localMapPub.publish(arrayMsg);
+	if (fullCount == 0)
+	{
+		ROS_WARN_STREAM("No occupied cells were detected in the region.");
+		return;
+	}
+	mps_voxels::CompleteShapeResponse res;
+	bool succeeded = completionClient.call(req, res);
+	if (!succeeded)
+	{
+		ROS_ERROR_STREAM("Shape completion call failed.");
+		return;
+	}
+
+	for (int i = 0; i < resolution; ++i)
+	{
+		float x = min.x()+(max.x()-min.x())*(i/static_cast<float>(resolution-1));
+		for (int j = 0; j<resolution; ++j)
+		{
+			float y = min.y()+(max.y()-min.y())*(j/static_cast<float>(resolution-1));
+			for (int k = 0; k<resolution; ++k)
+			{
+				float z = min.z()+(max.z()-min.z())*(k/static_cast<float>(resolution-1));
+
+				int idx = i*resolution*resolution + j*resolution + k;
+				bool predictedFilled = res.hypothesis.data[idx] > 0;
+
+				if (predictedFilled)
+				{
+					Eigen::Vector3f queryPoint = worldTcamera*Eigen::Vector3f(x, y, z);
+
+					om::OcTreeNode* node = subtree->search(queryPoint.x(), queryPoint.y(), queryPoint.z());
+					if (!node)
+					{
+						node = subtree->setNodeValue(queryPoint.x(), queryPoint.y(), queryPoint.z(), 0, false);
+					}
+					else
+					{
+						node->addValue(10.0f);
+					}
+				}
+			}
+		}
+	}
 }
 
 // Point cloud utilities
@@ -292,6 +348,8 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 //			assert(subtree->search(worldPt.x(), worldPt.y(), worldPt.z())->getOccupancy() > 0.5);
 		}
 		getOccupancy(min, max, worldTcamera.cast<float>(), octree, subtree);
+
+		publishOctree(subtree, globalFrame);
 	}
 }
 
@@ -302,8 +360,14 @@ int main(int argc, char* argv[])
 
 	listener = std::make_shared<tf::TransformListener>();
 
-	localMapPub = nh.advertise<std_msgs::ByteMultiArray>("local_occupancy", 1, true);
+//	localMapPub = nh.advertise<std_msgs::ByteMultiArray>("local_occupancy", 1, true);
+	octreePub = nh.advertise<visualization_msgs::MarkerArray>("predicted_points", 1, true);
 	mapClient = std::make_shared<OctreeRetriever>(nh);
+	completionClient = nh.serviceClient<mps_voxels::CompleteShape>("/complete_shape");
+	if (!completionClient.waitForExistence(ros::Duration(10)))
+	{
+		ROS_WARN("Shape completion server not connected.");
+	}
 
 	ros::Subscriber sub = nh.subscribe ("kinect2_victor_head/qhd/points", 1, cloud_cb);
 

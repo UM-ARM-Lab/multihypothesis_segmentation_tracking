@@ -40,3 +40,53 @@ std::pair<std::shared_ptr<om::OcTree>, std::string> OctreeRetriever::getOctree()
 
 	return {octree, resp.map.header.frame_id};
 }
+
+visualization_msgs::MarkerArray visualizeOctree(std::shared_ptr<octomap::OcTree>& tree, const std::string& globalFrame)
+{
+	visualization_msgs::MarkerArray occupiedNodesVis;
+	occupiedNodesVis.markers.resize(tree->getTreeDepth()+1);
+
+	for (octomap::OcTree::iterator it = tree->begin(tree->getTreeDepth()),
+		     end = tree->end(); it != end; ++it)
+	{
+		if (tree->isNodeOccupied(*it))
+		{
+			unsigned idx = it.getDepth();
+
+			geometry_msgs::Point cubeCenter;
+			cubeCenter.x = it.getX();
+			cubeCenter.y = it.getY();
+			cubeCenter.z = it.getZ();
+
+			occupiedNodesVis.markers[idx].points.push_back(cubeCenter);
+
+			// TODO: Colors
+		}
+	}
+
+	for (unsigned i = 0; i<occupiedNodesVis.markers.size(); ++i)
+	{
+		double size = tree->getNodeSize(i);
+
+		occupiedNodesVis.markers[i].header.frame_id = globalFrame;
+		occupiedNodesVis.markers[i].header.stamp = ros::Time::now();
+		occupiedNodesVis.markers[i].ns = "occlusion";
+		occupiedNodesVis.markers[i].id = i;
+		occupiedNodesVis.markers[i].type = visualization_msgs::Marker::CUBE_LIST;
+		occupiedNodesVis.markers[i].scale.x = size;
+		occupiedNodesVis.markers[i].scale.y = size;
+		occupiedNodesVis.markers[i].scale.z = size;
+//			if (!m_useColoredMap)
+		occupiedNodesVis.markers[i].color.r = 0;
+		occupiedNodesVis.markers[i].color.g = 0.2;
+		occupiedNodesVis.markers[i].color.b = 1;
+		occupiedNodesVis.markers[i].color.a = 1;
+
+		if (occupiedNodesVis.markers[i].points.size()>0)
+			occupiedNodesVis.markers[i].action = visualization_msgs::Marker::ADD;
+		else
+			occupiedNodesVis.markers[i].action = visualization_msgs::Marker::DELETE;
+	}
+
+		return occupiedNodesVis;
+}
