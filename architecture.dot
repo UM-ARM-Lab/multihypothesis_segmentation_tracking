@@ -69,6 +69,7 @@ digraph g {
     target->motion;
     motion->control;
     control->robot;
+    vector->segment[style="dashed"];
 
     subgraph cluster_legend{
         label="Legend";
@@ -76,7 +77,7 @@ digraph g {
         data [shape="box"];
     }
 
-    { rank=same; vector, segmentation, octree }
+    { rank=same; segmentation, octree }
 
     // Feedback path
     // cn1 [label="", shape="point"];

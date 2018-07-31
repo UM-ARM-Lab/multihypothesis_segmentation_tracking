@@ -152,6 +152,7 @@ include_directories(SYSTEM
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/octree_utils.cpp
+  src/${PROJECT_NAME}/pointcloud_utils.cpp
 )
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}

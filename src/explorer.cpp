@@ -58,42 +58,13 @@ void camera_cb(const sensor_msgs::CameraInfoConstPtr& info_msg)
 	}
 
 	tf::StampedTransform cameraFrameInTableCoordinates;
-	listener->lookupTransform(info_msg->header.frame_id, globalFrame, ros::Time(0), cameraFrameInTableCoordinates);
+	listener->lookupTransform(cameraModel.tfFrame(), globalFrame, ros::Time(0), cameraFrameInTableCoordinates);
 	Eigen::Affine3d cameraTtable;
 	tf::transformTFToEigen(cameraFrameInTableCoordinates, cameraTtable);
 
-//	std::vector<Eigen::Vector3f>
 	octomap::point3d_collection occluded_pts;
-	std::shared_ptr<octomap::OcTree> occlusionTree(octree->create());
-
-	const float resolution = static_cast<float>(octree->getResolution());
-	const unsigned int d = octree->getTreeDepth();
-//#pragma omp parallel for
-	for (float ix = minExtent.x(); ix <= maxExtent.x(); ix += resolution)
-	{
-		for (float iy = minExtent.y(); iy <= maxExtent.y(); iy += resolution)
-		{
-			for (float iz = minExtent.z(); iz <= maxExtent.z(); iz += resolution)
-			{
-				Eigen::Vector3d p = cameraTtable * Eigen::Vector3d(ix, iy, iz);
-				cv::Point3d worldPt(p.x(), p.y(), p.z());
-				cv::Point2d imgPt = cameraModel.project3dToPixel(worldPt);
-				const int buffer = 0;
-				if (imgPt.x > buffer && imgPt.x < info_msg->width - buffer
-				    && imgPt.y > buffer && imgPt.y < info_msg->height - buffer)
-				{
-//					#pragma omp critical
-					if (!octree->search(ix, iy, iz, d))
-					{
-						//This cell is unknown
-						octomap::point3d coord = octree->keyToCoord(octree->coordToKey(ix, iy, iz, d), d);
-						occluded_pts.push_back(coord);
-						occlusionTree->setNodeValue(coord, std::numeric_limits<float>::infinity(), false);
-					}
-				}
-			}
-		}
-	}
+	std::shared_ptr<octomap::OcTree> occlusionTree;
+	std::tie(occluded_pts, occlusionTree) = getOcclusionsInFrame(octree, cameraModel, cameraTtable, minExtent.head<3>(), maxExtent.head<3>());
 
 	std::random_device rd;
 	std::mt19937 g(rd());
