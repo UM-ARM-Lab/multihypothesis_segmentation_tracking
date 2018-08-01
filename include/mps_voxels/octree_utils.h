@@ -45,7 +45,7 @@ public:
 		const int resolution = 64) const;
 };
 
-std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOcclusionsInFrame(
+std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOcclusionsInFOV(
 	const std::shared_ptr<octomap::OcTree>& octree,
 	const image_geometry::PinholeCameraModel& cameraModel,
 	const Eigen::Affine3d& cameraTworld,

@@ -38,4 +38,6 @@ void getAABB(const pcl::PointCloud<PointT>& members, Eigen::Vector3f& min, Eigen
 	}
 }
 
+void getBoundingCube(const pcl::PointCloud<PointT>& members, Eigen::Vector3f& min, Eigen::Vector3f& max);
+
 #endif //PROJECT_POINTCLOUD_UTILS_H

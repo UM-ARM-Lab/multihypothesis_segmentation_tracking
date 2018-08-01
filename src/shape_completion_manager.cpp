@@ -48,9 +48,9 @@ std::shared_ptr<tf::TransformListener> listener;
 void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 {
 	// Get Octree
-	auto octreeInfo = mapClient->getOctree();
-	std::shared_ptr<om::OcTree> octree = octreeInfo.first;
-	std::string globalFrame = octreeInfo.second;
+	std::shared_ptr<om::OcTree> octree;
+	std::string globalFrame;
+	std::tie(octree, globalFrame) = mapClient->getOctree();
 	if (!octree)
 	{
 		ROS_ERROR("Octree lookup failed.");
@@ -81,7 +81,6 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 	tf::transformTFToEigen(tableFrameInCameraCoordinates, worldTcamera);
 
 	pcl::PointCloud<PointT>::Ptr cropped_cloud = crop(cloud, minExtent, maxExtent, worldTcamera);
-
 	if (cropped_cloud->empty())
 	{
 		ROS_WARN("Filtered cloud contains no points.");
@@ -95,22 +94,8 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 	for (const pcl::PointCloud<PointT>::Ptr& cluster_cloud : segments)
 	{
 		// Compute bounding box
-//		PointT p; p.getVector3fMap()
 		Eigen::Vector3f min, max;
-		getAABB(*cluster_cloud, min, max);
-		Eigen::Vector3f sides = max-min;
-		float max_len = sides.array().maxCoeff();
-
-		for (int d=0; d < 3; ++d)
-		{
-			float delta = max_len - sides[d];
-			assert(delta > -1e-9);
-			if (delta > 0)
-			{
-				max[d] += delta/2.0;
-				min[d] -= delta/2.0;
-			}
-		}
+		getBoundingCube(*cluster_cloud, min, max);
 
 		std::shared_ptr<om::OcTree> subtree(octree->create());
 		for (const PointT& pt : *cluster_cloud)

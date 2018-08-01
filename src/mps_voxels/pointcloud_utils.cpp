@@ -97,3 +97,21 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 
 	return segments;
 }
+
+void getBoundingCube(const pcl::PointCloud<PointT>& members, Eigen::Vector3f& min, Eigen::Vector3f& max)
+{
+	getAABB(members, min, max);
+	Eigen::Vector3f sides = max-min;
+	float max_len = sides.array().maxCoeff();
+
+	for (int d = 0; d<3; ++d)
+	{
+		float delta = max_len-sides[d];
+		assert(delta>-1e-9);
+		if (delta>0)
+		{
+			max[d] += delta/2.0;
+			min[d] -= delta/2.0;
+		}
+	}
+}

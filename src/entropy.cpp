@@ -173,9 +173,9 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 //	pcl_conversions::toPCL(*cloud_msg, cloud);
 
 	// Get Octree
-	auto octreeInfo = mapClient->getOctree();
-	std::shared_ptr<om::OcTree> octree = octreeInfo.first;
-	std::string globalFrame = octreeInfo.second;
+	std::shared_ptr<om::OcTree> octree;
+	std::string globalFrame;
+	std::tie(octree, globalFrame) = mapClient->getOctree();
 	if (!octree)
 	{
 		ROS_ERROR("Octree lookup failed.");

@@ -196,7 +196,7 @@ void VoxelCompleter::completeShape(
 	}
 }
 
-std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOcclusionsInFrame(
+std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOcclusionsInFOV(
 	const std::shared_ptr<octomap::OcTree>& octree,
 	const image_geometry::PinholeCameraModel& cameraModel,
 	const Eigen::Affine3d& cameraTtable,
@@ -219,9 +219,10 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 				Eigen::Vector3d p = cameraTtable * Eigen::Vector3d(ix, iy, iz);
 				cv::Point3d worldPt(p.x(), p.y(), p.z());
 				cv::Point2d imgPt = cameraModel.project3dToPixel(worldPt);
-				const int buffer = 0;
-				if (imgPt.x > buffer && imgPt.x < cameraModel.cameraInfo().width - buffer
-				    && imgPt.y > buffer && imgPt.y < cameraModel.cameraInfo().height - buffer)
+				const int x_buffer = cameraModel.cameraInfo().width/8;
+				const int y_buffer = cameraModel.cameraInfo().height/8;
+				if (imgPt.x > x_buffer && imgPt.x < cameraModel.cameraInfo().width - x_buffer
+				    && imgPt.y > y_buffer && imgPt.y < cameraModel.cameraInfo().height - y_buffer)
 				{
 //					#pragma omp critical
 					if (!octree->search(ix, iy, iz, d))
@@ -268,7 +269,7 @@ visualization_msgs::MarkerArray visualizeOctree(std::shared_ptr<octomap::OcTree>
 
 		occupiedNodesVis.markers[i].header.frame_id = globalFrame;
 		occupiedNodesVis.markers[i].header.stamp = ros::Time::now();
-		occupiedNodesVis.markers[i].ns = "occlusion";
+		occupiedNodesVis.markers[i].ns = std::to_string(i);//"occlusion";
 		occupiedNodesVis.markers[i].id = i;
 		occupiedNodesVis.markers[i].type = visualization_msgs::Marker::CUBE_LIST;
 		occupiedNodesVis.markers[i].scale.x = size;

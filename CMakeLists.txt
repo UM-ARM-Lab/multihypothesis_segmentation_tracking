@@ -10,6 +10,7 @@ add_compile_options(-std=c++11)
 find_package(catkin REQUIRED COMPONENTS
   image_geometry
   message_generation
+  moveit_ros_planning
   octomap_ros
   pcl_conversions
   pcl_ros
@@ -125,6 +126,7 @@ catkin_package(
   CATKIN_DEPENDS
     image_geometry
     message_runtime
+    moveit_ros_planning
     octomap_ros
     pcl_conversions
     pcl_ros
