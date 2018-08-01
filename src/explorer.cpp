@@ -36,6 +36,24 @@
 #include <memory>
 #include <random>
 
+
+#include <octomap_server/OctomapServer.h>
+
+class LocalOctreeServer : public octomap_server::OctomapServer
+{
+public:
+	LocalOctreeServer(ros::NodeHandle private_nh_ = ros::NodeHandle("~"))
+		: octomap_server::OctomapServer(private_nh_)
+	{
+		this->m_pointCloudSub->unsubscribe();
+	}
+
+	const std::string& getWorldFrame() const { return this->m_worldFrameId; }
+	const OcTreeT* getOctree() const { return this->m_octree; }
+	OcTreeT* getOctree() { return this->m_octree; }
+};
+
+std::shared_ptr<LocalOctreeServer> mapServer;
 std::shared_ptr<OctreeRetriever> mapClient;
 std::shared_ptr<VoxelCompleter> completionClient;
 ros::Publisher octreePub;
@@ -45,8 +63,10 @@ std::shared_ptr<tf::TransformListener> listener;
 std::shared_ptr<tf::TransformBroadcaster> broadcaster;
 robot_model::RobotModelPtr pModel;
 sensor_msgs::JointState::ConstPtr latestJoints;
+int octomapBurnInCounter = 0;
+const int OCTOMAP_BURN_IN = 5; /// Number of point clouds to process before using octree
 
-void publishOctree(std::shared_ptr<octomap::OcTree>& tree, const std::string& globalFrame)
+void publishOctree(octomap::OcTree* tree, const std::string& globalFrame)
 {
 	bool publishMarkerArray = (octreePub.getNumSubscribers()>0);
 
@@ -68,6 +88,18 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
                const sensor_msgs::CameraInfoConstPtr& info_msg)
 {
 	std::cerr << "Got message." << std::endl;
+	if (!listener->waitForTransform(mapServer->getWorldFrame(), cloud_msg->header.frame_id, ros::Time(0), ros::Duration(5.0)))
+	{
+		ROS_WARN_STREAM("Failed to look up transform between '" << mapServer->getWorldFrame() << "' and '" << cloud_msg->header.frame_id << "'.");
+		return;
+	}
+
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+	mapServer->insertCloudCallback(cloud_msg);
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+	if (octomapBurnInCounter++ <= OCTOMAP_BURN_IN) { return; }
+
 	image_geometry::PinholeCameraModel cameraModel;
 	cameraModel.fromCameraInfo(info_msg);
 
@@ -75,9 +107,9 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.1f, 1);
 
 	// Get Octree
-	std::shared_ptr<octomap::OcTree> octree;
-	std::string globalFrame;
-	std::tie(octree, globalFrame) = mapClient->getOctree();
+	octomap::OcTree* octree = mapServer->getOctree();
+	std::string globalFrame = mapServer->getWorldFrame();
+//	std::tie(octree, globalFrame) = mapClient->getOctree();
 	if (!octree)
 	{
 		ROS_ERROR("Octree lookup failed.");
@@ -127,11 +159,11 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 				                                                  std::numeric_limits<float>::infinity(), false);
 				assert(node);
 			}
-			completionClient->completeShape(min, max, worldTcamera.cast<float>(), octree, subtree);
+			completionClient->completeShape(min, max, worldTcamera.cast<float>(), octree, subtree.get());
 
 			completedClusters.push_back(subtree);
 
-			publishOctree(subtree, globalFrame);
+			publishOctree(subtree.get(), globalFrame);
 		}
 	}
 
@@ -151,7 +183,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	targetPub.publish(pt);
 
 //	occlusionTree->
-	publishOctree(occlusionTree, globalFrame);
+	publishOctree(occlusionTree.get(), globalFrame);
 	std::cerr << "Published " << occluded_pts.size() << " points." << std::endl;
 
 	// Reach out and touch target
@@ -303,22 +335,40 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	commandPub.publish(dt);
 }
 
+template <typename T>
+void setIfMissing(ros::NodeHandle& nh, const std::string& param_name, const T& param_val)
+{
+	if (!nh.hasParam(param_name))
+	{
+		nh.setParam(param_name, param_val);
+	}
+}
+
 
 using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::PointCloud2, sensor_msgs::CameraInfo>;
 
 int main(int argc, char* argv[])
 {
-	ros::init(argc, argv, "entropy_estimator");
-	ros::NodeHandle nh;
+	ros::init(argc, argv, "scene_explorer");
+	ros::NodeHandle nh, pnh("~");
 
 	listener = std::make_shared<tf::TransformListener>();
 	broadcaster = std::make_shared<tf::TransformBroadcaster>();
 
 	ros::Subscriber joint_sub = nh.subscribe("joint_states", 2, handleJointState);
 
+	setIfMissing(pnh, "frame_id", "table_surface");
+	setIfMissing(pnh, "resolution", 0.01);
+	setIfMissing(pnh, "latch", false);
+	setIfMissing(pnh, "filter_ground", false);
+	setIfMissing(pnh, "filter_speckles", true);
+	setIfMissing(pnh, "publish_free_space", false);
+	setIfMissing(pnh, "sensor_model/max_range", 8.0);
+
 	octreePub = nh.advertise<visualization_msgs::MarkerArray>("occluded_points", 1, true);
 	targetPub = nh.advertise<geometry_msgs::Point>("target_point", 1, false);
 	commandPub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, false);
+	mapServer = std::make_shared<LocalOctreeServer>(pnh);
 	mapClient = std::make_shared<OctreeRetriever>(nh);
 	completionClient = std::make_shared<VoxelCompleter>(nh);
 

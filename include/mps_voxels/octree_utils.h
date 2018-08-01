@@ -39,19 +39,19 @@ public:
 		const Eigen::Vector3f& min,
 		const Eigen::Vector3f& max,
 		const Eigen::Affine3f& worldTcamera,
-		std::shared_ptr<octomap::OcTree>& octree,
-		std::shared_ptr<octomap::OcTree>& subtree,
+		octomap::OcTree* octree,
+		octomap::OcTree* subtree,
 		bool updateMainTree = true,
 		const int resolution = 64) const;
 };
 
 std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOcclusionsInFOV(
-	const std::shared_ptr<octomap::OcTree>& octree,
+	const octomap::OcTree* octree,
 	const image_geometry::PinholeCameraModel& cameraModel,
 	const Eigen::Affine3d& cameraTworld,
 	const Eigen::Vector3f& minExtent,
 	const Eigen::Vector3f& maxExtent);
 
-visualization_msgs::MarkerArray visualizeOctree(std::shared_ptr<octomap::OcTree>& tree, const std::string& globalFrame = "world");
+visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std::string& globalFrame = "world");
 
 #endif //PROJECT_OCTREE_UTILS_H

@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
   moveit_ros_planning
   octomap_ros
+  octomap_server
   pcl_conversions
   pcl_ros
   roscpp
@@ -128,6 +129,7 @@ catkin_package(
     message_runtime
     moveit_ros_planning
     octomap_ros
+    octomap_server
     pcl_conversions
     pcl_ros
     roscpp

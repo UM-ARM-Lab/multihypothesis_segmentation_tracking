@@ -58,8 +58,8 @@ void VoxelCompleter::completeShape(
 	const Eigen::Vector3f& min,
 	const Eigen::Vector3f& max,
 	const Eigen::Affine3f& worldTcamera,
-	std::shared_ptr<om::OcTree>& octree,
-	std::shared_ptr<om::OcTree>& subtree,
+	octomap::OcTree* octree,
+	octomap::OcTree* subtree,
 	bool updateMainTree,
 	const int resolution) const
 {
@@ -158,7 +158,7 @@ void VoxelCompleter::completeShape(
 		return;
 	}
 
-	std::vector<std::shared_ptr<om::OcTree>> treesToUpdate{subtree};
+	std::vector<octomap::OcTree*> treesToUpdate{subtree};
 	if (updateMainTree) { treesToUpdate.push_back(octree); }
 
 	for (int i = 0; i < resolution; ++i)
@@ -197,7 +197,7 @@ void VoxelCompleter::completeShape(
 }
 
 std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOcclusionsInFOV(
-	const std::shared_ptr<octomap::OcTree>& octree,
+	const octomap::OcTree* octree,
 	const image_geometry::PinholeCameraModel& cameraModel,
 	const Eigen::Affine3d& cameraTtable,
 	const Eigen::Vector3f& minExtent,
@@ -240,7 +240,7 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 	return { occluded_pts, occlusionTree };
 }
 
-visualization_msgs::MarkerArray visualizeOctree(std::shared_ptr<octomap::OcTree>& tree, const std::string& globalFrame)
+visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std::string& globalFrame)
 {
 	visualization_msgs::MarkerArray occupiedNodesVis;
 	occupiedNodesVis.markers.resize(tree->getTreeDepth()+1);
