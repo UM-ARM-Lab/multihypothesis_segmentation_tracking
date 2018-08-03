@@ -230,6 +230,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 		octreePub.publish(markers);
 	}
 
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	std::vector<int> assignments(cropped_cloud->size(), -1);
 	{
 		const int nPts = static_cast<int>(cropped_cloud->size());
@@ -358,8 +359,10 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 			coordToSegment.insert({coord, i});
 		}
 	}
-	for (const auto& pt_world : occluded_pts)
+	#pragma omp parallel for
+	for (int i = 0; i < occluded_pts.size(); ++i)
 	{
+		const auto& pt_world = occluded_pts[i];
 		octomap::point3d cameraOrigin(cameraTtable.translation().x(), cameraTtable.translation().y(), cameraTtable.translation().z());
 		octomap::point3d collision;
 		octree->castRay(cameraOrigin, pt_world-cameraOrigin, collision);
@@ -368,6 +371,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 		const auto& iter = coordToSegment.find(collision);
 		if (iter != coordToSegment.end())
 		{
+			#pragma omp critical
 			occludedBySegmentCount[iter->second]++;
 		}
 	}
@@ -445,7 +449,6 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	std::vector<std::vector<double>> solutions;
 	for (const auto& pt_world : occluded_pts)
 	{
-
 		for (robot_model::JointModelGroup* jmg : jmgs)
 		{
 			const kinematics::KinematicsBaseConstPtr& solver = jmg->getSolverInstance();

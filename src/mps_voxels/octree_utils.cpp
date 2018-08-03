@@ -209,9 +209,17 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 
 	const float resolution = static_cast<float>(octree->getResolution());
 	const unsigned int d = octree->getTreeDepth();
-//#pragma omp parallel for
+
+#if defined(_OPENMP)
+	int nOuterSteps = static_cast<int>((maxExtent.x()-minExtent.x())/resolution);
+	#pragma omp parallel for
+	for (int i = 0; i < nOuterSteps; ++i)
+	{
+		float ix = minExtent.x() + (i*resolution);
+#else
 	for (float ix = minExtent.x(); ix <= maxExtent.x(); ix += resolution)
 	{
+#endif
 		for (float iy = minExtent.y(); iy <= maxExtent.y(); iy += resolution)
 		{
 			for (float iz = minExtent.z(); iz <= maxExtent.z(); iz += resolution)
@@ -229,13 +237,18 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 					{
 						//This cell is unknown
 						octomap::point3d coord = octree->keyToCoord(octree->coordToKey(ix, iy, iz, d), d);
-						occluded_pts.push_back(coord);
-						occlusionTree->setNodeValue(coord, std::numeric_limits<float>::infinity(), false);
+
+						#pragma omp critical
+						{
+							occluded_pts.push_back(coord);
+							occlusionTree->setNodeValue(coord, std::numeric_limits<float>::infinity(), true);
+						}
 					}
 				}
 			}
 		}
 	}
+	occlusionTree->updateInnerOccupancy();
 
 	return { occluded_pts, occlusionTree };
 }
