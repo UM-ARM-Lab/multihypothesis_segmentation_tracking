@@ -53,6 +53,32 @@ public:
 	OcTreeT* getOctree() { return this->m_octree; }
 };
 
+template<int DIM,
+	typename PointT=Eigen::Matrix<double, DIM, 1>>
+struct vector_less_than
+{
+//	bool operator()(const PointT& a,
+//	                const PointT& b) const
+//	{
+//		for(int i=0; i<DIM; ++i)
+//		{
+//			if(a[i]<b[i]) return true;
+//			if(a[i]>b[i]) return false;
+//		}
+//		return false;
+//	}
+	bool operator()(const PointT& a,
+	                const PointT& b) const
+	{
+		for(int i=0; i<DIM; ++i)
+		{
+			if(a(i)<b(i)) return true;
+			if(a(i)>b(i)) return false;
+		}
+		return false;
+	}
+};
+
 std::shared_ptr<LocalOctreeServer> mapServer;
 std::shared_ptr<OctreeRetriever> mapClient;
 std::shared_ptr<VoxelCompleter> completionClient;
@@ -98,13 +124,14 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	mapServer->insertCloudCallback(cloud_msg);
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	if (octomapBurnInCounter++ <= OCTOMAP_BURN_IN) { return; }
+	if (octomapBurnInCounter++ < OCTOMAP_BURN_IN) { return; }
+	if (octomapBurnInCounter > 8*OCTOMAP_BURN_IN) { mapServer->getOctree()->clear(); octomapBurnInCounter = 0; return; }
 
 	image_geometry::PinholeCameraModel cameraModel;
 	cameraModel.fromCameraInfo(info_msg);
 
-	Eigen::Vector4f maxExtent(0.4f, 0.6f, 1.0f, 1);
-	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.1f, 1);
+	Eigen::Vector4f maxExtent(0.4f, 0.6f, 0.5f, 1);
+	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.05f, 1);
 
 	// Get Octree
 	octomap::OcTree* octree = mapServer->getOctree();
@@ -139,38 +166,91 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	std::vector<pcl::PointCloud<PointT>::Ptr> segments = segment(cropped_cloud);
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-	std::vector<std::shared_ptr<octomap::OcTree>> completedClusters;
-	if (completionClient->completionClient.exists())
+	std::vector<std::shared_ptr<octomap::OcTree>> completedSegments;
+	for (const pcl::PointCloud<PointT>::Ptr& segment_cloud : segments)
 	{
-		for (const pcl::PointCloud<PointT>::Ptr& cluster_cloud : segments)
+		// Compute bounding box
+		Eigen::Vector3f min, max;
+		getBoundingCube(*segment_cloud, min, max);
+
+		std::shared_ptr<octomap::OcTree> subtree(octree->create());
+		for (const PointT& pt : *segment_cloud)
 		{
-			// Compute bounding box
-			Eigen::Vector3f min, max;
-			getBoundingCube(*cluster_cloud, min, max);
+			Eigen::Vector3f worldPt = worldTcamera.cast<float>()*pt.getVector3fMap();
+			assert(worldPt.cwiseMax(maxExtent.head<3>())==maxExtent.head<3>());
+			assert(worldPt.cwiseMin(minExtent.head<3>())==minExtent.head<3>());
 
-			std::shared_ptr<octomap::OcTree> subtree(octree->create());
-			for (const PointT& pt : *cluster_cloud)
-			{
-				Eigen::Vector3f worldPt = worldTcamera.cast<float>()*pt.getVector3fMap();
-				assert(worldPt.cwiseMax(maxExtent.head<3>())==maxExtent.head<3>());
-				assert(worldPt.cwiseMin(minExtent.head<3>())==minExtent.head<3>());
-
-				octomap::OcTreeNode* node = subtree->setNodeValue(worldPt.x(), worldPt.y(), worldPt.z(),
-				                                                  std::numeric_limits<float>::infinity(), false);
-				assert(node);
-			}
-			completionClient->completeShape(min, max, worldTcamera.cast<float>(), octree, subtree.get());
-
-			completedClusters.push_back(subtree);
-
-			publishOctree(subtree.get(), globalFrame);
+			octomap::OcTreeNode* node = subtree->setNodeValue(worldPt.x(), worldPt.y(), worldPt.z(),
+			                                                  std::numeric_limits<float>::infinity(), false);
+			assert(node);
 		}
+
+		if (completionClient->completionClient.exists())
+		{
+			completionClient->completeShape(min, max, worldTcamera.cast<float>(), octree, subtree.get());
+		}
+
+		completedSegments.push_back(subtree);
+
+		publishOctree(subtree.get(), globalFrame);
 	}
 
+	/////////////////////////////////////////////////////////////////
+	// Compute Occlusions
+	/////////////////////////////////////////////////////////////////
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+	{
+		// Recompute bounding box
+		Eigen::Vector3f min, max;
+		pcl::PointCloud<PointT>::Ptr transformed_cloud (new pcl::PointCloud<PointT>());
+		// You can either apply transform_1 or transform_2; they are the same
+		pcl::transformPointCloud (*cropped_cloud, *transformed_cloud, worldTcamera);
+		getAABB(*transformed_cloud, min, max);
+		minExtent.head<3>() = min; maxExtent.head<3>() = max;
+	}
 	octomap::point3d_collection occluded_pts;
 	std::shared_ptr<octomap::OcTree> occlusionTree;
 	std::tie(occluded_pts, occlusionTree) = getOcclusionsInFOV(octree, cameraModel, cameraTtable, minExtent.head<3>(), maxExtent.head<3>());
+
+	/////////////////////////////////////////////////////////////////
+	// Compute the Most Occluding Segment
+	/////////////////////////////////////////////////////////////////
+	std::map<octomap::point3d, int, vector_less_than<3, octomap::point3d>> coordToSegment;
+	std::vector<int> occludedBySegmentCount(segments.size(), 0);
+	for (int i = 0; i < static_cast<int>(segments.size()); ++i)
+	{
+		const pcl::PointCloud<PointT>::Ptr& pc = segments[i];
+		for (const PointT& pt : *pc)
+		{
+			octomap::point3d coord = octree->keyToCoord(octree->coordToKey(octomap::point3d(pt.x, pt.y, pt.z)));
+			coordToSegment.insert({coord, i});
+		}
+	}
+	for (const auto& pt_world : occluded_pts)
+	{
+		octomap::point3d cameraOrigin(cameraTtable.translation().x(), cameraTtable.translation().y(), cameraTtable.translation().z());
+		octomap::point3d collision;
+		octree->castRay(cameraOrigin, pt_world-cameraOrigin, collision);
+		collision = octree->keyToCoord(octree->coordToKey(collision)); // regularize
+
+		const auto& iter = coordToSegment.find(collision);
+		if (iter != coordToSegment.end())
+		{
+			occludedBySegmentCount[iter->second]++;
+		}
+	}
+	int mostOccludingSegmentIdx = std::distance(occludedBySegmentCount.begin(),
+		std::max_element(occludedBySegmentCount.begin(), occludedBySegmentCount.end()));
+	visualization_msgs::MarkerArray objToMoveVis = visualizeOctree(completedSegments[mostOccludingSegmentIdx].get(), globalFrame);
+	for (visualization_msgs::Marker& m : objToMoveVis.markers)
+	{
+		m.colors.clear();
+		m.color.r = 1.0;
+		m.color.a = 1.0;
+		m.scale.x *= 1.2; m.scale.y *= 1.2; m.scale.z *= 1.2;
+		m.ns = "worst" + std::to_string(m.id);
+	}
+	octreePub.publish(objToMoveVis);
 
 	std::random_device rd;
 	std::mt19937 g(rd());
@@ -253,6 +333,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 			Eigen::Isometry3d goalPose = Eigen::Isometry3d::Identity();
 			goalPose.rotate(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()));
 			goalPose.translation() = Eigen::Vector3d(pt_world.x(), pt_world.y(), pt_world.z());
+			goalPose.translation() += 0.3 * Eigen::Vector3d::UnitZ();
 			Eigen::Affine3d pt_solver = solverTrobot * robotTworld * goalPose;
 
 			// TODO: Loop around z-axis

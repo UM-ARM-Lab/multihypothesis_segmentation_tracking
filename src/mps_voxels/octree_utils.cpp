@@ -225,7 +225,7 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 				    && imgPt.y > y_buffer && imgPt.y < cameraModel.cameraInfo().height - y_buffer)
 				{
 //					#pragma omp critical
-					if (!octree->search(ix, iy, iz, d))
+					if (!octree->search(ix, iy, iz))
 					{
 						//This cell is unknown
 						octomap::point3d coord = octree->keyToCoord(octree->coordToKey(ix, iy, iz, d), d);
@@ -269,7 +269,7 @@ visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std
 
 		occupiedNodesVis.markers[i].header.frame_id = globalFrame;
 		occupiedNodesVis.markers[i].header.stamp = ros::Time::now();
-		occupiedNodesVis.markers[i].ns = std::to_string(i);//"occlusion";
+		occupiedNodesVis.markers[i].ns = "map" + std::to_string(i);//"occlusion";
 		occupiedNodesVis.markers[i].id = i;
 		occupiedNodesVis.markers[i].type = visualization_msgs::Marker::CUBE_LIST;
 		occupiedNodesVis.markers[i].scale.x = size;
