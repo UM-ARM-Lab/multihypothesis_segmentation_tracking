@@ -98,6 +98,26 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	return segments;
 }
 
+void getAABB(const pcl::PointCloud<PointT>& members, Eigen::Vector3f& min, Eigen::Vector3f& max)
+{
+	const int DIM = 3;
+	for (int d=0; d < DIM; ++d)
+	{
+		min[d] = std::numeric_limits<float>::infinity();
+		max[d] = -std::numeric_limits<float>::infinity();
+	}
+
+//	#pragma omp parallel for reduction(max : max) reduction(min : min)
+	for (const PointT& p : members)
+	{
+		for (int d=0; d < DIM; ++d)
+		{
+			min[d] = std::min(min[d], p.getVector3fMap()[d]);
+			max[d] = std::max(max[d], p.getVector3fMap()[d]);
+		}
+	}
+}
+
 void getBoundingCube(const pcl::PointCloud<PointT>& members, Eigen::Vector3f& min, Eigen::Vector3f& max)
 {
 	getAABB(members, min, max);

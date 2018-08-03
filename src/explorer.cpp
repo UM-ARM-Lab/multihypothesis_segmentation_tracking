@@ -3,6 +3,7 @@
 //
 
 // Octree utilities
+#include "mps_voxels/MotionModel.h"
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
 
@@ -89,17 +90,25 @@ std::shared_ptr<tf::TransformListener> listener;
 std::shared_ptr<tf::TransformBroadcaster> broadcaster;
 robot_model::RobotModelPtr pModel;
 sensor_msgs::JointState::ConstPtr latestJoints;
-int octomapBurnInCounter = 0;
-const int OCTOMAP_BURN_IN = 5; /// Number of point clouds to process before using octree
+std::map<std::string, std::unique_ptr<MotionModel>> motionModels;
 
-void publishOctree(octomap::OcTree* tree, const std::string& globalFrame)
+int octomapBurnInCounter = 0;
+const int OCTOMAP_BURN_IN = 1; /// Number of point clouds to process before using octree
+
+void publishOctree(octomap::OcTree* tree, const std::string& globalFrame, const std::string& ns = "")
 {
 	bool publishMarkerArray = (octreePub.getNumSubscribers()>0);
 
 	if (publishMarkerArray)
 	{
 		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(tree, globalFrame);
-
+		if (!ns.empty())
+		{
+			for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
+			{
+				m.ns = ns;
+			}
+		}
 		octreePub.publish(occupiedNodesVis);
 	}
 }
@@ -139,7 +148,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 //	std::tie(octree, globalFrame) = mapClient->getOctree();
 	if (!octree)
 	{
-		ROS_ERROR("Octree lookup failed.");
+		ROS_ERROR("Octree generation failed.");
 		return;
 	}
 
@@ -153,7 +162,9 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>());
 	pcl::fromROSMsg(*cloud_msg, *cloud);
 
+	/////////////////////////////////////////////////////////////////
 	// Crop to bounding box
+	/////////////////////////////////////////////////////////////////
 	pcl::PointCloud<PointT>::Ptr cropped_cloud = crop(cloud, minExtent, maxExtent, worldTcamera);
 	if (cropped_cloud->empty())
 	{
@@ -161,6 +172,87 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 		return;
 	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+
+
+	/////////////////////////////////////////////////////////////////
+	// Apply prior motion models
+	/////////////////////////////////////////////////////////////////
+	robot_state::RobotState rs(pModel);
+	rs.setToDefaultValues();
+	if (latestJoints)
+	{
+		moveit::core::jointStateToRobotState(*latestJoints, rs);
+	}
+
+	// Update from robot state + TF
+	for (const auto& model : motionModels)
+	{
+		if (listener->waitForTransform(model.first, mapServer->getWorldFrame(), ros::Time(0), ros::Duration(1.0)))
+		{
+			tf::StampedTransform stf;
+			listener->lookupTransform(model.first, mapServer->getWorldFrame(), ros::Time(0), stf);
+			tf::transformTFToEigen(stf, model.second->localTglobal);
+		}
+//		else if (std::find(pModel->getLinkModelNames().begin(), pModel->getLinkModelNames().end(), model.first) != pModel->getLinkModelNames().end())
+//		{
+//			Eigen::Affine3d pose = rs.getFrameTransform(model.first);
+//			model.second->localTglobal = Eigen::Isometry3d::Identity();
+//			model.second->localTglobal.rotate(pose.linear());
+//			model.second->localTglobal.translation() = pose.translation();
+//		}
+
+		// Compute bounding spheres
+		model.second->updateMembershipStructures();
+	}
+	{
+		visualization_msgs::MarkerArray markers;
+		int id = 0;
+		for (const auto& model : motionModels)
+		{
+			visualization_msgs::Marker m;
+			m.ns = "collision";
+			m.id = id++;
+			m.type = visualization_msgs::Marker::SPHERE;
+			m.action = visualization_msgs::Marker::ADD;
+			m.scale.x = m.scale.y = m.scale.z = model.second->boundingSphere.radius*2.0;
+			m.color.a = 0.5f;
+			Eigen::Vector3d p = model.second->localTglobal.inverse() * model.second->boundingSphere.center;
+			m.pose.position.x = p.x();
+			m.pose.position.y = p.y();
+			m.pose.position.z = p.z();
+			m.pose.orientation.w = 1.0;
+			m.frame_locked = true;
+			m.header.stamp = cloud_msg->header.stamp;
+			m.header.frame_id = globalFrame;
+			markers.markers.push_back(m);
+		}
+		octreePub.publish(markers);
+	}
+
+	std::vector<int> assignments(cropped_cloud->size(), -1);
+	{
+		const int nPts = static_cast<int>(cropped_cloud->size());
+		#pragma omp parallel for schedule(dynamic)
+		for (int i = 0; i < nPts; ++i)
+		{
+			Eigen::Vector3d pt = cropped_cloud->points[i].getVector3fMap().cast<double>();
+			int m = 0;
+			double maxL = std::numeric_limits<double>::lowest();
+			for (const auto& model : motionModels)
+			{
+				double L = model.second->membershipLikelihood(pt);
+				if (L > 0.0 && L > maxL)
+				{
+					maxL = L;
+					assignments[i] = m;
+					break;
+				}
+				++m;
+			}
+		}
+	}
+
 
 	// Perform segmentation
 	std::vector<pcl::PointCloud<PointT>::Ptr> segments = segment(cropped_cloud);
@@ -188,11 +280,11 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 		if (completionClient->completionClient.exists())
 		{
 			completionClient->completeShape(min, max, worldTcamera.cast<float>(), octree, subtree.get());
+			publishOctree(subtree.get(), globalFrame);
 		}
 
 		completedSegments.push_back(subtree);
 
-		publishOctree(subtree.get(), globalFrame);
 	}
 
 	/////////////////////////////////////////////////////////////////
@@ -211,6 +303,46 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	octomap::point3d_collection occluded_pts;
 	std::shared_ptr<octomap::OcTree> occlusionTree;
 	std::tie(occluded_pts, occlusionTree) = getOcclusionsInFOV(octree, cameraModel, cameraTtable, minExtent.head<3>(), maxExtent.head<3>());
+
+	/////////////////////////////////////////////////////////////////
+	// Filter parts of models
+	/////////////////////////////////////////////////////////////////
+	{
+		std::vector<int> assignments(occluded_pts.size(), -1);
+		const int nPts = static_cast<int>(occluded_pts.size());
+		#pragma omp parallel for schedule(dynamic)
+		for (int i = 0; i < nPts; ++i)
+		{
+			Eigen::Vector3d pt(occluded_pts[i].x(), occluded_pts[i].y(), occluded_pts[i].z());
+			int m = 0;
+			double maxL = std::numeric_limits<double>::lowest();
+			for (const auto& model : motionModels)
+			{
+				double L = model.second->membershipLikelihood(pt);
+				if (L > 0.0 && L > maxL)
+				{
+					maxL = L;
+					assignments[i] = m;
+				}
+				++m;
+			}
+		}
+
+		for (int i = 0; i < nPts; ++i)
+		{
+			if (assignments[i] >= 0)
+			{
+				occlusionTree->deleteNode(occluded_pts[i]);
+//				octree->deleteNode(occluded_pts[i]);
+			}
+		}
+		occlusionTree->updateInnerOccupancy();
+		// Lambda function: capture by reference, get contained value, predicate function
+		occluded_pts.erase(std::remove_if(occluded_pts.begin(), occluded_pts.end(),
+		                                  [&](const octomath::Vector3& p){ return assignments[&p - &*occluded_pts.begin()] >= 0;}),
+		                   occluded_pts.end());
+	}
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	/////////////////////////////////////////////////////////////////
 	// Compute the Most Occluding Segment
@@ -250,7 +382,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 		m.scale.x *= 1.2; m.scale.y *= 1.2; m.scale.z *= 1.2;
 		m.ns = "worst" + std::to_string(m.id);
 	}
-	octreePub.publish(objToMoveVis);
+//	octreePub.publish(objToMoveVis);
 
 	std::random_device rd;
 	std::mt19937 g(rd());
@@ -260,19 +392,12 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	pt.x = occluded_pts.front().x();
 	pt.y = occluded_pts.front().y();
 	pt.z = occluded_pts.front().z();
-	targetPub.publish(pt);
+//	targetPub.publish(pt);
 
-//	occlusionTree->
 	publishOctree(occlusionTree.get(), globalFrame);
 	std::cerr << "Published " << occluded_pts.size() << " points." << std::endl;
 
 	// Reach out and touch target
-	robot_state::RobotState rs(pModel);
-	rs.setToDefaultValues();
-	if (latestJoints)
-	{
-		moveit::core::jointStateToRobotState(*latestJoints, rs);
-	}
 
 	assert(!pModel->getJointModelGroupNames().empty());
 
@@ -456,6 +581,11 @@ int main(int argc, char* argv[])
 	std::shared_ptr<robot_model_loader::RobotModelLoader> mpLoader
 		= std::make_shared<robot_model_loader::RobotModelLoader>();
 	pModel = mpLoader->getModel();
+
+	if (!loadLinkMotionModels(pModel.get(), motionModels))
+	{
+		ROS_ERROR("Model loading failed.");
+	}
 
 	std::string topic_prefix = "/kinect2_victor_head/qhd";
 //	ros::Subscriber camInfoSub = nh.subscribe("kinect2_victor_head/qhd/camera_info", 1, camera_cb);

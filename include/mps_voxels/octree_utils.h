@@ -2,8 +2,8 @@
 // Created by arprice on 7/24/18.
 //
 
-#ifndef PROJECT_OCTREE_UTILS_H
-#define PROJECT_OCTREE_UTILS_H
+#ifndef MPS_VOXELS_OCTREE_UTILS_H
+#define MPS_VOXELS_OCTREE_UTILS_H
 
 #include <octomap/octomap.h>
 
@@ -54,4 +54,4 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 
 visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std::string& globalFrame = "world");
 
-#endif //PROJECT_OCTREE_UTILS_H
+#endif // MPS_VOXELS_OCTREE_UTILS_H

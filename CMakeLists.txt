@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 project(mps_voxels)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-add_compile_options(-std=c++11)
+add_compile_options(-std=c++14)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -157,7 +157,7 @@ include_directories(SYSTEM
 add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/octree_utils.cpp
   src/${PROJECT_NAME}/pointcloud_utils.cpp
-)
+  src/${PROJECT_NAME}/MotionModel.cpp)
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
