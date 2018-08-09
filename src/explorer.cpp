@@ -36,9 +36,20 @@
 #include <algorithm>
 #include <memory>
 #include <random>
+#include <queue>
 
 
 #include <octomap_server/OctomapServer.h>
+
+template <typename Point>
+void setBBox(const Point& min, const Point& max, octomap::OcTree* ot)
+{
+	octomap::point3d om_min{min.x(), min.y(), min.z()};
+	octomap::point3d om_max{max.x(), max.y(), max.z()};
+	ot->setBBXMin(om_min);
+	ot->setBBXMax(om_max);
+	ot->useBBXLimit(true);
+}
 
 class LocalOctreeServer : public octomap_server::OctomapServer
 {
@@ -80,15 +91,43 @@ struct vector_less_than
 	}
 };
 
+
+struct SeedDistanceFunctor
+{
+	using Solution = std::vector<double>;
+	const Solution seed;
+	SeedDistanceFunctor(Solution _seed) : seed(std::move(_seed)) {}
+	static double distance(const Solution& a, const Solution& b)
+	{
+		assert(a.size() == b.size());
+		double d = 0.0;
+		for (size_t i = 0; i < a.size(); ++i)
+		{
+			d += fabs(a[i]-b[i]);
+		}
+		return d;
+	}
+
+	// NB: priority_queue is a max-heap structure, so less() should actually return >
+	// "highest priority"
+	bool operator()(const Solution& a, const Solution& b)
+	{
+		return distance(seed, a) > distance(seed, b);
+	}
+};
+
+
 std::shared_ptr<LocalOctreeServer> mapServer;
 std::shared_ptr<OctreeRetriever> mapClient;
 std::shared_ptr<VoxelCompleter> completionClient;
 ros::Publisher octreePub;
 ros::Publisher targetPub;
 ros::Publisher commandPub;
+ros::Publisher displayPub;
 std::shared_ptr<tf::TransformListener> listener;
 std::shared_ptr<tf::TransformBroadcaster> broadcaster;
 robot_model::RobotModelPtr pModel;
+std::vector<robot_model::JointModelGroup*> jmgs;
 sensor_msgs::JointState::ConstPtr latestJoints;
 std::map<std::string, std::unique_ptr<MotionModel>> motionModels;
 
@@ -129,6 +168,11 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 		return;
 	}
 
+	Eigen::Vector4f maxExtent(0.4f, 0.6f, 0.5f, 1);
+	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.05f, 1);
+
+	setBBox(minExtent, maxExtent, mapServer->getOctree());
+
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	mapServer->insertCloudCallback(cloud_msg);
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
@@ -138,9 +182,6 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 
 	image_geometry::PinholeCameraModel cameraModel;
 	cameraModel.fromCameraInfo(info_msg);
-
-	Eigen::Vector4f maxExtent(0.4f, 0.6f, 0.5f, 1);
-	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.05f, 1);
 
 	// Get Octree
 	octomap::OcTree* octree = mapServer->getOctree();
@@ -188,19 +229,22 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	// Update from robot state + TF
 	for (const auto& model : motionModels)
 	{
-		if (listener->waitForTransform(model.first, mapServer->getWorldFrame(), ros::Time(0), ros::Duration(1.0)))
+		if (listener->waitForTransform(model.first, mapServer->getWorldFrame(), ros::Time(0), ros::Duration(5.0)))
 		{
 			tf::StampedTransform stf;
 			listener->lookupTransform(model.first, mapServer->getWorldFrame(), ros::Time(0), stf);
 			tf::transformTFToEigen(stf, model.second->localTglobal);
 		}
-//		else if (std::find(pModel->getLinkModelNames().begin(), pModel->getLinkModelNames().end(), model.first) != pModel->getLinkModelNames().end())
-//		{
+		else if (std::find(pModel->getLinkModelNames().begin(), pModel->getLinkModelNames().end(), model.first) != pModel->getLinkModelNames().end())
+		{
+
+			ROS_ERROR_STREAM("Unable to compute transform from '" << mapServer->getWorldFrame() << "' to '" << model.first << "'.");
+			return;
 //			Eigen::Affine3d pose = rs.getFrameTransform(model.first);
 //			model.second->localTglobal = Eigen::Isometry3d::Identity();
 //			model.second->localTglobal.rotate(pose.linear());
 //			model.second->localTglobal.translation() = pose.translation();
-//		}
+		}
 
 		// Compute bounding spheres
 		model.second->updateMembershipStructures();
@@ -231,13 +275,13 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	}
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-	std::vector<int> assignments(cropped_cloud->size(), -1);
 	{
+		std::vector<int> assignments(cropped_cloud->size(), -1);
 		const int nPts = static_cast<int>(cropped_cloud->size());
 		#pragma omp parallel for schedule(dynamic)
 		for (int i = 0; i < nPts; ++i)
 		{
-			Eigen::Vector3d pt = cropped_cloud->points[i].getVector3fMap().cast<double>();
+			Eigen::Vector3d pt = (worldTcamera.cast<float>()*cropped_cloud->points[i].getVector3fMap()).cast<double>();
 			int m = 0;
 			double maxL = std::numeric_limits<double>::lowest();
 			for (const auto& model : motionModels)
@@ -252,11 +296,25 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 				++m;
 			}
 		}
+
+		cropped_cloud->points.erase(std::remove_if(cropped_cloud->points.begin(), cropped_cloud->points.end(),
+		                                  [&](const PointT& p){ return assignments[&p - &*cropped_cloud->points.begin()] >= 0;}),
+		                            cropped_cloud->points.end());
+	}
+	if (cropped_cloud->empty())
+	{
+		ROS_WARN_STREAM("All points were self-filtered!");
+		return;
 	}
 
 
 	// Perform segmentation
 	std::vector<pcl::PointCloud<PointT>::Ptr> segments = segment(cropped_cloud);
+	if (segments.empty())
+	{
+		ROS_WARN_STREAM("No clusters were detected!");
+		return;
+	}
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	std::vector<std::shared_ptr<octomap::OcTree>> completedSegments;
@@ -285,7 +343,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 		}
 
 		completedSegments.push_back(subtree);
-
+		motionModels["completed"] = std::make_unique<RigidMotionModel>();
 	}
 
 	/////////////////////////////////////////////////////////////////
@@ -334,7 +392,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 			if (assignments[i] >= 0)
 			{
 				occlusionTree->deleteNode(occluded_pts[i]);
-//				octree->deleteNode(occluded_pts[i]);
+				octree->deleteNode(occluded_pts[i]);
 			}
 		}
 		occlusionTree->updateInnerOccupancy();
@@ -386,7 +444,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 		m.scale.x *= 1.2; m.scale.y *= 1.2; m.scale.z *= 1.2;
 		m.ns = "worst" + std::to_string(m.id);
 	}
-//	octreePub.publish(objToMoveVis);
+	octreePub.publish(objToMoveVis);
 
 	std::random_device rd;
 	std::mt19937 g(rd());
@@ -403,32 +461,6 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 
 	// Reach out and touch target
 
-	assert(!pModel->getJointModelGroupNames().empty());
-
-	std::vector<robot_model::JointModelGroup*> jmgs;
-	for (robot_model::JointModelGroup* jmg : pModel->getJointModelGroups())
-	{
-		if (jmg->isChain() && jmg->getSolverInstance())
-		{
-			jmgs.push_back(jmg);
-			jmg->getSolverInstance()->setSearchDiscretization(0.1); // ~5 degrees
-			const auto& ees = jmg->getAttachedEndEffectorNames();
-			std::cerr << "Loaded jmg '" << jmg->getName() << "' " << jmg->getSolverInstance()->getBaseFrame() << std::endl;
-			for (const std::string& eeName : ees)
-			{
-				const robot_model::JointModelGroup* ee = pModel->getEndEffector(eeName);
-				ee->getJointRoots();
-				const robot_model::JointModel* rootJoint = ee->getCommonRoot();
-				rootJoint->getNonFixedDescendantJointModels();
-
-				std::cerr << "\t-" << eeName << ee->getFixedJointModels().size() << std::endl;
-			}
-		}
-		else
-		{
-			std::cerr << "Did not load jmg '" << jmg->getName() << "'" << std::endl;
-		}
-	}
 	assert(!jmgs.empty());
 
 	for (const robot_model::JointModelGroup* ee : pModel->getEndEffectors())
@@ -440,15 +472,39 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 
 	const std::string& robotFrame = pModel->getRootLinkName();
 	tf::StampedTransform robotFrameInGlobalCoordinates;
+	if (!listener->waitForTransform(robotFrame, globalFrame, ros::Time(0), ros::Duration(1.0)))
+	{
+		ROS_ERROR_STREAM("Unable to compute transform from '" << globalFrame << "' to '" << robotFrame << "'.");
+		return;
+	}
 	listener->lookupTransform(robotFrame, globalFrame, ros::Time(0), robotFrameInGlobalCoordinates);
 	Eigen::Isometry3d robotTworld;
 	tf::transformTFToEigen(robotFrameInGlobalCoordinates, robotTworld);
 
 	robot_model::JointModelGroup* active_jmg;
 
-	std::vector<std::vector<double>> solutions;
-	for (const auto& pt_world : occluded_pts)
+//	auto& push_points_world = occluded_pts;
+	octomap::point3d_collection push_points_world;
+
+//	for (const std::shared_ptr<octomap::OcTree>& ot : completedSegments)
+	auto& ot = completedSegments[mostOccludingSegmentIdx];
 	{
+		for (octomap::OcTree::iterator it = ot->begin(ot->getTreeDepth()),
+			     end = ot->end(); it != end; ++it)
+		{
+			if (ot->isNodeOccupied(*it))
+			{
+				push_points_world.emplace_back(octomath::Vector3{it.getX(), it.getY(), it.getZ()});
+			}
+		}
+	}
+	std::shuffle(push_points_world.begin(), push_points_world.end(), g);
+
+	std::vector<std::vector<double>> solutions;
+	for (const auto& pt_world : push_points_world)
+	{
+		if (pt_world.z() < 0.05) { continue; }
+
 		for (robot_model::JointModelGroup* jmg : jmgs)
 		{
 			const kinematics::KinematicsBaseConstPtr& solver = jmg->getSolverInstance();
@@ -461,7 +517,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 			Eigen::Isometry3d goalPose = Eigen::Isometry3d::Identity();
 			goalPose.rotate(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()));
 			goalPose.translation() = Eigen::Vector3d(pt_world.x(), pt_world.y(), pt_world.z());
-			goalPose.translation() += 0.3 * Eigen::Vector3d::UnitZ();
+			goalPose.translation() += 0.25 * Eigen::Vector3d::UnitZ();
 			Eigen::Affine3d pt_solver = solverTrobot * robotTworld * goalPose;
 
 			// TODO: Loop around z-axis
@@ -505,10 +561,13 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 			options.discretization_method = kinematics::DiscretizationMethod::ALL_DISCRETIZED;
 			solver->getPositionIK(targetPoses, seed, solutions, result, options);
 
+			SeedDistanceFunctor functor(seed);
+			std::priority_queue<std::vector<double>, std::vector<std::vector<double>>, SeedDistanceFunctor>
+				slnQueue(solutions.begin(), solutions.end(), functor);
 
 			if (!solutions.empty())
 			{
-				rs.setJointGroupPositions(jmg, solutions.front());
+				rs.setJointGroupPositions(jmg, slnQueue.top());
 				active_jmg = jmg;
 				std::cerr << "Got " << solutions.size() << " solutions." << std::endl;
 				break;
@@ -540,8 +599,19 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	drt.joint_trajectory.points.resize(1);
 	drt.joint_trajectory.points[0].positions = js.position;
 	drt.joint_trajectory.points[0].time_from_start = ros::Duration(0.0);
+	drt.joint_trajectory.header.frame_id = pModel->getRootLinkName();
 	dt.trajectory.push_back(drt);
-	commandPub.publish(dt);
+	displayPub.publish(dt);
+
+
+	trajectory_msgs::JointTrajectory cmd;
+	cmd.joint_names = active_jmg->getActiveJointModelNames();
+	cmd.points.resize(1);
+	rs.copyJointGroupPositions(active_jmg, cmd.points.front().positions);
+	cmd.points.front().time_from_start = ros::Duration(0.0);
+	cmd.header.stamp = ros::Time::now();
+	cmd.header.frame_id = pModel->getRootLinkName();
+	commandPub.publish(cmd);
 }
 
 template <typename T>
@@ -576,8 +646,10 @@ int main(int argc, char* argv[])
 
 	octreePub = nh.advertise<visualization_msgs::MarkerArray>("occluded_points", 1, true);
 	targetPub = nh.advertise<geometry_msgs::Point>("target_point", 1, false);
-	commandPub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, false);
+	commandPub = nh.advertise<trajectory_msgs::JointTrajectory>("/joint_trajectory", 1, false);
+	displayPub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, false);
 	mapServer = std::make_shared<LocalOctreeServer>(pnh);
+	ros::Duration(1.0).sleep();
 	mapClient = std::make_shared<OctreeRetriever>(nh);
 	completionClient = std::make_shared<VoxelCompleter>(nh);
 
@@ -588,6 +660,31 @@ int main(int argc, char* argv[])
 	if (!loadLinkMotionModels(pModel.get(), motionModels))
 	{
 		ROS_ERROR("Model loading failed.");
+	}
+
+	assert(!pModel->getJointModelGroupNames().empty());
+	for (robot_model::JointModelGroup* jmg : pModel->getJointModelGroups())
+	{
+		if (jmg->isChain() && jmg->getSolverInstance())
+		{
+			jmgs.push_back(jmg);
+			jmg->getSolverInstance()->setSearchDiscretization(0.1); // ~5 degrees
+			const auto& ees = jmg->getAttachedEndEffectorNames();
+			std::cerr << "Loaded jmg '" << jmg->getName() << "' " << jmg->getSolverInstance()->getBaseFrame() << std::endl;
+			for (const std::string& eeName : ees)
+			{
+				const robot_model::JointModelGroup* ee = pModel->getEndEffector(eeName);
+				ee->getJointRoots();
+				const robot_model::JointModel* rootJoint = ee->getCommonRoot();
+				rootJoint->getNonFixedDescendantJointModels();
+
+				std::cerr << "\t-" << eeName << ee->getFixedJointModels().size() << std::endl;
+			}
+		}
+		else
+		{
+			std::cerr << "Did not load jmg '" << jmg->getName() << "'" << std::endl;
+		}
 	}
 
 	std::string topic_prefix = "/kinect2_victor_head/qhd";

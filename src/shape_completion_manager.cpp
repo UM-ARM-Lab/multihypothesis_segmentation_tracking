@@ -25,7 +25,7 @@ void publishOctree(std::shared_ptr<octomap::OcTree>& tree, const std::string& gl
 
 	if (publishMarkerArray)
 	{
-		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(tree, globalFrame);
+		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(tree.get(), globalFrame);
 
 		octreePub.publish(occupiedNodesVis);
 	}
@@ -110,7 +110,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 //			assert(octree->search(worldPt.x(), worldPt.y(), worldPt.z())->getOccupancy() > 0.5); // May fail if server is behind
 //			assert(subtree->search(worldPt.x(), worldPt.y(), worldPt.z())->getOccupancy() > 0.5);
 		}
-		completionClient->completeShape(min, max, worldTcamera.cast<float>(), octree, subtree);
+		completionClient->completeShape(min, max, worldTcamera.cast<float>(), octree.get(), subtree.get());
 
 		completedClusters.push_back(subtree);
 
