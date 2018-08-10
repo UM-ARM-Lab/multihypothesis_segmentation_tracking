@@ -160,7 +160,7 @@ struct SeedDistanceFunctor
 
 	// NB: priority_queue is a max-heap structure, so less() should actually return >
 	// "highest priority"
-	bool operator()(const Solution& a, const Solution& b)
+	bool operator()(const Solution& a, const Solution& b) const
 	{
 		return distance(seed, a) > distance(seed, b);
 	}
@@ -183,6 +183,7 @@ std::map<std::string, std::unique_ptr<MotionModel>> motionModels;
 
 int octomapBurnInCounter = 0;
 const int OCTOMAP_BURN_IN = 2; /// Number of point clouds to process before using octree
+const double maxStepSize = 1.0;
 
 void publishOctree(octomap::OcTree* tree, const std::string& globalFrame, const std::string& ns = "")
 {
@@ -269,11 +270,16 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	/////////////////////////////////////////////////////////////////
 	// Apply prior motion models
 	/////////////////////////////////////////////////////////////////
-	robot_state::RobotState rs(pModel);
-	rs.setToDefaultValues();
+	robot_state::RobotState currentState(pModel);
+	robot_state::RobotState toState(pModel);
+	currentState.setToDefaultValues();
+	toState.setToDefaultValues();
 	if (latestJoints)
 	{
-		moveit::core::jointStateToRobotState(*latestJoints, rs);
+		moveit::core::jointStateToRobotState(*latestJoints, currentState);
+		moveit::core::jointStateToRobotState(*latestJoints, toState);
+		currentState.updateLinkTransforms();
+		toState.updateLinkTransforms();
 	}
 
 	// Update from robot state + TF
@@ -662,10 +668,19 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	}
 	std::shuffle(push_points_world.begin(), push_points_world.end(), g);
 
+	trajectory_msgs::JointTrajectory cmd;
+	cmd.header.frame_id = pModel->getRootLinkName();
 	std::vector<std::vector<double>> solutions;
 	for (const auto& pt_world : push_points_world)
 	{
 		if (pt_world.z() < 0.05) { continue; }
+		Eigen::Vector3d pt(pt_world.x(), pt_world.y(), pt_world.z());
+
+		std::sort(jmgs.begin(), jmgs.end(), [&](const robot_model::JointModelGroup* a, const robot_model::JointModelGroup* b)->bool
+		{
+			return (pt-currentState.getFrameTransform(a->getOnlyOneEndEffectorTip()->getName()).translation()).squaredNorm()
+			       < (pt-currentState.getFrameTransform(b->getOnlyOneEndEffectorTip()->getName()).translation()).squaredNorm();
+		});
 
 		for (robot_model::JointModelGroup* jmg : jmgs)
 		{
@@ -673,12 +688,12 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 			assert(solver.get());
 
 			Eigen::Affine3d solverTrobot = Eigen::Affine3d::Identity();
-			rs.setToIKSolverFrame(solverTrobot, solver);
+			currentState.setToIKSolverFrame(solverTrobot, solver);
 
 			// Convert to solver frame
 			Eigen::Isometry3d goalPose = Eigen::Isometry3d::Identity();
 			goalPose.rotate(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()));
-			goalPose.translation() = Eigen::Vector3d(pt_world.x(), pt_world.y(), pt_world.z());
+			goalPose.translation() = pt;
 			goalPose.translation() += 0.25 * Eigen::Vector3d::UnitZ();
 			Eigen::Affine3d pt_solver = solverTrobot * robotTworld * goalPose;
 
@@ -713,14 +728,22 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 			}
 
 
-			solver->getTipFrame();
+//			solver->getTipFrame();
 
-			std::vector<double> seed;
-			rs.copyJointGroupPositions(jmg, seed);
+			std::vector<double> seed(jmg->getVariableCount(), 0.0);
+//			currentState.copyJointGroupPositions(jmg, seed);
 			kinematics::KinematicsResult result;
 			kinematics::KinematicsQueryOptions options;
 			options.discretization_method = kinematics::DiscretizationMethod::ALL_DISCRETIZED;
 			solver->getPositionIK(targetPoses, seed, solutions, result, options);
+
+			// Toss out invalid options
+			if (maxStepSize < std::numeric_limits<double>::infinity())
+			{
+				solutions.erase(std::remove_if(solutions.begin(), solutions.end(),
+				                               [&](const std::vector<double>& sln){ return SeedDistanceFunctor::distance(seed, sln) > maxStepSize;}),
+				                solutions.end());
+			}
 
 			SeedDistanceFunctor functor(seed);
 			std::priority_queue<std::vector<double>, std::vector<std::vector<double>>, SeedDistanceFunctor>
@@ -728,18 +751,45 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 
 			while (!slnQueue.empty())
 			{
-				rs.setJointGroupPositions(jmg, slnQueue.top());
+				toState.setJointGroupPositions(jmg, slnQueue.top());
 				planning_scene::PlanningScene ps(pModel);
 
 				collision_detection::CollisionRequest collision_request;
 				collision_detection::CollisionResult collision_result;
 
-				ps.checkSelfCollision(collision_request, collision_result, rs);
+				ps.checkSelfCollision(collision_request, collision_result, toState);
 
 				if (!collision_result.collision)
 				{
 					active_jmg = jmg;
-					break;
+
+					const int INTERPOLATE_STEPS = 5;
+					cmd.joint_names = active_jmg->getActiveJointModelNames();
+					cmd.points.resize(INTERPOLATE_STEPS);
+
+					// Verify the "plan" is collision-free
+
+					for (int i = 0; i < INTERPOLATE_STEPS; ++i)
+					{
+						double t = i/static_cast<double>(INTERPOLATE_STEPS-1);
+						robot_state::RobotState interpState(currentState);
+						currentState.interpolate(toState, t, interpState, jmg);
+
+						ps.checkSelfCollision(collision_request, collision_result, interpState);
+						if (collision_result.collision)
+						{
+							active_jmg = nullptr;
+							break;
+						}
+
+						interpState.copyJointGroupPositions(active_jmg, cmd.points[i].positions);
+						cmd.points[i].time_from_start = ros::Duration(t*3.0);
+					}
+
+					if (active_jmg)
+					{
+						break;
+					}
 				}
 				slnQueue.pop();
 			}
@@ -762,31 +812,17 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 		return;
 	}
 
+	cmd.header.stamp = ros::Time::now();
 	moveit_msgs::DisplayTrajectory dt;
 //	moveit_msgs::RobotState drs;
 	moveit_msgs::RobotTrajectory drt;
 
-	sensor_msgs::JointState js;
-	moveit::core::robotStateToJointStateMsg(rs, js);
-	moveit::core::robotStateToRobotStateMsg(rs, dt.trajectory_start);
+	moveit::core::robotStateToRobotStateMsg(currentState, dt.trajectory_start);
 	dt.model_id = pModel->getName();
-//	dt.trajectory_start = drs;
-	drt.joint_trajectory.joint_names = js.name;
-	drt.joint_trajectory.points.resize(1);
-	drt.joint_trajectory.points[0].positions = js.position;
-	drt.joint_trajectory.points[0].time_from_start = ros::Duration(0.0);
-	drt.joint_trajectory.header.frame_id = pModel->getRootLinkName();
+	drt.joint_trajectory = cmd;
 	dt.trajectory.push_back(drt);
 	displayPub.publish(dt);
 
-
-	trajectory_msgs::JointTrajectory cmd;
-	cmd.joint_names = active_jmg->getActiveJointModelNames();
-	cmd.points.resize(1);
-	rs.copyJointGroupPositions(active_jmg, cmd.points.front().positions);
-	cmd.points.front().time_from_start = ros::Duration(0.0);
-	cmd.header.stamp = ros::Time::now();
-	cmd.header.frame_id = pModel->getRootLinkName();
 	commandPub.publish(cmd);
 }
 
