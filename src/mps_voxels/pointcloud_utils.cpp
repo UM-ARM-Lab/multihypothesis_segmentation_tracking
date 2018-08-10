@@ -75,7 +75,7 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 
 	std::vector<pcl::PointIndices> clusters;
 	pcl::EuclideanClusterExtraction<PointT> ec;
-	ec.setClusterTolerance (0.02); // 2cm
+	ec.setClusterTolerance (0.03); // 3cm
 	ec.setMinClusterSize (100);
 	ec.setMaxClusterSize (25000);
 	ec.setSearchMethod (tree);

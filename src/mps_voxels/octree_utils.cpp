@@ -3,7 +3,7 @@
 //
 
 #include "mps_voxels/octree_utils.h"
-
+#include "mps_voxels/colormap.h"
 #include <mps_voxels/CompleteShape.h>
 
 #include <octomap_msgs/conversions.h>
@@ -12,6 +12,27 @@
 #include <tf_conversions/tf_eigen.h>
 
 namespace om = octomap;
+
+bool isSpeckleNode(const octomap::OcTreeKey& nKey, const octomap::OcTree* octree)
+{
+	octomap::OcTreeKey key;
+	bool neighborFound = false;
+	for (key[2] = nKey[2] - 1; !neighborFound && key[2] <= nKey[2] + 1; ++key[2]){
+		for (key[1] = nKey[1] - 1; !neighborFound && key[1] <= nKey[1] + 1; ++key[1]){
+			for (key[0] = nKey[0] - 1; !neighborFound && key[0] <= nKey[0] + 1; ++key[0]){
+				if (key != nKey){
+					octomap::OcTreeNode* node = octree->search(key);
+					if (node && octree->isNodeOccupied(node)){
+						// we have a neighbor => break!
+						neighborFound = true;
+					}
+				}
+			}
+		}
+	}
+
+	return !neighborFound;
+}
 
 OctreeRetriever::OctreeRetriever(ros::NodeHandle& nh)
 {
@@ -210,6 +231,9 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 	const float resolution = static_cast<float>(octree->getResolution());
 	const unsigned int d = octree->getTreeDepth();
 
+	Eigen::Affine3f tableTcamera = cameraTtable.inverse(Eigen::Isometry).cast<float>();
+	octomap::point3d cameraOrigin(tableTcamera.translation().x(), tableTcamera.translation().y(), tableTcamera.translation().z());
+
 #if defined(_OPENMP)
 	int nOuterSteps = static_cast<int>((maxExtent.x()-minExtent.x())/resolution);
 	#pragma omp parallel for
@@ -225,23 +249,29 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 			for (float iz = minExtent.z(); iz <= maxExtent.z(); iz += resolution)
 			{
 				Eigen::Vector3d p = cameraTtable * Eigen::Vector3d(ix, iy, iz);
-				cv::Point3d worldPt(p.x(), p.y(), p.z());
-				cv::Point2d imgPt = cameraModel.project3dToPixel(worldPt);
+				cv::Point3d worldPt_camera(p.x(), p.y(), p.z());
+				cv::Point2d imgPt = cameraModel.project3dToPixel(worldPt_camera);
 				const int x_buffer = cameraModel.cameraInfo().width/8;
 				const int y_buffer = cameraModel.cameraInfo().height/8;
 				if (imgPt.x > x_buffer && imgPt.x < cameraModel.cameraInfo().width - x_buffer
 				    && imgPt.y > y_buffer && imgPt.y < cameraModel.cameraInfo().height - y_buffer)
 				{
-//					#pragma omp critical
 					if (!octree->search(ix, iy, iz))
 					{
 						//This cell is unknown
 						octomap::point3d coord = octree->keyToCoord(octree->coordToKey(ix, iy, iz, d), d);
 
-						#pragma omp critical
+						octomap::point3d ray = coord-cameraOrigin;
+						octomap::point3d collision;
+						bool collided = octree->castRay(cameraOrigin, ray, collision, false);
+
+						if (collided && ray.norm_sq() > (collision-cameraOrigin).norm_sq())
 						{
-							occluded_pts.push_back(coord);
-							occlusionTree->setNodeValue(coord, std::numeric_limits<float>::infinity(), true);
+							#pragma omp critical
+							{
+								occluded_pts.push_back(coord);
+								occlusionTree->setNodeValue(coord, std::numeric_limits<float>::infinity(), true);
+							}
 						}
 					}
 				}
@@ -273,6 +303,10 @@ visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std
 			occupiedNodesVis.markers[idx].points.push_back(cubeCenter);
 
 			// TODO: Colors
+			std_msgs::ColorRGBA color;
+			color.a = 1.0;
+			colormap(igl::parula_cm, (float)((it->getOccupancy()-0.5)*2.0), color.r, color.g, color.b);
+			occupiedNodesVis.markers[idx].colors.push_back(color);
 		}
 	}
 

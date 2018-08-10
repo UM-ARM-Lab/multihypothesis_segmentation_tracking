@@ -11,8 +11,9 @@ find_package(catkin REQUIRED COMPONENTS
   image_geometry
   message_generation
   moveit_ros_planning
-  octomap_ros
-  octomap_server
+  octomap_msgs
+#  octomap_ros
+#  octomap_server
   pcl_conversions
   pcl_ros
   roscpp
@@ -22,11 +23,15 @@ find_package(catkin REQUIRED COMPONENTS
   tf_conversions
 )
 
-#set(CMAKE_BUILD_TYPE Release)
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
+#set(CMAKE_BUILD_TYPE Debug)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
+
+find_package(OCTOMAP 1.9 REQUIRED)
+include_directories(${OCTOMAP_INCLUDE_DIRS})
+link_libraries(${OCTOMAP_LIBRARIES})
 
 macro(use_openmp)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
@@ -128,8 +133,9 @@ catkin_package(
     image_geometry
     message_runtime
     moveit_ros_planning
-    octomap_ros
-    octomap_server
+    octomap_msgs
+#    octomap_ros
+#    octomap_server
     pcl_conversions
     pcl_ros
     roscpp

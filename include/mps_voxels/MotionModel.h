@@ -11,6 +11,11 @@
 
 #include <geometric_shapes/bodies.h>
 
+struct SensorModel
+{
+	Eigen::Vector3d cameraOrigin_world;
+};
+
 class MotionModel
 {
 public:
@@ -30,6 +35,7 @@ public:
 
 	virtual void updateMembershipStructures();
 	virtual double membershipLikelihood(const Eigen::Vector3d& pt) const = 0;
+	virtual double membershipLikelihood(const Eigen::Vector3d& pt, const SensorModel& sensor) const = 0;
 	virtual Eigen::Vector3d expectedVelocity(const Eigen::Vector3d& pt, const MotionParameters& theta) const = 0;
 
 	/// NB: pt_local = localTglobal * pt_global
@@ -56,6 +62,7 @@ class RigidMotionModel : public MotionModel
 {
 public:
 	double membershipLikelihood(const Eigen::Vector3d& pt_global) const override;
+	double membershipLikelihood(const Eigen::Vector3d& pt, const SensorModel& sensor) const override;
 	Eigen::Vector3d expectedVelocity(const Eigen::Vector3d& pt_global, const MotionParameters& theta) const override;
 };
 

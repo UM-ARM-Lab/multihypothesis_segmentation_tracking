@@ -16,6 +16,9 @@
 #include <Eigen/Geometry>
 #include <memory>
 
+
+bool isSpeckleNode(const octomap::OcTreeKey& nKey, const octomap::OcTree* octree);
+
 class OctreeRetriever
 {
 public:
