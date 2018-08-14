@@ -32,7 +32,10 @@
   <!-- Dependencies can be catkin packages or system dependencies -->
   <buildtool_depend>catkin</buildtool_depend>
 
+  <depend>cv_bridge</depend>
+  <depend>depth_image_proc</depend>
   <depend>image_geometry</depend>
+  <depend>image_transport</depend>
   <depend>moveit_ros_planning</depend>
   <depend>octomap_msgs</depend>
   <!--<depend>octomap_ros</depend>-->

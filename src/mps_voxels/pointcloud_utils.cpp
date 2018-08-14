@@ -9,6 +9,8 @@
 
 // Segmentation
 #include <pcl/filters/extract_indices.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
@@ -20,7 +22,34 @@
 
 #include <boost/core/null_deleter.hpp>
 
-pcl::PointCloud<PointT>::Ptr crop(
+pcl::PointCloud<PointT>::Ptr filterInCameraFrame(
+	pcl::PointCloud<PointT>::Ptr& cloud,
+	const double zMin,
+	const double zMax,
+	const int k)
+{
+	pcl::PointCloud<PointT>::Ptr cloud_trimmed (new pcl::PointCloud<PointT>);
+
+	pcl::PassThrough<PointT> pass;
+	pass.setInputCloud(cloud);
+	pass.setFilterFieldName("z");
+	pass.setFilterLimits(zMin, zMax);
+	//pass.setFilterLimitsNegative (true);
+	pass.filter (*cloud_trimmed);
+
+	pcl::PointCloud<PointT>::Ptr cloud_filtered (new pcl::PointCloud<PointT>);
+
+	// Create the filtering object
+	pcl::StatisticalOutlierRemoval<PointT> sor;
+	sor.setInputCloud (cloud_trimmed);
+	sor.setMeanK (k);
+	sor.setStddevMulThresh (1.0);
+	sor.filter (*cloud_filtered);
+
+	return cloud_filtered;
+}
+
+pcl::PointCloud<PointT>::Ptr cropInCameraFrame(
 	pcl::PointCloud<PointT>::Ptr& cloud,
 	const Eigen::Vector4f& minExtent,
 	const Eigen::Vector4f& maxExtent,

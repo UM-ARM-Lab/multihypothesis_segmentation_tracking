@@ -10,10 +10,17 @@
 
 using PointT = pcl::PointXYZRGB;
 
-pcl::PointCloud<PointT>::Ptr crop(pcl::PointCloud<PointT>::Ptr& cloud,
-                                  const Eigen::Vector4f& minExtent,
-                                  const Eigen::Vector4f& maxExtent,
-                                  const Eigen::Affine3d& worldTcamera);
+pcl::PointCloud<PointT>::Ptr filterInCameraFrame(
+	pcl::PointCloud<PointT>::Ptr& cloud,
+	const double zMin = 0.1,
+	const double zMax = 8.0,
+	const int k = 15);
+
+pcl::PointCloud<PointT>::Ptr cropInCameraFrame(
+	pcl::PointCloud<PointT>::Ptr& cloud,
+	const Eigen::Vector4f& minExtent,
+	const Eigen::Vector4f& maxExtent,
+	const Eigen::Affine3d& worldTcamera);
 
 std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	pcl::PointCloud<PointT>::Ptr& cloud);

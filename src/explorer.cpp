@@ -166,6 +166,11 @@ struct SeedDistanceFunctor
 	}
 };
 
+MotionModel* matchModel(std::shared_ptr<octomap::OcTree> subtree, std::map<std::string, std::unique_ptr<MotionModel>> motionModels)
+{
+
+}
+
 
 std::shared_ptr<LocalOctreeServer> mapServer;
 //std::shared_ptr<OctreeRetriever> mapClient;
@@ -183,7 +188,7 @@ std::map<std::string, std::unique_ptr<MotionModel>> motionModels;
 
 int octomapBurnInCounter = 0;
 const int OCTOMAP_BURN_IN = 2; /// Number of point clouds to process before using octree
-const double maxStepSize = 1.0;
+const double maxStepSize = std::numeric_limits<double>::infinity();
 
 void publishOctree(octomap::OcTree* tree, const std::string& globalFrame, const std::string& ns = "")
 {
@@ -227,7 +232,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	if (octomapBurnInCounter++ < OCTOMAP_BURN_IN) { return; }
-	if (octomapBurnInCounter > 16*OCTOMAP_BURN_IN) { mapServer->getOctree()->clear(); octomapBurnInCounter = 0; return; }
+	if (octomapBurnInCounter > 8*OCTOMAP_BURN_IN) { mapServer->getOctree()->clear(); octomapBurnInCounter = 0; return; }
 
 	image_geometry::PinholeCameraModel cameraModel;
 	cameraModel.fromCameraInfo(info_msg);
@@ -252,17 +257,21 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>());
 	pcl::fromROSMsg(*cloud_msg, *cloud);
 
-	mapServer->insertCloud(cloud, worldTcamera);
-
 	/////////////////////////////////////////////////////////////////
 	// Crop to bounding box
 	/////////////////////////////////////////////////////////////////
-	pcl::PointCloud<PointT>::Ptr cropped_cloud = crop(cloud, minExtent, maxExtent, worldTcamera);
+	pcl::PointCloud<PointT>::Ptr cropped_cloud = cropInCameraFrame(cloud, minExtent, maxExtent, worldTcamera);
 	if (cropped_cloud->empty())
 	{
 		ROS_WARN("Filtered cloud contains no points.");
 		return;
 	}
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+	cropped_cloud = filterInCameraFrame(cropped_cloud);
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+	mapServer->insertCloud(cropped_cloud, worldTcamera);
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 
@@ -474,11 +483,22 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 		if (completionClient->completionClient.exists())
 		{
 			completionClient->completeShape(min, max, worldTcamera.cast<float>(), octree, subtree.get());
-			publishOctree(subtree.get(), globalFrame);
+			publishOctree(subtree.get(), globalFrame, "completed");
 		}
 
 		completedSegments.push_back(subtree);
-		motionModels["completed"] = std::make_unique<RigidMotionModel>();
+
+		// Search for this segment in past models
+//		MotionModel* model = matchModel(subtree, motionModels);
+//		if (!model)
+//		{
+//			std::string modelID = "completed_"+std::to_string(motionModels.size());
+//			auto newModel = std::make_unique<RigidMotionModel>();
+//			newModel->membershipShapes
+//			motionModels[modelID] = std::move(newModel);
+//			model = motionModels[modelID].get();
+//		}
+
 	}
 
 	/////////////////////////////////////////////////////////////////
@@ -763,7 +783,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 				{
 					active_jmg = jmg;
 
-					const int INTERPOLATE_STEPS = 5;
+					const int INTERPOLATE_STEPS = 15;
 					cmd.joint_names = active_jmg->getActiveJointModelNames();
 					cmd.points.resize(INTERPOLATE_STEPS);
 

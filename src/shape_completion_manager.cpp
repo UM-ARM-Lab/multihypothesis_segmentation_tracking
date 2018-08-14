@@ -80,7 +80,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 	Eigen::Affine3d worldTcamera;
 	tf::transformTFToEigen(tableFrameInCameraCoordinates, worldTcamera);
 
-	pcl::PointCloud<PointT>::Ptr cropped_cloud = crop(cloud, minExtent, maxExtent, worldTcamera);
+	pcl::PointCloud<PointT>::Ptr cropped_cloud = cropInCameraFrame(cloud, minExtent, maxExtent, worldTcamera);
 	if (cropped_cloud->empty())
 	{
 		ROS_WARN("Filtered cloud contains no points.");

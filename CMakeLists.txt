@@ -8,7 +8,10 @@ add_compile_options(-std=c++14)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
+  cv_bridge
+  depth_image_proc
   image_geometry
+  image_transport
   message_generation
   moveit_ros_planning
   octomap_msgs
@@ -32,6 +35,15 @@ set(CMAKE_BUILD_TYPE Release)
 find_package(OCTOMAP 1.9 REQUIRED)
 include_directories(${OCTOMAP_INCLUDE_DIRS})
 link_libraries(${OCTOMAP_LIBRARIES})
+
+find_package(OpenCV 3.4 REQUIRED COMPONENTS
+  cudafeatures2d
+  cudafilters
+  cudaoptflow
+  )
+include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
+link_libraries(${OpenCV_LIBS})
+
 
 macro(use_openmp)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
@@ -130,7 +142,10 @@ catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES mps_voxels
   CATKIN_DEPENDS
+    cv_bridge
+    depth_image_proc
     image_geometry
+    image_transport
     message_runtime
     moveit_ros_planning
     octomap_msgs
@@ -199,6 +214,15 @@ add_executable(${PROJECT_NAME}_entropy src/entropy.cpp)
 set_target_properties(${PROJECT_NAME}_entropy PROPERTIES OUTPUT_NAME entropy PREFIX "")
 add_dependencies(${PROJECT_NAME}_entropy ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME}_entropy
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+
+
+add_executable(${PROJECT_NAME}_tracker src/tracker.cpp)
+set_target_properties(${PROJECT_NAME}_tracker PROPERTIES OUTPUT_NAME tracker PREFIX "")
+add_dependencies(${PROJECT_NAME}_tracker ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_tracker
   ${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
