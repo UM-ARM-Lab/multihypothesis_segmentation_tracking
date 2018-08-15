@@ -22,24 +22,210 @@
 
 #include <ros/ros.h>
 
-const size_t MAX_BUFFER_LEN = 200;//1000;
 
-std::vector<cv_bridge::CvImagePtr> rgb_buffer;
-std::vector<cv_bridge::CvImagePtr> depth_buffer;
-sensor_msgs::CameraInfo cam;
-
-static void drawOptFlowMap(const cv::Mat& flow, cv::Mat& cflowmap, int step,
-                           double, const cv::Scalar& color)
+void drawKeypoint(cv::Mat& display, const cv::KeyPoint& kp, const cv::Scalar& color)
 {
-	for(int y = 0; y < cflowmap.rows; y += step)
-		for(int x = 0; x < cflowmap.cols; x += step)
-		{
-			const cv::Point2f& fxy = flow.at<cv::Point2f>(y, x);
-			cv::line(cflowmap, cv::Point(x,y), cv::Point(cvRound(x+fxy.x), cvRound(y+fxy.y)),
-			     color);
-			cv::circle(cflowmap, cv::Point(x,y), 2, color, -1);
-		}
+	int radius = cvRound(kp.size/2); // KeyPoint::size is a diameter
+	cv::circle(display, kp.pt, radius, color);
+	if( kp.angle != -1 )
+	{
+		float srcAngleRad = kp.angle*(float)CV_PI/180.f;
+		cv::Point2f orient( cvRound(cos(srcAngleRad)*radius ),
+		                    cvRound(sin(srcAngleRad)*radius )
+		);
+		line(display, kp.pt, kp.pt+orient, color, 1, cv::LINE_AA);
+	}
 }
+
+class Tracker
+{
+public:
+	using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::Image, sensor_msgs::Image, sensor_msgs::CameraInfo>;
+
+	const size_t MAX_BUFFER_LEN = 500;//1000;
+
+	std::vector<cv_bridge::CvImagePtr> rgb_buffer;
+	std::vector<cv_bridge::CvImagePtr> depth_buffer;
+	sensor_msgs::CameraInfo cam;
+
+	std::unique_ptr<image_transport::SubscriberFilter> rgb_sub;
+	std::unique_ptr<image_transport::SubscriberFilter> depth_sub;
+	std::unique_ptr<message_filters::Subscriber<sensor_msgs::CameraInfo>> cam_sub;
+	std::unique_ptr<message_filters::Synchronizer<SyncPolicy>> sync;
+
+	struct SubscriptionOptions
+	{
+		ros::NodeHandle nh, pnh;
+		image_transport::ImageTransport it;
+		image_transport::TransportHints hints;
+		int buffer;
+		std::string topic_prefix;
+		std::string rgb_topic;
+		std::string depth_topic;
+		std::string cam_topic;
+		SubscriptionOptions()
+			: nh(), pnh("~"),
+			  it(nh), hints("compressed", ros::TransportHints(), pnh),
+			  buffer(10), topic_prefix("/kinect2_victor_head/hd"),
+			  rgb_topic(topic_prefix+"/image_color_rect"),
+			  depth_topic(topic_prefix+"/image_depth_rect"),
+			  cam_topic(topic_prefix+"/camera_info")
+		{
+		}
+	};
+
+	SubscriptionOptions options;
+
+	explicit
+	Tracker(const size_t _buffer = 200, SubscriptionOptions _options = SubscriptionOptions())
+		: MAX_BUFFER_LEN(_buffer), options(std::move(_options))
+	{
+		rgb_buffer.reserve(MAX_BUFFER_LEN);
+		depth_buffer.reserve(MAX_BUFFER_LEN);
+
+		cv::namedWindow("prev", cv::WINDOW_GUI_NORMAL);
+
+		rgb_sub = std::make_unique<image_transport::SubscriberFilter>(options.it, options.rgb_topic, options.buffer, options.hints);
+		depth_sub = std::make_unique<image_transport::SubscriberFilter>(options.it, options.depth_topic, options.buffer, options.hints);
+		cam_sub = std::make_unique<message_filters::Subscriber<sensor_msgs::CameraInfo>>(options.nh, options.cam_topic, options.buffer);
+
+		sync = std::make_unique<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(options.buffer), *rgb_sub, *depth_sub, *cam_sub);
+		sync->registerCallback(boost::bind(&Tracker::imageCb, this, _1, _2, _3));
+	}
+
+	void startCapture()
+	{
+		rgb_buffer.clear();
+		depth_buffer.clear();
+		rgb_sub->subscribe(options.it, options.rgb_topic, options.buffer, options.hints);
+		depth_sub->subscribe(options.it, options.depth_topic, options.buffer, options.hints);
+		cam_sub->subscribe(options.nh, options.cam_topic, options.buffer);
+	}
+
+	void stopCapture()
+	{
+		rgb_sub->unsubscribe();
+		depth_sub->unsubscribe();
+		cam_sub->unsubscribe();
+	}
+
+	void track()
+	{
+		cv::Mat display;
+		std::vector<cv::KeyPoint> kpts1, kpts2;
+		cv::UMat gray1, gray2, desc1, desc2;
+
+		double fps = MAX_BUFFER_LEN/(rgb_buffer.back()->header.stamp - rgb_buffer.front()->header.stamp).toSec();
+		cv::VideoWriter video("source.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, rgb_buffer.front()->image.size(), true);
+		cv::VideoWriter tracking("tracking.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, rgb_buffer.front()->image.size(), true);
+
+//	    auto detector = cv::AKAZE::create();
+//	    auto detector = cv::KAZE::create();
+		auto detector = cv::xfeatures2d::SIFT::create();
+
+		cv::cvtColor(rgb_buffer.front()->image, gray1, cv::COLOR_BGR2GRAY);
+		detector->detectAndCompute(gray1, cv::noArray(), kpts1, desc1);
+		for (int i = 1; i < static_cast<int>(rgb_buffer.size()) && ros::ok(); ++i)
+		{
+			rgb_buffer[i-1]->image.copyTo(display);
+			cv::cvtColor(rgb_buffer[i]->image, gray2, cv::COLOR_BGR2GRAY);
+
+			double detectorStartTime = (double)cv::getTickCount();
+			detector->detectAndCompute(gray2, cv::noArray(), kpts2, desc2);
+			double detectorEndTime = (double)cv::getTickCount();
+			std::cerr << "Detect: " << (detectorEndTime - detectorStartTime)/cv::getTickFrequency() << std::endl;
+
+			double matchStartTime = (double)cv::getTickCount();
+			cv::BFMatcher matcher(cv::NORM_L2);//(cv::NORM_HAMMING);
+			std::vector< std::vector<cv::DMatch> > nn_matches;
+//	    	matcher.knnMatch(desc1, desc2, nn_matches, 3);
+			matcher.radiusMatch(desc1, desc2, nn_matches, 500.0);
+			double matchEndTime = (double)cv::getTickCount();
+			std::cerr << "Match: " << (matchEndTime - matchStartTime)/cv::getTickFrequency() << std::endl;
+
+			for (int ii = 0; ii < static_cast<int>(nn_matches.size()); ++ii)
+			{
+				nn_matches[ii].erase(std::remove_if(nn_matches[ii].begin(), nn_matches[ii].end(),
+				                                    [&](const cv::DMatch& match){
+					                                    cv::Point diff = kpts2[match.trainIdx].pt - kpts1[match.queryIdx].pt;
+					                                    return std::sqrt(diff.x*diff.x + diff.y*diff.y) > 30.0;
+				                                    }),
+				                     nn_matches[ii].end());
+
+				for (int jj = 0; jj < static_cast<int>(nn_matches[ii].size()); ++jj)
+				{
+					const cv::DMatch& match = nn_matches[ii][jj];
+					const auto& kp1 = kpts1[match.queryIdx];
+					const auto& kp2 = kpts2[match.trainIdx];
+					drawKeypoint(display, kp1, cv::Scalar(255, 0, 0));
+					drawKeypoint(display, kp2, cv::Scalar(0, 255, 0));
+					cv::arrowedLine(display, kp1.pt, kp2.pt, cv::Scalar(0, 0, 255));
+				}
+			}
+
+			video.write(rgb_buffer[i-1]->image);
+			tracking.write(display);
+			cv::imshow("prev", display);
+			cv::waitKey(1);
+
+			std::swap(gray1, gray2);
+			std::swap(kpts1, kpts2);
+			std::swap(desc1, desc2);
+		}
+
+		video.write(rgb_buffer.back()->image);
+		tracking.release();
+	}
+
+
+
+	void imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
+	             const sensor_msgs::ImageConstPtr& depth_msg,
+	             const sensor_msgs::CameraInfoConstPtr& cam_msg)
+	{
+		cv_bridge::CvImagePtr cv_rgb_ptr;
+		try
+		{
+			cv_rgb_ptr = cv_bridge::toCvCopy(rgb_msg, sensor_msgs::image_encodings::BGR8);
+		}
+		catch (cv_bridge::Exception& e)
+		{
+			ROS_ERROR("cv_bridge exception: %s", e.what());
+			return;
+		}
+
+		cv_bridge::CvImagePtr cv_depth_ptr;
+		try
+		{
+			cv_depth_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_16UC1); // MONO16?
+		}
+		catch (cv_bridge::Exception& e)
+		{
+			ROS_ERROR("cv_bridge exception: %s", e.what());
+			return;
+		}
+
+		if (rgb_buffer.size() < MAX_BUFFER_LEN)
+		{
+			rgb_buffer.push_back(cv_rgb_ptr);
+			std::cerr << rgb_buffer.size() << ": " << rgb_buffer.back()->header.stamp - rgb_buffer.front()->header.stamp << std::endl;
+		}
+
+		if (depth_buffer.size() < MAX_BUFFER_LEN)
+		{
+			depth_buffer.push_back(cv_depth_ptr);
+		}
+
+		if (rgb_buffer.size() == MAX_BUFFER_LEN)
+		{
+			stopCapture();
+			track();
+		}
+
+		cam = *cam_msg;
+	}
+};
+
 /*
 void track()
 {
@@ -85,141 +271,11 @@ void track()
 }
 */
 
-void track()
-{
-	cv::Mat display;
-	std::vector<cv::KeyPoint> kpts1, kpts2;
-	cv::UMat gray1, gray2, desc1, desc2;
-
-	double fps = MAX_BUFFER_LEN/(rgb_buffer.back()->header.stamp - rgb_buffer.front()->header.stamp).toSec();
-	cv::VideoWriter video("source.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, rgb_buffer.front()->image.size(), true);
-	cv::VideoWriter tracking("tracking.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, rgb_buffer.front()->image.size(), true);
-
-//	auto detector = cv::AKAZE::create();
-//	auto detector = cv::KAZE::create();
-	auto detector = cv::xfeatures2d::SIFT::create();
-
-	cv::cvtColor(rgb_buffer.front()->image, gray1, cv::COLOR_BGR2GRAY);
-	detector->detectAndCompute(gray1, cv::noArray(), kpts1, desc1);
-	for (int i = 1; i < static_cast<int>(rgb_buffer.size()) && ros::ok(); ++i)
-	{
-		rgb_buffer[i-1]->image.copyTo(display);
-		cv::cvtColor(rgb_buffer[i]->image, gray2, cv::COLOR_BGR2GRAY);
-
-		detector->detectAndCompute(gray2, cv::noArray(), kpts2, desc2);
-
-		cv::BFMatcher matcher(cv::NORM_L2);//(cv::NORM_HAMMING);
-		std::vector< std::vector<cv::DMatch> > nn_matches;
-//		matcher.knnMatch(desc1, desc2, nn_matches, 3);
-		matcher.radiusMatch(desc1, desc2, nn_matches, 450.0);
-
-		for (int ii = 0; ii < static_cast<int>(nn_matches.size()); ++ii)
-		{
-			nn_matches[ii].erase(std::remove_if(nn_matches[ii].begin(), nn_matches[ii].end(),
-			                                   [&](const cv::DMatch& match){
-				                                   cv::Point diff = kpts2[match.trainIdx].pt - kpts1[match.queryIdx].pt;
-				                                   return std::sqrt(diff.x*diff.x + diff.y*diff.y) > 20.0;
-			                                   }),
-			                    nn_matches[ii].end());
-
-			for (int jj = 0; jj < static_cast<int>(nn_matches[ii].size()); ++jj)
-			{
-				const cv::DMatch& match = nn_matches[ii][jj];
-				cv::circle(display, kpts1[match.queryIdx].pt, kpts1[match.queryIdx].size, cv::Scalar(255, 0, 0));
-				cv::circle(display, kpts2[match.trainIdx].pt, kpts2[match.trainIdx].size, cv::Scalar(0, 255, 0));
-				cv::line(display, kpts1[match.queryIdx].pt, kpts2[match.trainIdx].pt, cv::Scalar(0, 0, 255));
-			}
-		}
-
-//		cv::drawKeypoints(display, kpts1, display, cv::Scalar(255, 0, 0));
-//		cv::drawKeypoints(display, kpts2, display, cv::Scalar(0, 255, 0));
-
-		video.write(rgb_buffer[i-1]->image);
-		tracking.write(display);
-		cv::imshow("prev", display);
-		cv::waitKey(1);
-
-		std::swap(gray1, gray2);
-		std::swap(kpts1, kpts2);
-		std::swap(desc1, desc2);
-	}
-
-	video.write(rgb_buffer.back()->image);
-	tracking.release();
-}
-
-void imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
-             const sensor_msgs::ImageConstPtr& depth_msg,
-             const sensor_msgs::CameraInfo& cam_msg)
-{
-	cv_bridge::CvImagePtr cv_rgb_ptr;
-	try
-	{
-		cv_rgb_ptr = cv_bridge::toCvCopy(rgb_msg, sensor_msgs::image_encodings::BGR8);
-	}
-	catch (cv_bridge::Exception& e)
-	{
-		ROS_ERROR("cv_bridge exception: %s", e.what());
-		return;
-	}
-
-	cv_bridge::CvImagePtr cv_depth_ptr;
-	try
-	{
-		cv_depth_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_16UC1); // MONO16?
-	}
-	catch (cv_bridge::Exception& e)
-	{
-		ROS_ERROR("cv_bridge exception: %s", e.what());
-		return;
-	}
-
-	if (rgb_buffer.size() < MAX_BUFFER_LEN)
-	{
-		rgb_buffer.push_back(cv_rgb_ptr);
-		std::cerr << rgb_buffer.size() << ": " << rgb_buffer.back()->header.stamp - rgb_buffer.front()->header.stamp << std::endl;
-	}
-
-	if (depth_buffer.size() < MAX_BUFFER_LEN)
-	{
-		depth_buffer.push_back(cv_depth_ptr);
-	}
-
-	if (rgb_buffer.size() == MAX_BUFFER_LEN)
-	{
-		track();
-		ros::shutdown();
-	}
-
-	cam = cam_msg;
-}
-
-using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::Image, sensor_msgs::Image, sensor_msgs::CameraInfo>;
-
 int main(int argc, char* argv[])
 {
 	ros::init(argc, argv, "flow");
-	ros::NodeHandle nh, pnh("~");
 
-	cv::namedWindow("prev", cv::WINDOW_GUI_NORMAL);
-
-	image_transport::ImageTransport it(nh);
-	image_transport::TransportHints hints("compressed", ros::TransportHints(), pnh);
-
-	const int buffer = 10;
-
-	std::string topic_prefix = "/kinect2_victor_head/hd";
-	image_transport::SubscriberFilter rgb_sub(it, topic_prefix+"/image_color_rect", buffer, hints);
-	image_transport::SubscriberFilter depth_sub(it, topic_prefix+"/image_depth_rect", buffer, hints);
-	message_filters::Subscriber<sensor_msgs::CameraInfo> info_sub(nh, topic_prefix+"/camera_info", buffer);
-
-	message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(buffer), rgb_sub, depth_sub, info_sub);
-	sync.registerCallback(imageCb);
-
-//	image_flow_pub = std::make_unique<image_transport::Publisher>(it.advertise("/kinect2_victor_head/qhd/image_flow", 1));
-//	vecPub = nh.advertise<visualization_msgs::Marker>("scene_flow", buffer, true);
-
-//	ros::Subscriber sub = nh.subscribe ("kinect2_roof/qhd/points", 1, cloud_cb);
+	Tracker t;
 
 	ros::spin();
 
