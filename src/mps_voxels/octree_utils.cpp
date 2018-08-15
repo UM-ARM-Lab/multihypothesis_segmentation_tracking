@@ -302,7 +302,7 @@ visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std
 
 			occupiedNodesVis.markers[idx].points.push_back(cubeCenter);
 
-			// TODO: Colors
+			// Colors
 			std_msgs::ColorRGBA color;
 			color.a = 1.0;
 			colormap(igl::parula_cm, (float)((it->getOccupancy()-0.5)*2.0), color.r, color.g, color.b);

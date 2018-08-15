@@ -20,8 +20,14 @@
 #include <depth_image_proc/depth_traits.h>
 #include <image_geometry/pinhole_camera_model.h>
 
+#include <tf/transform_listener.h>
+#include <visualization_msgs/MarkerArray.h>
+#include "mps_voxels/colormap.h"
+
 #include <ros/ros.h>
 
+std::shared_ptr<tf::TransformListener> listener;
+ros::Publisher vizPub;
 
 void drawKeypoint(cv::Mat& display, const cv::KeyPoint& kp, const cv::Scalar& color)
 {
@@ -37,21 +43,105 @@ void drawKeypoint(cv::Mat& display, const cv::KeyPoint& kp, const cv::Scalar& co
 	}
 }
 
+template <typename PointT>
+visualization_msgs::Marker visualizeAABB(const PointT& minExtent, const PointT& maxExtent)
+{
+	visualization_msgs::Marker m;
+	m.type = visualization_msgs::Marker::CUBE;
+	m.action = visualization_msgs::Marker::ADD;
+	m.frame_locked = true;
+	m.header.frame_id = "table_surface";
+	m.header.stamp = ros::Time::now();
+	m.pose.orientation.w = 1.0f;
+	m.pose.position.x = (minExtent.x() + maxExtent.x())/2.0f;
+	m.pose.position.y = (minExtent.y() + maxExtent.y())/2.0f;
+	m.pose.position.z = (minExtent.z() + maxExtent.z())/2.0f;
+	m.scale.x = (maxExtent.x() - minExtent.x());
+	m.scale.y = (maxExtent.y() - minExtent.y());
+	m.scale.z = (maxExtent.z() - minExtent.z());
+	m.color.a = 0.5;
+	m.color.b = 1.0;
+	m.id = 0;
+	m.ns = "aabb";
+	return m;
+}
+
+template <typename PointT>
+visualization_msgs::Marker visualizeFlow(const std::vector<std::pair<PointT, PointT>>& flow)
+{
+	visualization_msgs::Marker m;
+	m.type = visualization_msgs::Marker::LINE_LIST;
+	m.action = visualization_msgs::Marker::ADD;
+	m.frame_locked = true;
+	m.header.frame_id = "kinect2_victor_head_rgb_optical_frame";
+	m.header.stamp = ros::Time::now();
+	m.pose.orientation.w = 1.0f;
+	m.scale.x = 0.002;
+//	m.scale.y = 1;
+//	m.scale.z = 1;
+	m.color.a = 1.0;
+	m.color.r = 1.0;
+	m.id = 0;
+	m.ns = "flow";
+	for (const auto& f : flow)
+	{
+		geometry_msgs::Point pt;
+		pt.x = f.first.x;
+		pt.y = f.first.y;
+		pt.z = f.first.z;
+
+		m.points.push_back(pt);
+
+		pt.x += f.second.x;
+		pt.y += f.second.y;
+		pt.z += f.second.z;
+
+		m.points.push_back(pt);
+
+		float mag = std::sqrt(f.second.x*f.second.x + f.second.y*f.second.y + f.second.z*f.second.z)/0.0125;
+		std_msgs::ColorRGBA color;
+		color.a = 1.0;
+		colormap(igl::inferno_cm, mag, color.r, color.g, color.b);
+
+		m.colors.push_back(color);
+		m.colors.push_back(color);
+	}
+	return m;
+}
+
+template <typename PointT>
+PointT toPoint3D(const float uIdx, const float vIdx, const float depthMeters, const image_geometry::PinholeCameraModel& cam)
+{
+	PointT pt;
+	pt.x = (uIdx - cam.cx()) * depthMeters / cam.fx();
+	pt.y = (vIdx - cam.cy()) * depthMeters / cam.fy();
+	pt.z = depthMeters;
+	return pt;
+}
+
+template <typename PointT>
+std::vector<PointT> getCorners(const PointT& min, const PointT& max, const int dimension)
+{
+	// There will be 2^DIM corners to deal with
+	const unsigned nCorners = (1u << dimension);
+	std::vector<PointT> corners(nCorners);
+	for (unsigned perm = 0; perm < nCorners; ++perm)
+	{
+		PointT pt;
+		for (int d = 0; d < dimension; ++d)
+		{
+			pt[d] = (perm & (1u<<d)) ? min[d] : max[d];
+		}
+		corners[perm] = pt;
+	}
+	return corners;
+}
+
 class Tracker
 {
 public:
 	using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::Image, sensor_msgs::Image, sensor_msgs::CameraInfo>;
-
-	const size_t MAX_BUFFER_LEN = 500;//1000;
-
-	std::vector<cv_bridge::CvImagePtr> rgb_buffer;
-	std::vector<cv_bridge::CvImagePtr> depth_buffer;
-	sensor_msgs::CameraInfo cam;
-
-	std::unique_ptr<image_transport::SubscriberFilter> rgb_sub;
-	std::unique_ptr<image_transport::SubscriberFilter> depth_sub;
-	std::unique_ptr<message_filters::Subscriber<sensor_msgs::CameraInfo>> cam_sub;
-	std::unique_ptr<message_filters::Synchronizer<SyncPolicy>> sync;
+	using DepthTraits = depth_image_proc::DepthTraits<uint16_t>;
 
 	struct SubscriptionOptions
 	{
@@ -74,10 +164,38 @@ public:
 		}
 	};
 
+	struct TrackingOptions
+	{
+		float featureRadius;
+		float pixelRadius;
+		float meterRadius;
+
+		TrackingOptions() : featureRadius(250.0f), pixelRadius(30.0f), meterRadius(0.05)
+		{
+		}
+	};
+
+	const size_t MAX_BUFFER_LEN;//1000;
+
+	std::vector<cv_bridge::CvImagePtr> rgb_buffer;
+	std::vector<cv_bridge::CvImagePtr> depth_buffer;
+	sensor_msgs::CameraInfo cam;
+	image_geometry::PinholeCameraModel cameraModel;
+
+	std::unique_ptr<image_transport::SubscriberFilter> rgb_sub;
+	std::unique_ptr<image_transport::SubscriberFilter> depth_sub;
+	std::unique_ptr<message_filters::Subscriber<sensor_msgs::CameraInfo>> cam_sub;
+	std::unique_ptr<message_filters::Synchronizer<SyncPolicy>> sync;
+
+	cv::Mat mask;
+	double minZ;
+	double maxZ;
+
 	SubscriptionOptions options;
+	TrackingOptions track_options;
 
 	explicit
-	Tracker(const size_t _buffer = 200, SubscriptionOptions _options = SubscriptionOptions())
+	Tracker(const size_t _buffer = 500, SubscriptionOptions _options = SubscriptionOptions())
 		: MAX_BUFFER_LEN(_buffer), options(std::move(_options))
 	{
 		rgb_buffer.reserve(MAX_BUFFER_LEN);
@@ -124,14 +242,14 @@ public:
 		auto detector = cv::xfeatures2d::SIFT::create();
 
 		cv::cvtColor(rgb_buffer.front()->image, gray1, cv::COLOR_BGR2GRAY);
-		detector->detectAndCompute(gray1, cv::noArray(), kpts1, desc1);
+		detector->detectAndCompute(gray1, mask, kpts1, desc1);
 		for (int i = 1; i < static_cast<int>(rgb_buffer.size()) && ros::ok(); ++i)
 		{
 			rgb_buffer[i-1]->image.copyTo(display);
 			cv::cvtColor(rgb_buffer[i]->image, gray2, cv::COLOR_BGR2GRAY);
 
 			double detectorStartTime = (double)cv::getTickCount();
-			detector->detectAndCompute(gray2, cv::noArray(), kpts2, desc2);
+			detector->detectAndCompute(gray2, mask, kpts2, desc2);
 			double detectorEndTime = (double)cv::getTickCount();
 			std::cerr << "Detect: " << (detectorEndTime - detectorStartTime)/cv::getTickFrequency() << std::endl;
 
@@ -139,16 +257,19 @@ public:
 			cv::BFMatcher matcher(cv::NORM_L2);//(cv::NORM_HAMMING);
 			std::vector< std::vector<cv::DMatch> > nn_matches;
 //	    	matcher.knnMatch(desc1, desc2, nn_matches, 3);
-			matcher.radiusMatch(desc1, desc2, nn_matches, 500.0);
+			matcher.radiusMatch(desc1, desc2, nn_matches, track_options.featureRadius);
 			double matchEndTime = (double)cv::getTickCount();
 			std::cerr << "Match: " << (matchEndTime - matchStartTime)/cv::getTickFrequency() << std::endl;
+
+			using Vector = cv::Point3d;
+			std::vector<std::pair<Vector, Vector>> flow;
 
 			for (int ii = 0; ii < static_cast<int>(nn_matches.size()); ++ii)
 			{
 				nn_matches[ii].erase(std::remove_if(nn_matches[ii].begin(), nn_matches[ii].end(),
 				                                    [&](const cv::DMatch& match){
 					                                    cv::Point diff = kpts2[match.trainIdx].pt - kpts1[match.queryIdx].pt;
-					                                    return std::sqrt(diff.x*diff.x + diff.y*diff.y) > 30.0;
+					                                    return std::sqrt(diff.x*diff.x + diff.y*diff.y) > track_options.pixelRadius;
 				                                    }),
 				                     nn_matches[ii].end());
 
@@ -160,8 +281,25 @@ public:
 					drawKeypoint(display, kp1, cv::Scalar(255, 0, 0));
 					drawKeypoint(display, kp2, cv::Scalar(0, 255, 0));
 					cv::arrowedLine(display, kp1.pt, kp2.pt, cv::Scalar(0, 0, 255));
+
+					uint16_t dVal1 = depth_buffer[i-1]->image.at<uint16_t>(kp1.pt);
+					uint16_t dVal2 = depth_buffer[i]->image.at<uint16_t>(kp2.pt);
+					if (!(DepthTraits::valid(dVal1) && DepthTraits::valid(dVal2))) { continue; }
+
+					float depth1 = DepthTraits::toMeters(dVal1); if (depth1 > maxZ || depth1 < minZ) { continue; }
+					float depth2 = DepthTraits::toMeters(dVal2); if (depth2 > maxZ || depth2 < minZ) { continue; }
+					Vector p1 = toPoint3D<Vector>(kp1.pt.x, kp1.pt.y, depth1, cameraModel);
+					Vector p2 = toPoint3D<Vector>(kp2.pt.x, kp2.pt.y, depth2, cameraModel);
+					Vector v = p2-p1;
+					const double dist_thresh = track_options.meterRadius;
+					if ((v.x*v.x + v.y*v.y + v.z*v.z) > dist_thresh*dist_thresh) { continue; }
+					flow.push_back({p1, v});
 				}
 			}
+
+			visualization_msgs::MarkerArray ma;
+			ma.markers.push_back(visualizeFlow(flow));
+			vizPub.publish(ma);
 
 			video.write(rgb_buffer[i-1]->image);
 			tracking.write(display);
@@ -205,6 +343,8 @@ public:
 			return;
 		}
 
+		cameraModel.fromCameraInfo(*cam_msg);
+
 		if (rgb_buffer.size() < MAX_BUFFER_LEN)
 		{
 			rgb_buffer.push_back(cv_rgb_ptr);
@@ -219,6 +359,51 @@ public:
 		if (rgb_buffer.size() == MAX_BUFFER_LEN)
 		{
 			stopCapture();
+			const auto& img = rgb_buffer.back()->image;
+			mask = cv::Mat::zeros(img.size(), CV_8UC1);
+
+
+			if (!listener->waitForTransform(rgb_buffer.back()->header.frame_id, "table_surface", ros::Time(0), ros::Duration(5.0)))
+			{
+				ROS_WARN_STREAM("Failed to look up transform between '" << rgb_buffer.back()->header.frame_id << "' and '" << "table_surface" << "'.");
+				return;
+			}
+			tf::StampedTransform cameraTworld;
+			listener->lookupTransform(cameraModel.tfFrame(), "table_surface", ros::Time(0), cameraTworld);
+
+			tf::Vector3 minExtent(-0.4f, -0.6f, -0.05f);
+			tf::Vector3 maxExtent(0.4f, 0.6f, 0.4f);
+
+			visualization_msgs::MarkerArray ma;
+			ma.markers.push_back(visualizeAABB(minExtent, maxExtent));
+			vizPub.publish(ma);
+
+			std::vector<cv::Point2i> boxCorners;
+			minZ = std::numeric_limits<double>::max();
+			maxZ = std::numeric_limits<double>::lowest();
+			for (const tf::Vector3& pt_world : getCorners(minExtent, maxExtent, 3))
+			{
+				tf::Vector3 pt_camera = cameraTworld * pt_world;
+				minZ = std::min(minZ, pt_camera.z());
+				maxZ = std::max(maxZ, pt_camera.z());
+				cv::Point2d imgPt = cameraModel.project3dToPixel({pt_camera.x(), pt_camera.y(), pt_camera.z()});
+				boxCorners.push_back(imgPt);
+			}
+			std::vector<cv::Point2i> hullPoly;
+			cv::convexHull(boxCorners, hullPoly);
+
+			cv::fillConvexPoly(mask, hullPoly, cv::Scalar::all(255));
+
+			cv::Mat depthMask = depth_buffer.back()->image > DepthTraits::fromMeters(minZ)
+			                    & depth_buffer.back()->image < DepthTraits::fromMeters(maxZ);
+			cv::dilate(depthMask, depthMask, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(25,25)));
+			cv::erode(depthMask, depthMask, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(25,25)));
+
+			mask &= depthMask;
+			cv::imshow("prev", depthMask);
+			cv::waitKey(100);
+			cv::imshow("prev", mask);
+			cv::waitKey(100);
 			track();
 		}
 
@@ -274,6 +459,10 @@ void track()
 int main(int argc, char* argv[])
 {
 	ros::init(argc, argv, "flow");
+	ros::NodeHandle nh;
+
+	vizPub = nh.advertise<visualization_msgs::MarkerArray>("roi", 10, true);
+	listener = std::make_shared<tf::TransformListener>();
 
 	Tracker t;
 
