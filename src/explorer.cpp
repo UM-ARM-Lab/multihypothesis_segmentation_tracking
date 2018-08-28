@@ -2,10 +2,11 @@
 // Created by arprice on 7/24/18.
 //
 
-// Octree utilities
 #include "mps_voxels/MotionModel.h"
+#include "mps_voxels/Tracker.h"
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
+#include "mps_voxels/segmentation_utils.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
@@ -20,11 +21,13 @@
 #include <sensor_msgs/CameraInfo.h>
 
 // Point cloud utilities
+#include <depth_image_proc/depth_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/transforms.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/visualization/cloud_viewer.h>
 
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
@@ -33,6 +36,8 @@
 #include <tf/transform_broadcaster.h>
 #include <tf_conversions/tf_eigen.h>
 #include <ros/ros.h>
+
+#include <opencv2/highgui.hpp>
 
 #include <algorithm>
 #include <memory>
@@ -171,10 +176,120 @@ MotionModel* matchModel(std::shared_ptr<octomap::OcTree> subtree, std::map<std::
 
 }
 
+double fitModels(const std::vector<std::pair<Tracker::Vector, Tracker::Vector>>& flow, const int K = 1)
+{
+	const int N = static_cast<int>(flow.size());
+	std::vector<RigidMotionModel> mms;
+	std::vector<MotionModel::MotionParameters> thetas;
+	std::vector<unsigned int> indices(N);
+	std::iota(indices.begin(), indices.end(), 0);
+	std::random_shuffle(indices.begin(), indices.end());
+	for (int s = 0; s < K; ++s)
+	{
+		RigidMotionModel mm;
+		auto v = flow[indices[s]].first;
+		mm.localTglobal.translation() = Eigen::Vector3d(v.x(), v.y(), v.z());
+		thetas.emplace_back(MotionModel::MotionParameters::Zero(RigidMotionModel::MOTION_PARAMETERS_DIMENSION));
+	}
+
+	Eigen::MatrixXd assignmentProbability(N, K); // Probability that element n belongs to model k
+	Eigen::VectorXi assignment(N);
+	for (int n = 0; n < N; ++n)
+	{
+		for (int k = 0; k < K; ++k)
+		{
+			Tracker::Vector vExpect = mms[k].expectedVelocity(flow[n].first, thetas[k]);
+			assignmentProbability(n, k) = mms[k].membershipLikelihood(flow[n].first);// + MotionModel::logLikelihood(exp(-(flow[n].second-vExpect).squaredNorm()));
+		}
+	}
+
+	double L = NAN;
+	for (int iter = 0; iter < 25; ++iter)
+	{
+		// Assign points to models
+		Eigen::VectorXi assignmentCount = Eigen::VectorXi::Zero(K);
+		double Lmax = 0.0;
+		for (int n = 0; n < N; ++n)
+		{
+			Eigen::MatrixXf::Index max_index;
+			assignmentProbability.row(n).maxCoeff(&max_index);
+			assignment(n) = (int)max_index;
+			assignmentCount((int)max_index)++;
+			Lmax += assignmentProbability(n, (int)max_index);
+		}
+
+		if (Lmax - L > 0.1)
+		{
+			return Lmax;
+		}
+		L = Lmax;
+
+		// M-Step
+		for (int k = 0; k < K; ++k)
+		{
+			Eigen::Matrix3Xd ptsA(3, assignmentCount(k));
+			Eigen::Matrix3Xd ptsB(3, assignmentCount(k));
+			int idx = 0;
+			for (int n = 0; n < N; ++n)
+			{
+				if (assignment(n) == k)
+				{
+					ptsA.col(idx) = flow[n].first;
+					ptsB.col(idx) = flow[n].first + flow[n].second;
+					++idx;
+				}
+			}
+
+			thetas[k] = estimateRigidTransform3D(ptsA, ptsB);
+		}
+
+		// E-Step
+		for (int n = 0; n < N; ++n)
+		{
+			for (int k = 0; k < K; ++k)
+			{
+				Tracker::Vector vExpect = mms[k].expectedVelocity(flow[n].first, thetas[k]);
+				assignmentProbability(n, k) = mms[k].membershipLikelihood(flow[n].first) + MotionModel::logLikelihood(exp(-(flow[n].second-vExpect).squaredNorm()));
+			}
+		}
+	}
+
+	std::cerr << "BIC: " << log(N)*K - L << std::endl;
+
+	return L;
+}
+
+
+pcl::PointCloud<PointT>::Ptr imagesToCloud(const cv::Mat& rgb, const cv::Mat& depth, const image_geometry::PinholeCameraModel& cameraModel)
+{
+	pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>());
+	cloud->resize(cameraModel.cameraInfo().width * cameraModel.cameraInfo().height);
+
+	#pragma omp parallel for
+	for (int v = 0; v < (int)cameraModel.cameraInfo().height; ++v)
+	{
+		for (int u = 0; u < (int)cameraModel.cameraInfo().width; ++u)
+		{
+			int idx = v * (int)cameraModel.cameraInfo().width + u;
+
+			auto color = rgb.at<cv::Vec3b>(v, u);
+			auto dVal = depth.at<uint16_t>(v, u);
+
+			float depthVal = Tracker::DepthTraits::toMeters(dVal); // if (depth1 > maxZ || depth1 < minZ) { continue; }
+			PointT pt(color[2], color[1], color[0]);
+			pt.getVector3fMap() = toPoint3D<Eigen::Vector3f>(u, v, depthVal, cameraModel);
+			cloud->points[idx] = pt;
+		}
+	}
+
+	return cloud;
+}
 
 std::shared_ptr<LocalOctreeServer> mapServer;
 //std::shared_ptr<OctreeRetriever> mapClient;
 std::shared_ptr<VoxelCompleter> completionClient;
+std::shared_ptr<RGBDSegmenter> segmentationClient;
+std::unique_ptr<Tracker> tracker;
 ros::Publisher octreePub;
 ros::Publisher targetPub;
 ros::Publisher commandPub;
@@ -214,13 +329,16 @@ void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 	ROS_DEBUG_ONCE("Joint joints!");
 }
 
-void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
-               const sensor_msgs::CameraInfoConstPtr& info_msg)
+//void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
+//               const sensor_msgs::CameraInfoConstPtr& info_msg)
+void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
+               const sensor_msgs::ImageConstPtr& depth_msg,
+               const sensor_msgs::CameraInfoConstPtr& cam_msg)
 {
 	std::cerr << "Got message." << std::endl;
-	if (!listener->waitForTransform(mapServer->getWorldFrame(), cloud_msg->header.frame_id, ros::Time(0), ros::Duration(5.0)))
+	if (!listener->waitForTransform(mapServer->getWorldFrame(), cam_msg->header.frame_id, ros::Time(0), ros::Duration(5.0)))
 	{
-		ROS_WARN_STREAM("Failed to look up transform between '" << mapServer->getWorldFrame() << "' and '" << cloud_msg->header.frame_id << "'.");
+		ROS_WARN_STREAM("Failed to look up transform between '" << mapServer->getWorldFrame() << "' and '" << cam_msg->header.frame_id << "'.");
 		return;
 	}
 
@@ -235,7 +353,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	if (octomapBurnInCounter > 8*OCTOMAP_BURN_IN) { mapServer->getOctree()->clear(); octomapBurnInCounter = 0; return; }
 
 	image_geometry::PinholeCameraModel cameraModel;
-	cameraModel.fromCameraInfo(info_msg);
+	cameraModel.fromCameraInfo(cam_msg);
 
 	// Get Octree
 	octomap::OcTree* octree = mapServer->getOctree();
@@ -254,8 +372,31 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	tf::transformTFToEigen(cameraFrameInTableCoordinates, cameraTtable);
 	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
 
-	pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>());
-	pcl::fromROSMsg(*cloud_msg, *cloud);
+	cv_bridge::CvImagePtr cv_rgb_ptr;
+	try
+	{
+		cv_rgb_ptr = cv_bridge::toCvCopy(rgb_msg, sensor_msgs::image_encodings::BGR8);
+	}
+	catch (cv_bridge::Exception& e)
+	{
+		ROS_ERROR("cv_bridge exception: %s", e.what());
+		return;
+	}
+
+	cv_bridge::CvImagePtr cv_depth_ptr;
+	try
+	{
+		cv_depth_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_16UC1); // MONO16?
+	}
+	catch (cv_bridge::Exception& e)
+	{
+		ROS_ERROR("cv_bridge exception: %s", e.what());
+		return;
+	}
+
+//	pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>());
+//	pcl::fromROSMsg(*cloud_msg, *cloud);
+	pcl::PointCloud<PointT>::Ptr cloud = imagesToCloud(cv_rgb_ptr->image, cv_depth_ptr->image, cameraModel);
 
 	/////////////////////////////////////////////////////////////////
 	// Crop to bounding box
@@ -302,7 +443,6 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 		}
 		else if (std::find(pModel->getLinkModelNames().begin(), pModel->getLinkModelNames().end(), model.first) != pModel->getLinkModelNames().end())
 		{
-
 			ROS_ERROR_STREAM("Unable to compute transform from '" << mapServer->getWorldFrame() << "' to '" << model.first << "'.");
 			return;
 		}
@@ -328,7 +468,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 			m.pose.position.z = p.z();
 			m.pose.orientation.w = 1.0;
 			m.frame_locked = true;
-			m.header.stamp = cloud_msg->header.stamp;
+			m.header.stamp = cam_msg->header.stamp;
 			m.header.frame_id = globalFrame;
 			markers.markers.push_back(m);
 		}
@@ -451,6 +591,75 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 		octreePub.publish(occupiedNodesVis);
 	}
 
+	// Generate an ROI from the cropped, filtered cloud
+	pcl::PointCloud<PointT>::Ptr pile_cloud = filterPlane(cropped_cloud, 0.02);
+	pile_cloud = filterOutliers(pile_cloud, 1000);
+	if (pile_cloud->empty())
+	{
+		ROS_ERROR_STREAM("No points in pile cloud.");
+		return;
+	}
+	{
+//		static pcl::visualization::CloudViewer viewer("PilePoints");
+//		viewer.showCloud(pile_cloud);
+//		while (!viewer.wasStopped ()){}
+
+		std::vector<cv::Point> pile_points;
+		pile_points.reserve(pile_cloud->size());
+
+		for (const PointT& pt : *pile_cloud)
+		{
+			// NB: pile_cloud is in the camera frame
+			Eigen::Vector3d p = pt.getVector3fMap().cast<double>();
+			cv::Point3d worldPt_camera(p.x(), p.y(), p.z());
+			pile_points.push_back(cameraModel.project3dToPixel(worldPt_camera));
+		}
+
+		cv::Rect roi = cv::boundingRect(pile_points);
+		const int buffer = 50;
+		if (buffer < roi.x) { roi.x -= buffer; roi.width += buffer; }
+		if (roi.x+roi.width < cam_msg->width-buffer) { roi.width += buffer; }
+		if (buffer < roi.y) { roi.y -= buffer; roi.height += buffer; }
+		if (roi.y+roi.height < cam_msg->height-buffer) { roi.height += buffer; }
+		cv::Mat rgb_cropped(cv_rgb_ptr->image, roi);
+		cv::Mat depth_cropped(cv_depth_ptr->image, roi);
+		cv_bridge::CvImage cv_rgb_cropped(cv_rgb_ptr->header, cv_rgb_ptr->encoding, rgb_cropped);
+		cv_bridge::CvImage cv_depth_cropped(cv_depth_ptr->header, cv_depth_ptr->encoding, depth_cropped);
+		sensor_msgs::CameraInfo cam_msg_cropped = *cam_msg;
+		cam_msg_cropped.width = roi.width;
+		cam_msg_cropped.height = roi.height;
+		cam_msg_cropped.K[2] -= roi.x;
+		cam_msg_cropped.K[5] -= roi.y;
+
+		std::cerr << "Original: " << *cam_msg << "\nCropped: "<< cam_msg_cropped << std::endl;
+		cv::imshow("rgb", rgb_cropped);
+		cv::waitKey(100);
+		cv_bridge::CvImagePtr seg = segmentationClient->segment(cv_rgb_cropped, cv_depth_cropped, cam_msg_cropped);
+
+		if (seg)
+		{
+			cv::imshow("segmentation", seg->image);
+		}
+		cv::waitKey(100);
+	}
+////	cv::imshow("depth", cv_depth_ptr->image);
+//	cv::Mat mask = tracker->track_options.roi.getMask(cameraFrameInTableCoordinates, cameraModel, &cv_depth_ptr->image);
+////	cv::imshow("mask", mask);
+//	cv::Mat temp = cv::Mat::zeros(cv_depth_ptr->image.size(), cv_depth_ptr->image.type());
+//	cv_depth_ptr->image.copyTo(temp, mask);
+//	cv_depth_ptr->image = temp;
+//
+//	double min;
+//	double max;
+////	cv::erode(mask, mask, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(25,25)));
+//	cv::minMaxIdx(temp, &min, &max, nullptr, nullptr, mask);
+//	cv::Mat adjMap;
+//	temp.convertTo(adjMap, CV_8UC1, 255 / (max-min), -min);
+//	cv::Mat falseColorsMap;
+//	cv::applyColorMap(adjMap, falseColorsMap, cv::COLORMAP_AUTUMN);
+//	cv::imshow("depth_masked", falseColorsMap);
+//	cv_bridge::CvImagePtr seg = segmentationClient->segment(*cv_rgb_ptr, *cv_depth_ptr, *cam_msg);
+
 
 	// Perform segmentation
 	std::vector<pcl::PointCloud<PointT>::Ptr> segments = segment(cropped_cloud);
@@ -464,6 +673,8 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	std::vector<std::shared_ptr<octomap::OcTree>> completedSegments;
 	for (const pcl::PointCloud<PointT>::Ptr& segment_cloud : segments)
 	{
+		if (!ros::ok()) { break; }
+
 		// Compute bounding box
 		Eigen::Vector3f min, max;
 		getBoundingCube(*segment_cloud, min, max);
@@ -510,7 +721,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 		Eigen::Vector3f min, max;
 		pcl::PointCloud<PointT>::Ptr transformed_cloud (new pcl::PointCloud<PointT>());
 		// You can either apply transform_1 or transform_2; they are the same
-		pcl::transformPointCloud (*cropped_cloud, *transformed_cloud, worldTcamera);
+		pcl::transformPointCloud (*pile_cloud, *transformed_cloud, worldTcamera);
 		getAABB(*transformed_cloud, min, max);
 		minExtent.head<3>() = min; maxExtent.head<3>() = max;
 	}
@@ -625,13 +836,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	std::mt19937 g(rd());
 
 	std::shuffle(occluded_pts.begin(), occluded_pts.end(), g);
-	geometry_msgs::Point pt;
-	pt.x = occluded_pts.front().x();
-	pt.y = occluded_pts.front().y();
-	pt.z = occluded_pts.front().z();
-//	targetPub.publish(pt);
 
-//	publishOctree(occlusionTree.get(), globalFrame);
 	{
 		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(occlusionTree.get(), globalFrame);
 		for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
@@ -671,21 +876,24 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 
 	robot_model::JointModelGroup* active_jmg = nullptr;
 
-//	auto& push_points_world = occluded_pts;
-	octomap::point3d_collection push_points_world;
-
-//	for (const std::shared_ptr<octomap::OcTree>& ot : completedSegments)
-	auto& ot = completedSegments[mostOccludingSegmentIdx];
-	{
-		for (octomap::OcTree::iterator it = ot->begin(ot->getTreeDepth()),
-			     end = ot->end(); it != end; ++it)
-		{
-			if (ot->isNodeOccupied(*it))
-			{
-				push_points_world.emplace_back(octomath::Vector3{(float)it.getX(), (float)it.getY(), (float)it.getZ()});
-			}
-		}
-	}
+	auto& push_points_world = occluded_pts;
+//	octomap::point3d_collection push_points_world;
+//
+////	for (const std::shared_ptr<octomap::OcTree>& ot : completedSegments)
+//	{
+//		auto& ot = completedSegments[mostOccludingSegmentIdx];
+//		{
+//			for (octomap::OcTree::iterator it = ot->begin(ot->getTreeDepth()),
+//				     end = ot->end(); it!=end; ++it)
+//			{
+//				if (ot->isNodeOccupied(*it))
+//				{
+//					push_points_world.emplace_back(
+//						octomath::Vector3{(float) it.getX(), (float) it.getY(), (float) it.getZ()});
+//				}
+//			}
+//		}
+//	}
 	std::shuffle(push_points_world.begin(), push_points_world.end(), g);
 
 	trajectory_msgs::JointTrajectory cmd;
@@ -843,7 +1051,22 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
 	dt.trajectory.push_back(drt);
 	displayPub.publish(dt);
 
+	tracker->startCapture();
 	commandPub.publish(cmd);
+	ros::Duration(10.0).sleep();
+	tracker->stopCapture();
+	tracker->track();
+
+//	for (const std::shared_ptr<octomap::OcTree>& segment : completedSegments)
+//	{
+//
+//	}
+
+//	for (int t = 0; t < (int)tracker->flows.size(); ++t)
+//	{
+//		fitModels(tracker->flows[t], 1);
+//	}
+
 }
 
 template <typename T>
@@ -856,7 +1079,8 @@ void setIfMissing(ros::NodeHandle& nh, const std::string& param_name, const T& p
 }
 
 
-using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::PointCloud2, sensor_msgs::CameraInfo>;
+//using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::PointCloud2, sensor_msgs::CameraInfo>;
+using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::Image, sensor_msgs::Image, sensor_msgs::CameraInfo>;
 
 int main(int argc, char* argv[])
 {
@@ -865,6 +1089,9 @@ int main(int argc, char* argv[])
 
 	listener = std::make_shared<tf::TransformListener>();
 	broadcaster = std::make_shared<tf::TransformBroadcaster>();
+
+	tracker = std::make_unique<Tracker>();
+	tracker->stopCapture();
 
 	ros::Subscriber joint_sub = nh.subscribe("joint_states", 2, handleJointState);
 
@@ -880,10 +1107,12 @@ int main(int argc, char* argv[])
 	targetPub = nh.advertise<geometry_msgs::Point>("target_point", 1, false);
 	commandPub = nh.advertise<trajectory_msgs::JointTrajectory>("/joint_trajectory", 1, false);
 	displayPub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, false);
+	auto vizPub = nh.advertise<visualization_msgs::MarkerArray>("roi", 10, true);
 	mapServer = std::make_shared<LocalOctreeServer>(pnh);
 	ros::Duration(1.0).sleep();
 //	mapClient = std::make_shared<OctreeRetriever>(nh);
 	completionClient = std::make_shared<VoxelCompleter>(nh);
+	segmentationClient = std::make_shared<RGBDSegmenter>(nh);
 
 	std::shared_ptr<robot_model_loader::RobotModelLoader> mpLoader
 		= std::make_shared<robot_model_loader::RobotModelLoader>();
@@ -926,11 +1155,24 @@ int main(int argc, char* argv[])
 	std::string topic_prefix = "/kinect2_victor_head/qhd";
 //	ros::Subscriber camInfoSub = nh.subscribe("kinect2_victor_head/qhd/camera_info", 1, camera_cb);
 
-	message_filters::Subscriber<sensor_msgs::PointCloud2> point_sub(nh, topic_prefix+"/points", 10);
-	message_filters::Subscriber<sensor_msgs::CameraInfo> info_sub(nh, topic_prefix+"/camera_info", 10);
+//	message_filters::Subscriber<sensor_msgs::PointCloud2> point_sub(nh, topic_prefix+"/points", 10);
+//	message_filters::Subscriber<sensor_msgs::CameraInfo> info_sub(nh, topic_prefix+"/camera_info", 10);
+//
+//	message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(10), point_sub, info_sub);
+//	sync.registerCallback(cloud_cb);
 
-	message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(10), point_sub, info_sub);
-	sync.registerCallback(cloud_cb);
+	Tracker::SubscriptionOptions options(topic_prefix);
+
+	visualization_msgs::MarkerArray ma;
+	ma.markers.push_back(tracker->track_options.roi.getMarker());
+	vizPub.publish(ma);
+
+	auto rgb_sub = std::make_unique<image_transport::SubscriberFilter>(options.it, options.rgb_topic, options.buffer, options.hints);
+	auto depth_sub = std::make_unique<image_transport::SubscriberFilter>(options.it, options.depth_topic, options.buffer, options.hints);
+	auto cam_sub = std::make_unique<message_filters::Subscriber<sensor_msgs::CameraInfo>>(options.nh, options.cam_topic, options.buffer);
+
+	auto sync = std::make_unique<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(options.buffer), *rgb_sub, *depth_sub, *cam_sub);
+	sync->registerCallback(cloud_cb);
 
 //	ros::Subscriber sub = nh.subscribe ("kinect2_roof/qhd/points", 1, cloud_cb);
 

@@ -22,6 +22,14 @@ pcl::PointCloud<PointT>::Ptr cropInCameraFrame(
 	const Eigen::Vector4f& maxExtent,
 	const Eigen::Affine3d& worldTcamera);
 
+pcl::PointCloud<PointT>::Ptr filterOutliers(
+	pcl::PointCloud<PointT>::Ptr& cloud,
+	const int k = 15);
+
+pcl::PointCloud<PointT>::Ptr filterPlane(
+	pcl::PointCloud<PointT>::Ptr& cloud,
+	const double distanceThreshold = 0.01);
+
 std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	pcl::PointCloud<PointT>::Ptr& cloud);
 

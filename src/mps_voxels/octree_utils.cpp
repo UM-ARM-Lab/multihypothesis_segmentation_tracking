@@ -4,7 +4,7 @@
 
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/colormap.h"
-#include <mps_voxels/CompleteShape.h>
+#include <mps_msgs/CompleteShape.h>
 
 #include <octomap_msgs/conversions.h>
 #include <octomap_msgs/GetOctomap.h>
@@ -37,7 +37,7 @@ bool isSpeckleNode(const octomap::OcTreeKey& nKey, const octomap::OcTree* octree
 OctreeRetriever::OctreeRetriever(ros::NodeHandle& nh)
 {
 	mapClient = nh.serviceClient<octomap_msgs::GetOctomap>("/octomap_binary");
-	if (!mapClient.waitForExistence(ros::Duration(10)))
+	if (!mapClient.waitForExistence(ros::Duration(3)))
 	{
 		ROS_WARN("Map server not connected.");
 	}
@@ -68,8 +68,8 @@ std::pair<std::shared_ptr<om::OcTree>, std::string> OctreeRetriever::getOctree()
 
 VoxelCompleter::VoxelCompleter(ros::NodeHandle& nh)
 {
-	completionClient = nh.serviceClient<mps_voxels::CompleteShape>("/complete_shape");
-	if (!completionClient.waitForExistence(ros::Duration(10)))
+	completionClient = nh.serviceClient<mps_msgs::CompleteShape>("/complete_shape");
+	if (!completionClient.waitForExistence(ros::Duration(3)))
 	{
 		ROS_WARN("Shape completion server not connected.");
 	}
@@ -95,7 +95,7 @@ void VoxelCompleter::completeShape(
 		std::cerr << subtree->getNumLeafNodes() << ", " << subtree->getResolution() << std::endl;
 	}
 
-	mps_voxels::CompleteShapeRequest req;
+	mps_msgs::CompleteShapeRequest req;
 //	std_msgs::ByteMultiArray arrayMsg;
 	std_msgs::MultiArrayDimension dim;
 
@@ -171,7 +171,7 @@ void VoxelCompleter::completeShape(
 		ROS_WARN_STREAM("No occupied cells were detected in the region.");
 		return;
 	}
-	mps_voxels::CompleteShapeResponse res;
+	mps_msgs::CompleteShapeResponse res;
 	bool succeeded = completionClient.call(req, res);
 	if (!succeeded)
 	{

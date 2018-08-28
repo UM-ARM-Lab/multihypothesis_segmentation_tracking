@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   image_geometry
   image_transport
   message_generation
+  mps_msgs
   moveit_ros_planning
   octomap_msgs
 #  octomap_ros
@@ -26,8 +27,8 @@ find_package(catkin REQUIRED COMPONENTS
   tf_conversions
 )
 
-set(CMAKE_BUILD_TYPE Release)
-#set(CMAKE_BUILD_TYPE Debug)
+#set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_BUILD_TYPE Debug)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -40,7 +41,8 @@ find_package(OpenCV 3.4 REQUIRED COMPONENTS
   cudafeatures2d
   cudafilters
   cudaoptflow
-  )
+  xfeatures2d
+)
 include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 link_libraries(${OpenCV_LIBS})
 
@@ -90,11 +92,11 @@ use_openmp()
 # )
 
 ## Generate services in the 'srv' folder
-add_service_files(
-  FILES
-  CompleteShape.srv
+# add_service_files(
+#   FILES
+#   CompleteShape.srv
 #   Service2.srv
-)
+# )
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -104,10 +106,10 @@ add_service_files(
 # )
 
 ## Generate added messages and services with any dependencies listed here
-generate_messages(
-  DEPENDENCIES
-  std_msgs  # Or other packages containing msgs
-)
+# generate_messages(
+#   DEPENDENCIES
+#   std_msgs  # Or other packages containing msgs
+# )
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -148,6 +150,7 @@ catkin_package(
     image_transport
     message_runtime
     moveit_ros_planning
+    mps_msgs
     octomap_msgs
 #    octomap_ros
 #    octomap_server
@@ -178,7 +181,11 @@ include_directories(SYSTEM
 add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/octree_utils.cpp
   src/${PROJECT_NAME}/pointcloud_utils.cpp
-  src/${PROJECT_NAME}/MotionModel.cpp)
+  src/${PROJECT_NAME}/segmentation_utils.cpp
+  src/${PROJECT_NAME}/MotionModel.cpp
+  src/${PROJECT_NAME}/Tracker.cpp
+  src/${PROJECT_NAME}/ROI.cpp
+)
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )

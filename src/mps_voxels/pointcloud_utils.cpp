@@ -66,11 +66,26 @@ pcl::PointCloud<PointT>::Ptr cropInCameraFrame(
 	return cropped_cloud;
 }
 
-std::vector<pcl::PointCloud<PointT>::Ptr> segment(
-	pcl::PointCloud<PointT>::Ptr& cloud)
+pcl::PointCloud<PointT>::Ptr filterOutliers(
+	pcl::PointCloud<PointT>::Ptr& cloud,
+	const int k)
 {
-	std::vector<pcl::PointCloud<PointT>::Ptr> segments;
+	pcl::PointCloud<PointT>::Ptr cloud_filtered (new pcl::PointCloud<PointT>);
 
+	// Create the filtering object
+	pcl::StatisticalOutlierRemoval<PointT> sor;
+	sor.setInputCloud (cloud);
+	sor.setMeanK (k);
+	sor.setStddevMulThresh (1.0);
+	sor.filter (*cloud_filtered);
+
+	return cloud_filtered;
+}
+
+pcl::PointCloud<PointT>::Ptr filterPlane(
+	pcl::PointCloud<PointT>::Ptr& cloud,
+	const double distanceThreshold)
+{
 	pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
 	pcl::PointIndices::Ptr table_inliers (new pcl::PointIndices);
 	// Create the segmentation object
@@ -80,7 +95,7 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	// Mandatory
 	seg.setModelType (pcl::SACMODEL_PLANE);
 	seg.setMethodType (pcl::SAC_RANSAC);
-	seg.setDistanceThreshold (0.01); //octree->getResolution();
+	seg.setDistanceThreshold (distanceThreshold); //octree->getResolution();
 
 	seg.setInputCloud (cloud);
 	seg.segment (*table_inliers, *coefficients);
@@ -88,7 +103,7 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	if (table_inliers->indices.empty())
 	{
 		ROS_WARN("Could not estimate a planar model for the given scene.");
-		return segments;
+		return pcl::PointCloud<PointT>::Ptr();
 	}
 
 	pcl::ExtractIndices<PointT> extractor;
@@ -98,6 +113,20 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 
 	pcl::PointCloud<PointT>::Ptr non_table_cloud(new pcl::PointCloud<PointT>());
 	extractor.filter(*non_table_cloud);
+
+	return non_table_cloud;
+}
+
+std::vector<pcl::PointCloud<PointT>::Ptr> segment(
+	pcl::PointCloud<PointT>::Ptr& cloud)
+{
+	std::vector<pcl::PointCloud<PointT>::Ptr> segments;
+
+	pcl::PointCloud<PointT>::Ptr non_table_cloud = filterPlane(cloud);
+	if (!non_table_cloud || non_table_cloud->empty())
+	{
+		return segments;
+	}
 
 	pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
 	tree->setInputCloud(non_table_cloud);

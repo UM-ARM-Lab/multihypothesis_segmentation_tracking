@@ -37,6 +37,7 @@
   <depend>image_geometry</depend>
   <depend>image_transport</depend>
   <depend>moveit_ros_planning</depend>
+  <depend>mps_msgs</depend>
   <depend>octomap_msgs</depend>
   <!--<depend>octomap_ros</depend>-->
   <!--<depend>octomap_server</depend>-->
@@ -44,6 +45,7 @@
   <depend>pcl_ros</depend>
   <depend>roscpp</depend>
   <depend>rospy</depend>
+  <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>tf</depend>
   <depend>tf_conversions</depend>

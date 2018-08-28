@@ -24,12 +24,12 @@ public:
 	using Pose = Eigen::Isometry3d;
 
 	/// compute log-likelihood from probability:
-	inline double logLikelihood(double probability){
+	static inline double logLikelihood(double probability){
 		return log(probability/(1-probability));
 	}
 
 	/// compute probability from logodds:
-	inline double probability(double log_likelihood){
+	static inline double probability(double log_likelihood){
 		return 1. - ( 1. / (1. + exp(log_likelihood)));
 	}
 
@@ -61,10 +61,13 @@ public:
 class RigidMotionModel : public MotionModel
 {
 public:
+	static const int MOTION_PARAMETERS_DIMENSION = 6;
 	double membershipLikelihood(const Eigen::Vector3d& pt_global) const override;
 	double membershipLikelihood(const Eigen::Vector3d& pt, const SensorModel& sensor) const override;
 	Eigen::Vector3d expectedVelocity(const Eigen::Vector3d& pt_global, const MotionParameters& theta) const override;
 };
+
+MotionModel::MotionParameters estimateRigidTransform3D(const Eigen::Matrix3Xd& A, const Eigen::Matrix3Xd& B);
 
 #include <moveit/robot_model/robot_model.h>
 

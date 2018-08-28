@@ -5,39 +5,39 @@ digraph g {
 
     node [shape="ellipse"];
     camera;
-    flow;
-    octomap;
+    flow[style="filled" fillcolor="chartreuse" fontcolor="white"];
+    octomap [style="filled" fillcolor="green" fontcolor="white"];
     robot;
-    subgraph cluster_vision {
-        label="mps_vision";
-        style="dashed";
+    //subgraph cluster_vision {
+        //label="mps_vision";
+        //style="dashed";
 
         node [shape="ellipse"];
-        segment;
-    }
-    subgraph cluster_voxels {
-        label="mps_voxels";
-        style="dashed";
+        segment [ style="filled" fillcolor="chartreuse" fontcolor="white"];
+    //}
+    // subgraph cluster_voxels {
+        // label="mps_voxels";
+        // style="dashed";
 
         node [shape="ellipse"];
-        completion [label="shape\ncompletion"];
-        explorer [label="exploration\nplanner"];
+        completion [label="shape\ncompletion" style="filled" fillcolor="green" fontcolor="white"];
+        explorer [label="exploration\nplanner" style="filled" fillcolor="chartreuse" fontcolor="white"];
 
         node [shape="box"];
         hypothesis [label="voxel\nhypothesis"];
-    }
+    // }
 
-    subgraph cluster_motion {
-        label="mps_motion";
-        style="dashed";
+    // subgraph cluster_motion {
+        // label="mps_motion";
+        // style="dashed";
 
         node [shape="ellipse"];
-        em [label="model\nfitting"];
-        motion [label="motion\nplanner"];
+        em [label="model\nfitting" style="filled" fillcolor="chartreuse" fontcolor="white"];
+        motion [label="motion\nplanner" style="filled" fillcolor="crimson" fontcolor="white"];
 
         node [shape="box"];
         model [label="motion\nmodel"];
-    }
+    // }
 
     node [shape="box"];
     rgbd [label="rgbd/\npointcloud"];

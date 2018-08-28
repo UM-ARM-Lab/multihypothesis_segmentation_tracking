@@ -88,9 +88,16 @@ void MotionModel::updateMembershipStructures()
 	bodies::mergeBoundingSpheres(bspheres, boundingSphere);
 }
 
+const int RigidMotionModel::MOTION_PARAMETERS_DIMENSION;
+
 double RigidMotionModel::membershipLikelihood(const Eigen::Vector3d& pt) const
 {
 	const Eigen::Vector3d pt_local = localTglobal*pt;
+
+	if (membershipShapes.empty())
+	{
+		return logLikelihood(exp(-(pt_local.squaredNorm())));
+	}
 
 	// Check bounding sphere first
 	const double r = this->boundingSphere.radius;// + PADDING; // Pretty sure padding is already included...
@@ -147,6 +154,31 @@ Eigen::Vector3d RigidMotionModel::expectedVelocity(const Eigen::Vector3d& pt, co
 	assert(theta.size() == 6);
 
 	return linear_part(theta) + angular_part(theta).cross(localTglobal*pt);
+}
+
+MotionModel::MotionParameters estimateRigidTransform3D(const Eigen::Matrix3Xd& A, const Eigen::Matrix3Xd& B)
+{
+	// Compute the centroids of the point sets
+	Eigen::Vector3d centroidA = A.rowwise().mean();
+	Eigen::Vector3d centroidB = B.rowwise().mean();
+
+	// Center the point sets
+	Eigen::Matrix3Xd AA = A - centroidA.replicate(1, A.cols());
+	Eigen::Matrix3Xd BB = B - centroidB.replicate(1, B.cols());
+
+	Eigen::Matrix3d H = AA * BB.transpose();
+	Eigen::JacobiSVD<Eigen::Matrix3d> svd(H, Eigen::ComputeFullU | Eigen::ComputeFullV);
+	Eigen::Matrix3d R = svd.matrixV() * svd.matrixU();
+	Eigen::Vector3d t = -R*centroidA + centroidB;
+	Eigen::AngleAxisd aa(R);
+//	std::cerr << R.log() << std::endl;
+	std::cerr << aa.axis() << std::endl;
+
+	MotionModel::MotionParameters theta(RigidMotionModel::MOTION_PARAMETERS_DIMENSION);
+	linear_part(theta) = t;
+	angular_part(theta) = aa.axis()*aa.angle();
+
+	return theta;
 }
 
 bool loadLinkMotionModels(const robot_model::RobotModel* pModel, std::map<std::string, std::unique_ptr<MotionModel>>& motionModels)
