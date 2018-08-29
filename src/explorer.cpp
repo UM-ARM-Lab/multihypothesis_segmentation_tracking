@@ -6,6 +6,7 @@
 #include "mps_voxels/Tracker.h"
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
+#include "mps_voxels/image_utils.h"
 #include "mps_voxels/segmentation_utils.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
@@ -260,31 +261,6 @@ double fitModels(const std::vector<std::pair<Tracker::Vector, Tracker::Vector>>&
 }
 
 
-pcl::PointCloud<PointT>::Ptr imagesToCloud(const cv::Mat& rgb, const cv::Mat& depth, const image_geometry::PinholeCameraModel& cameraModel)
-{
-	pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>());
-	cloud->resize(cameraModel.cameraInfo().width * cameraModel.cameraInfo().height);
-
-	#pragma omp parallel for
-	for (int v = 0; v < (int)cameraModel.cameraInfo().height; ++v)
-	{
-		for (int u = 0; u < (int)cameraModel.cameraInfo().width; ++u)
-		{
-			int idx = v * (int)cameraModel.cameraInfo().width + u;
-
-			auto color = rgb.at<cv::Vec3b>(v, u);
-			auto dVal = depth.at<uint16_t>(v, u);
-
-			float depthVal = Tracker::DepthTraits::toMeters(dVal); // if (depth1 > maxZ || depth1 < minZ) { continue; }
-			PointT pt(color[2], color[1], color[0]);
-			pt.getVector3fMap() = toPoint3D<Eigen::Vector3f>(u, v, depthVal, cameraModel);
-			cloud->points[idx] = pt;
-		}
-	}
-
-	return cloud;
-}
-
 std::shared_ptr<LocalOctreeServer> mapServer;
 //std::shared_ptr<OctreeRetriever> mapClient;
 std::shared_ptr<VoxelCompleter> completionClient;
@@ -394,8 +370,6 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		return;
 	}
 
-//	pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>());
-//	pcl::fromROSMsg(*cloud_msg, *cloud);
 	pcl::PointCloud<PointT>::Ptr cloud = imagesToCloud(cv_rgb_ptr->image, cv_depth_ptr->image, cameraModel);
 
 	/////////////////////////////////////////////////////////////////
@@ -599,6 +573,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		ROS_ERROR_STREAM("No points in pile cloud.");
 		return;
 	}
+
+	std::vector<pcl::PointCloud<PointT>::Ptr> segments;
 	{
 //		static pcl::visualization::CloudViewer viewer("PilePoints");
 //		viewer.showCloud(pile_cloud);
@@ -616,7 +592,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 
 		cv::Rect roi = cv::boundingRect(pile_points);
-		const int buffer = 50;
+		const int buffer = 25;
 		if (buffer < roi.x) { roi.x -= buffer; roi.width += buffer; }
 		if (roi.x+roi.width < cam_msg->width-buffer) { roi.width += buffer; }
 		if (buffer < roi.y) { roi.y -= buffer; roi.height += buffer; }
@@ -630,39 +606,30 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		cam_msg_cropped.height = roi.height;
 		cam_msg_cropped.K[2] -= roi.x;
 		cam_msg_cropped.K[5] -= roi.y;
+		for (auto& d : cam_msg_cropped.D) { d = 0.0; }
 
-		std::cerr << "Original: " << *cam_msg << "\nCropped: "<< cam_msg_cropped << std::endl;
 		cv::imshow("rgb", rgb_cropped);
 		cv::waitKey(100);
 		cv_bridge::CvImagePtr seg = segmentationClient->segment(cv_rgb_cropped, cv_depth_cropped, cam_msg_cropped);
 
-		if (seg)
+		if (!seg)
 		{
-			cv::imshow("segmentation", seg->image);
+			ROS_ERROR_STREAM("Segmentation failed.");
+			return;
 		}
+		double alpha = 0.75;
+		cv::Mat labelColorsMap = colorByLabel(seg->image);
+		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*rgb_cropped;
+		cv::imshow("segmentation", labelColorsMap);
 		cv::waitKey(100);
-	}
-////	cv::imshow("depth", cv_depth_ptr->image);
-//	cv::Mat mask = tracker->track_options.roi.getMask(cameraFrameInTableCoordinates, cameraModel, &cv_depth_ptr->image);
-////	cv::imshow("mask", mask);
-//	cv::Mat temp = cv::Mat::zeros(cv_depth_ptr->image.size(), cv_depth_ptr->image.type());
-//	cv_depth_ptr->image.copyTo(temp, mask);
-//	cv_depth_ptr->image = temp;
-//
-//	double min;
-//	double max;
-////	cv::erode(mask, mask, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(25,25)));
-//	cv::minMaxIdx(temp, &min, &max, nullptr, nullptr, mask);
-//	cv::Mat adjMap;
-//	temp.convertTo(adjMap, CV_8UC1, 255 / (max-min), -min);
-//	cv::Mat falseColorsMap;
-//	cv::applyColorMap(adjMap, falseColorsMap, cv::COLORMAP_AUTUMN);
-//	cv::imshow("depth_masked", falseColorsMap);
-//	cv_bridge::CvImagePtr seg = segmentationClient->segment(*cv_rgb_ptr, *cv_depth_ptr, *cam_msg);
 
+//		image_geometry::PinholeCameraModel croppedCameraModel;
+//		croppedCameraModel.fromCameraInfo(cam_msg_cropped);
+		segments = segment(pile_cloud, seg->image, cameraModel, roi);
+	}
 
 	// Perform segmentation
-	std::vector<pcl::PointCloud<PointT>::Ptr> segments = segment(cropped_cloud);
+//	std::vector<pcl::PointCloud<PointT>::Ptr> segments = segment(cropped_cloud);
 	if (segments.empty())
 	{
 		ROS_WARN_STREAM("No clusters were detected!");
@@ -694,10 +661,23 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		if (completionClient->completionClient.exists())
 		{
 			completionClient->completeShape(min, max, worldTcamera.cast<float>(), octree, subtree.get());
-			publishOctree(subtree.get(), globalFrame, "completed");
 		}
 
 		completedSegments.push_back(subtree);
+
+		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(subtree.get(), globalFrame);
+		std_msgs::ColorRGBA colorRGBA;
+		colorRGBA.a = 1.0f;
+		colorRGBA.r = rand()/(float)RAND_MAX;
+		colorRGBA.g = rand()/(float)RAND_MAX;
+		colorRGBA.b = rand()/(float)RAND_MAX;
+		for (auto& m : occupiedNodesVis.markers)
+		{
+			m.colors.clear();
+			m.color = colorRGBA;
+			m.ns = "completed_"+std::to_string(completedSegments.size());
+		}
+		octreePub.publish(occupiedNodesVis);
 
 		// Search for this segment in past models
 //		MotionModel* model = matchModel(subtree, motionModels);
@@ -1096,7 +1076,7 @@ int main(int argc, char* argv[])
 	ros::Subscriber joint_sub = nh.subscribe("joint_states", 2, handleJointState);
 
 	setIfMissing(pnh, "frame_id", "table_surface");
-	setIfMissing(pnh, "resolution", 0.01);
+	setIfMissing(pnh, "resolution", 0.005);
 	setIfMissing(pnh, "latch", false);
 	setIfMissing(pnh, "filter_ground", false);
 	setIfMissing(pnh, "filter_speckles", true);
@@ -1160,6 +1140,9 @@ int main(int argc, char* argv[])
 //
 //	message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(10), point_sub, info_sub);
 //	sync.registerCallback(cloud_cb);
+
+	cv::namedWindow("rgb", cv::WINDOW_GUI_NORMAL);
+	cv::namedWindow("segmentation", cv::WINDOW_GUI_NORMAL);
 
 	Tracker::SubscriptionOptions options(topic_prefix);
 

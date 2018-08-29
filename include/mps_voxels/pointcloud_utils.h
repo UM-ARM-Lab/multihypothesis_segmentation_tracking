@@ -5,10 +5,8 @@
 #ifndef MPS_VOXELS_POINTCLOUD_UTILS_H
 #define MPS_VOXELS_POINTCLOUD_UTILS_H
 
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
+#include "mps_voxels/PointT.h"
 
-using PointT = pcl::PointXYZRGB;
 
 pcl::PointCloud<PointT>::Ptr filterInCameraFrame(
 	pcl::PointCloud<PointT>::Ptr& cloud,

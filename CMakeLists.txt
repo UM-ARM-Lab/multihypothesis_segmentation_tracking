@@ -181,6 +181,7 @@ include_directories(SYSTEM
 add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/octree_utils.cpp
   src/${PROJECT_NAME}/pointcloud_utils.cpp
+  src/${PROJECT_NAME}/image_utils.cpp
   src/${PROJECT_NAME}/segmentation_utils.cpp
   src/${PROJECT_NAME}/MotionModel.cpp
   src/${PROJECT_NAME}/Tracker.cpp

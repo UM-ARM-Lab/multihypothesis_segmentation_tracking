@@ -11,6 +11,20 @@
 
 #include <tf/transform_listener.h>
 
+void drawKeypoint(cv::Mat& display, const cv::KeyPoint& kp, const cv::Scalar& color)
+{
+	int radius = cvRound(kp.size/2); // KeyPoint::size is a diameter
+	cv::circle(display, kp.pt, radius, color);
+	if( kp.angle != -1 )
+	{
+		float srcAngleRad = kp.angle*(float)CV_PI/180.f;
+		cv::Point2f orient( cvRound(cos(srcAngleRad)*radius ),
+		                    cvRound(sin(srcAngleRad)*radius )
+		);
+		line(display, kp.pt, kp.pt+orient, color, 1, cv::LINE_AA);
+	}
+}
+
 Tracker::Tracker(const size_t _buffer, SubscriptionOptions _options, TrackingOptions _track_options)
 	: MAX_BUFFER_LEN(_buffer), options(std::move(_options)), track_options(std::move(_track_options))
 {

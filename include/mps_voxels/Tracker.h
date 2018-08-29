@@ -28,19 +28,7 @@
 
 #include <Eigen/Geometry>
 
-void drawKeypoint(cv::Mat& display, const cv::KeyPoint& kp, const cv::Scalar& color)
-{
-	int radius = cvRound(kp.size/2); // KeyPoint::size is a diameter
-	cv::circle(display, kp.pt, radius, color);
-	if( kp.angle != -1 )
-	{
-		float srcAngleRad = kp.angle*(float)CV_PI/180.f;
-		cv::Point2f orient( cvRound(cos(srcAngleRad)*radius ),
-		                    cvRound(sin(srcAngleRad)*radius )
-		);
-		line(display, kp.pt, kp.pt+orient, color, 1, cv::LINE_AA);
-	}
-}
+void drawKeypoint(cv::Mat& display, const cv::KeyPoint& kp, const cv::Scalar& color);
 
 template <typename PointT>
 visualization_msgs::Marker visualizeFlow(const std::vector<std::pair<PointT, PointT>>& flow)

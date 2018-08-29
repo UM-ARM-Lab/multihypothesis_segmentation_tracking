@@ -6,9 +6,11 @@
 #define MPS_VOXELS_SEGMENTATION_UTILS_H
 
 #include "mps_voxels/ROI.h"
+#include "mps_voxels/PointT.h"
 
 #include <sensor_msgs/CameraInfo.h>
 #include <cv_bridge/cv_bridge.h>
+#include <image_geometry/pinhole_camera_model.h>
 #include <ros/ros.h>
 
 class RGBDSegmenter
@@ -24,5 +26,9 @@ public:
 	                              const sensor_msgs::CameraInfo& cam) const;
 
 };
+
+std::vector<pcl::PointCloud<PointT>::Ptr> segment(
+	const pcl::PointCloud<PointT>::Ptr& cloud, const cv::Mat& labels,
+	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi);
 
 #endif // MPS_VOXELS_SEGMENTATION_UTILS_H
