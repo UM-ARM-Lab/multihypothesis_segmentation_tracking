@@ -665,16 +665,16 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 		completedSegments.push_back(subtree);
 
-		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(subtree.get(), globalFrame);
 		std_msgs::ColorRGBA colorRGBA;
 		colorRGBA.a = 1.0f;
 		colorRGBA.r = rand()/(float)RAND_MAX;
 		colorRGBA.g = rand()/(float)RAND_MAX;
 		colorRGBA.b = rand()/(float)RAND_MAX;
+		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(subtree.get(), globalFrame, &colorRGBA);
 		for (auto& m : occupiedNodesVis.markers)
 		{
-			m.colors.clear();
-			m.color = colorRGBA;
+//			m.colors.clear();
+//			m.color = colorRGBA;
 			m.ns = "completed_"+std::to_string(completedSegments.size());
 		}
 		octreePub.publish(occupiedNodesVis);
@@ -808,7 +808,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		m.color.r = 1.0;
 		m.color.a = 1.0;
 		m.scale.x *= 1.2; m.scale.y *= 1.2; m.scale.z *= 1.2;
-		m.ns = "worst" + std::to_string(m.id);
+		m.ns = "worst";// + std::to_string(m.id);
 	}
 	octreePub.publish(objToMoveVis);
 

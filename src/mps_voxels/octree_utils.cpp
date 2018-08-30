@@ -204,11 +204,11 @@ void VoxelCompleter::completeShape(
 						om::OcTreeNode* node = tree->search(queryPoint.x(), queryPoint.y(), queryPoint.z());
 						if (!node)
 						{
-							node = tree->setNodeValue(queryPoint.x(), queryPoint.y(), queryPoint.z(), 0, false);
+							node = tree->setNodeValue(queryPoint.x(), queryPoint.y(), queryPoint.z(), octomap::logodds(res.hypothesis.data[idx]), false);
 						}
 						else
 						{
-							node->addValue(10.0f);
+							node->setValue(octomap::logodds(res.hypothesis.data[idx]));
 						}
 					}
 				}
@@ -283,7 +283,7 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 	return { occluded_pts, occlusionTree };
 }
 
-visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std::string& globalFrame)
+visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std::string& globalFrame, const std_msgs::ColorRGBA* base_color)
 {
 	visualization_msgs::MarkerArray occupiedNodesVis;
 	occupiedNodesVis.markers.resize(tree->getTreeDepth()+1);
@@ -291,7 +291,7 @@ visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std
 	for (octomap::OcTree::iterator it = tree->begin(tree->getTreeDepth()),
 		     end = tree->end(); it != end; ++it)
 	{
-		if (tree->isNodeOccupied(*it))
+		if ((!base_color && tree->isNodeOccupied(*it)) || (base_color && it->getOccupancy() > 0.25))
 		{
 			unsigned idx = it.getDepth();
 
@@ -305,7 +305,17 @@ visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std
 			// Colors
 			std_msgs::ColorRGBA color;
 			color.a = 1.0;
-			colormap(igl::parula_cm, (float)((it->getOccupancy()-0.5)*2.0), color.r, color.g, color.b);
+			if (base_color)
+			{
+				float prob = (float)it->getOccupancy();
+				color.r = prob * base_color->r;
+				color.g = prob * base_color->g;
+				color.b = prob * base_color->b;
+			}
+			else
+			{
+				colormap(igl::parula_cm, (float)((it->getOccupancy()-0.5)*2.0), color.r, color.g, color.b);
+			}
 			occupiedNodesVis.markers[idx].colors.push_back(color);
 		}
 	}
