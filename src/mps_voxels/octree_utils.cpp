@@ -217,6 +217,22 @@ void VoxelCompleter::completeShape(
 	}
 }
 
+octomap::point3d_collection getPoints(const octomap::OcTree* tree)
+{
+	octomap::point3d_collection pts;
+	for (octomap::OcTree::iterator it = tree->begin(tree->getTreeDepth()),
+		     end = tree->end(); it != end; ++it)
+	{
+		if (tree->isNodeOccupied(*it))
+		{
+			unsigned idx = it.getDepth();
+
+			pts.emplace_back(it.getCoordinate());
+		}
+	}
+	return pts;
+}
+
 std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOcclusionsInFOV(
 	const octomap::OcTree* octree,
 	const image_geometry::PinholeCameraModel& cameraModel,

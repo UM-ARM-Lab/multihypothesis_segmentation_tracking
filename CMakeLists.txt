@@ -46,6 +46,12 @@ find_package(OpenCV 3.4 REQUIRED COMPONENTS
 include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 link_libraries(${OpenCV_LIBS})
 
+# CGAL and its components
+find_package(CGAL REQUIRED COMPONENTS
+  QP_solver
+)
+include( ${CGAL_USE_FILE} )
+
 
 macro(use_openmp)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
@@ -183,6 +189,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/pointcloud_utils.cpp
   src/${PROJECT_NAME}/image_utils.cpp
   src/${PROJECT_NAME}/segmentation_utils.cpp
+  src/${PROJECT_NAME}/shape_utils.cpp
   src/${PROJECT_NAME}/MotionModel.cpp
   src/${PROJECT_NAME}/Tracker.cpp
   src/${PROJECT_NAME}/ROI.cpp

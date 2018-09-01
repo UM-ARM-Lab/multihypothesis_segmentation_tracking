@@ -8,6 +8,7 @@
 #include "mps_voxels/pointcloud_utils.h"
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/segmentation_utils.h"
+#include "mps_voxels/shape_utils.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
@@ -260,6 +261,19 @@ double fitModels(const std::vector<std::pair<Tracker::Vector, Tracker::Vector>>&
 	return L;
 }
 
+#include <geometric_shapes/shape_operations.h>
+std::shared_ptr<shapes::Mesh> approximateShape(const octomap::OcTree* tree)
+{
+	// Convex hull
+	octomap::point3d_collection pts = getPoints(tree);
+	std::shared_ptr<shapes::Mesh> hull = convex_hull(pts);
+
+	return hull;
+
+//	octomap::point3d_collection box;
+//	ZABB(pts, box);
+}
+
 
 std::shared_ptr<LocalOctreeServer> mapServer;
 //std::shared_ptr<OctreeRetriever> mapClient;
@@ -390,7 +404,6 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 
-
 	/////////////////////////////////////////////////////////////////
 	// Apply prior motion models
 	/////////////////////////////////////////////////////////////////
@@ -424,6 +437,16 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		// Compute bounding spheres
 		model.second->updateMembershipStructures();
 	}
+
+	// Clear visualization
+	{
+		visualization_msgs::MarkerArray ma;
+		ma.markers.resize(1);
+		ma.markers.front().action = visualization_msgs::Marker::DELETEALL;
+		octreePub.publish(ma);
+	}
+
+	// Show robot collision
 	{
 		visualization_msgs::MarkerArray markers;
 		int id = 0;
@@ -609,7 +632,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		for (auto& d : cam_msg_cropped.D) { d = 0.0; }
 
 		cv::imshow("rgb", rgb_cropped);
-		cv::waitKey(100);
+		cv::waitKey(10);
 		cv_bridge::CvImagePtr seg = segmentationClient->segment(cv_rgb_cropped, cv_depth_cropped, cam_msg_cropped);
 
 		if (!seg)
@@ -621,7 +644,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		cv::Mat labelColorsMap = colorByLabel(seg->image);
 		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*rgb_cropped;
 		cv::imshow("segmentation", labelColorsMap);
-		cv::waitKey(100);
+		cv::waitKey(10);
 
 //		image_geometry::PinholeCameraModel croppedCameraModel;
 //		croppedCameraModel.fromCameraInfo(cam_msg_cropped);
@@ -679,6 +702,22 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 		octreePub.publish(occupiedNodesVis);
 
+		// Visualize approximate shape
+		visualization_msgs::Marker m;
+		shapes::constructMarkerFromShape(approximateShape(subtree.get()).get(), m, true);
+		m.id = completedSegments.size();
+		m.ns = "bounds";
+		m.header.frame_id = globalFrame;
+		m.header.stamp = ros::Time::now();
+		m.pose.orientation.w = 1;
+		m.color = colorRGBA; m.color.a = 0.6;
+		m.frame_locked = true;
+		visualization_msgs::MarkerArray ms;
+		ms.markers.push_back(m);
+		octreePub.publish(ms);
+		cv::waitKey(10);
+
+
 		// Search for this segment in past models
 //		MotionModel* model = matchModel(subtree, motionModels);
 //		if (!model)
@@ -701,7 +740,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		Eigen::Vector3f min, max;
 		pcl::PointCloud<PointT>::Ptr transformed_cloud (new pcl::PointCloud<PointT>());
 		// You can either apply transform_1 or transform_2; they are the same
-		pcl::transformPointCloud (*pile_cloud, *transformed_cloud, worldTcamera);
+		pcl::transformPointCloud (*cropped_cloud, *transformed_cloud, worldTcamera);
 		getAABB(*transformed_cloud, min, max);
 		minExtent.head<3>() = min; maxExtent.head<3>() = max;
 	}
@@ -811,6 +850,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		m.ns = "worst";// + std::to_string(m.id);
 	}
 	octreePub.publish(objToMoveVis);
+	cv::waitKey(10);
 
 	std::random_device rd;
 	std::mt19937 g(rd());
@@ -1033,9 +1073,10 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	tracker->startCapture();
 	commandPub.publish(cmd);
-	ros::Duration(10.0).sleep();
+	ros::Duration(1.0).sleep();
 	tracker->stopCapture();
 	tracker->track();
+	cv::waitKey(10);
 
 //	for (const std::shared_ptr<octomap::OcTree>& segment : completedSegments)
 //	{
