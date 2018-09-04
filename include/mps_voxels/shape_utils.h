@@ -12,6 +12,9 @@ template <typename PointContainerT, typename PointT = typename PointContainerT::
 std::shared_ptr<shapes::Mesh> convex_hull(const PointContainerT& points);
 
 template <typename PointContainerT, typename PointT = typename PointContainerT::value_type>
-std::shared_ptr<shapes::Mesh> ZABB(const PointContainerT& points, PointContainerT& supports);
+std::shared_ptr<shapes::Mesh> prism(const PointContainerT& points);
+
+template <typename PointContainerT, typename PointT = typename PointContainerT::value_type>
+std::shared_ptr<shapes::Mesh> ZABB(const PointContainerT& points);
 
 #endif // PROJECT_SHAPE_UTILS_H

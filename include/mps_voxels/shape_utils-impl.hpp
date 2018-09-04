@@ -125,7 +125,7 @@ std::shared_ptr<shapes::Mesh> convex_hull(const PointContainerT& points)
 };
 
 template <typename PointContainerT, typename PointT>
-std::shared_ptr<shapes::Mesh> ZABB(const PointContainerT& points, PointContainerT& supports)
+std::shared_ptr<shapes::Mesh> prism(const PointContainerT& points)
 {
 	using Scalar = std::remove_reference_t<typename std::remove_const_t<decltype(std::declval<PointT>().x())>>;
 
@@ -134,37 +134,15 @@ std::shared_ptr<shapes::Mesh> ZABB(const PointContainerT& points, PointContainer
 		return std::shared_ptr<shapes::Mesh>(nullptr);
 	}
 
-	std::vector<Point_3> cgal_points;
-//	if (std::is_same<Point_3, PointT>::value)
-//	{
-//		cgal_points = points;
-//	}
-//	else
-//	{
+	std::vector<Point_2> cgal_points;
 	for (const auto& pt : points)
 	{
-		cgal_points.emplace_back(Point_3(pt.x(), pt.y(), pt.z()));
-	}
-//	}
-
-//	CGAL::Object obj;
-	std::vector<Point_3> hull_points;
-	// CGAL::convex_hull_2
-	CGAL::ch_bykat(cgal_points.begin(), cgal_points.end(), hull_points.begin(),
-	               CGAL::Projection_traits_xy_3<K>::Traits());
-
-
-	std::vector<Point_2> hull_points_2;
-	for (const auto& pt : hull_points)
-	{
-		hull_points_2.emplace_back(Point_2(pt.x(), pt.y()));
+		cgal_points.emplace_back(Point_2(pt.x(), pt.y()));
 	}
 
-	std::vector<Point_2> box_points;
-
-//	using ProjectionTraits = CGAL::Projection_traits_xy_3<K>;
-//	using QuadTraits = CGAL::Optimisation::Min_quadrilateral_traits_wrapper<ProjectionTraits>;
-	CGAL::min_rectangle_2(hull_points_2.begin(), hull_points_2.end(), box_points.begin());
+	std::vector<Point_2> hull_points;
+	CGAL::convex_hull_2(cgal_points.begin(), cgal_points.end(), std::back_inserter(hull_points));
+//	CGAL::ch_bykat(cgal_points.begin(), cgal_points.end(), std::back_inserter(hull_points));
 
 	float min = std::numeric_limits<float>::max();
 	float max = std::numeric_limits<float>::lowest();
@@ -174,6 +152,51 @@ std::shared_ptr<shapes::Mesh> ZABB(const PointContainerT& points, PointContainer
 		max = std::max(max, pt.z());
 	}
 
+	PointContainerT supports;
+	for (auto z : std::vector<float>{min, max})
+	{
+		for (const auto& pt : hull_points)
+		{
+			supports.push_back({static_cast<Scalar>(pt.x()),
+			                    static_cast<Scalar>(pt.y()),
+			                    static_cast<Scalar>(z)});
+		}
+	}
+	return convex_hull(supports);
+}
+
+template <typename PointContainerT, typename PointT>
+std::shared_ptr<shapes::Mesh> ZABB(const PointContainerT& points)
+{
+	using Scalar = std::remove_reference_t<typename std::remove_const_t<decltype(std::declval<PointT>().x())>>;
+
+	if (points.empty())
+	{
+		return std::shared_ptr<shapes::Mesh>(nullptr);
+	}
+
+	std::vector<Point_2> cgal_points;
+	for (const auto& pt : points)
+	{
+		cgal_points.emplace_back(Point_2(pt.x(), pt.y()));
+	}
+
+	std::vector<Point_2> hull_points;
+	CGAL::convex_hull_2(cgal_points.begin(), cgal_points.end(), std::back_inserter(hull_points));
+//	CGAL::ch_bykat(cgal_points.begin(), cgal_points.end(), std::back_inserter(hull_points));
+
+	std::vector<Point_2> box_points;
+	CGAL::min_rectangle_2(hull_points.begin(), hull_points.end(), std::back_inserter(box_points));
+
+	float min = std::numeric_limits<float>::max();
+	float max = std::numeric_limits<float>::lowest();
+	for (const auto& pt : points)
+	{
+		min = std::min(min, pt.z());
+		max = std::max(max, pt.z());
+	}
+
+	PointContainerT supports;
 	for (auto z : std::vector<float>{min, max})
 	{
 		for (const auto& pt : box_points)
@@ -183,6 +206,7 @@ std::shared_ptr<shapes::Mesh> ZABB(const PointContainerT& points, PointContainer
 			                    static_cast<Scalar>(z)});
 		}
 	}
+	return convex_hull(supports);
 }
 
 #endif //PROJECT_SHAPE_UTILS_IMPL_H

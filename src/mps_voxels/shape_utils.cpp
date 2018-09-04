@@ -8,4 +8,5 @@
 #include <octomap/octomap_types.h>
 
 template std::shared_ptr<shapes::Mesh> convex_hull<octomap::point3d_collection, octomap::point3d>(const octomap::point3d_collection&);
-template std::shared_ptr<shapes::Mesh> ZABB<octomap::point3d_collection, octomap::point3d>(const octomap::point3d_collection&, octomap::point3d_collection&);
+template std::shared_ptr<shapes::Mesh> prism<octomap::point3d_collection, octomap::point3d>(const octomap::point3d_collection&);
+template std::shared_ptr<shapes::Mesh> ZABB<octomap::point3d_collection, octomap::point3d>(const octomap::point3d_collection&);

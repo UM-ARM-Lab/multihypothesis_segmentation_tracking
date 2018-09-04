@@ -2,6 +2,7 @@
 // Created by arprice on 7/24/18.
 //
 
+#include "mps_voxels/Manipulator.h"
 #include "mps_voxels/MotionModel.h"
 #include "mps_voxels/Tracker.h"
 #include "mps_voxels/octree_utils.h"
@@ -173,10 +174,10 @@ struct SeedDistanceFunctor
 	}
 };
 
-MotionModel* matchModel(std::shared_ptr<octomap::OcTree> subtree, std::map<std::string, std::unique_ptr<MotionModel>> motionModels)
-{
-
-}
+//MotionModel* matchModel(std::shared_ptr<octomap::OcTree> subtree, std::map<std::string, std::unique_ptr<MotionModel>> motionModels)
+//{
+//
+//}
 
 double fitModels(const std::vector<std::pair<Tracker::Vector, Tracker::Vector>>& flow, const int K = 1)
 {
@@ -266,8 +267,9 @@ std::shared_ptr<shapes::Mesh> approximateShape(const octomap::OcTree* tree)
 {
 	// Convex hull
 	octomap::point3d_collection pts = getPoints(tree);
-	std::shared_ptr<shapes::Mesh> hull = convex_hull(pts);
+//	std::shared_ptr<shapes::Mesh> hull = convex_hull(pts);
 
+	std::shared_ptr<shapes::Mesh> hull = prism(pts);
 	return hull;
 
 //	octomap::point3d_collection box;
@@ -287,7 +289,7 @@ ros::Publisher displayPub;
 std::shared_ptr<tf::TransformListener> listener;
 std::shared_ptr<tf::TransformBroadcaster> broadcaster;
 robot_model::RobotModelPtr pModel;
-std::vector<robot_model::JointModelGroup*> jmgs;
+std::vector<Manipulator> manipulators;
 sensor_msgs::JointState::ConstPtr latestJoints;
 std::map<std::string, std::unique_ptr<MotionModel>> motionModels;
 
@@ -347,7 +349,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	// Get Octree
 	octomap::OcTree* octree = mapServer->getOctree();
-	std::string globalFrame = mapServer->getWorldFrame();
+	const std::string globalFrame = mapServer->getWorldFrame();
+	const std::string cameraFrame = cam_msg->header.frame_id;
 //	std::tie(octree, globalFrame) = mapClient->getOctree();
 	if (!octree)
 	{
@@ -683,7 +686,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 		if (completionClient->completionClient.exists())
 		{
-			completionClient->completeShape(min, max, worldTcamera.cast<float>(), octree, subtree.get());
+			completionClient->completeShape(min, max, worldTcamera.cast<float>(), octree, subtree.get(), false);
 		}
 
 		completedSegments.push_back(subtree);
@@ -818,15 +821,16 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		const pcl::PointCloud<PointT>::Ptr& pc = segments[i];
 		for (const PointT& pt : *pc)
 		{
-			octomap::point3d coord = octree->keyToCoord(octree->coordToKey(octomap::point3d(pt.x, pt.y, pt.z)));
+			Eigen::Vector3f worldPt = worldTcamera.cast<float>()*pt.getVector3fMap();
+			octomap::point3d coord = octree->keyToCoord(octree->coordToKey(octomap::point3d(worldPt.x(), worldPt.y(), worldPt.z())));
 			coordToSegment.insert({coord, i});
 		}
 	}
 	#pragma omp parallel for
-	for (int i = 0; i < occluded_pts.size(); ++i)
+	for (int i = 0; i < static_cast<int>(occluded_pts.size()); ++i)
 	{
 		const auto& pt_world = occluded_pts[i];
-		octomap::point3d cameraOrigin((float)cameraTtable.translation().x(), (float)cameraTtable.translation().y(), (float)cameraTtable.translation().z());
+		octomap::point3d cameraOrigin((float)worldTcamera.translation().x(), (float)worldTcamera.translation().y(), (float)worldTcamera.translation().z());
 		octomap::point3d collision;
 		octree->castRay(cameraOrigin, pt_world-cameraOrigin, collision);
 		collision = octree->keyToCoord(octree->coordToKey(collision)); // regularize
@@ -874,14 +878,14 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	// Reach out and touch target
 
-	assert(!jmgs.empty());
+	assert(!manipulators.empty());
 
-	for (const robot_model::JointModelGroup* ee : pModel->getEndEffectors())
-	{
-		assert(ee->isEndEffector());
-		ee->getEndEffectorParentGroup();
-		ee->getEndEffectorName();
-	}
+//	for (const robot_model::JointModelGroup* ee : pModel->getEndEffectors())
+//	{
+//		assert(ee->isEndEffector());
+//		ee->getEndEffectorParentGroup();
+//		ee->getEndEffectorName();
+//	}
 
 	const std::string& robotFrame = pModel->getRootLinkName();
 	tf::StampedTransform robotFrameInGlobalCoordinates;
@@ -921,125 +925,104 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	std::vector<std::vector<double>> solutions;
 	for (const auto& pt_world : push_points_world)
 	{
+		// Get a randomly selected shadowed point
 		if (pt_world.z() < 0.05) { continue; }
-		Eigen::Vector3d pt(pt_world.x(), pt_world.y(), pt_world.z());
+		Eigen::Vector3d pt(pt_world.x(), pt_world.y(), pt_world.z()); // Eigen::Map<const Eigen::Vector3f> pt(&pt_world(0));
 
-		std::sort(jmgs.begin(), jmgs.end(), [&](const robot_model::JointModelGroup* a, const robot_model::JointModelGroup* b)->bool
+
+		octomap::point3d cameraOrigin((float)worldTcamera.translation().x(), (float)worldTcamera.translation().y(), (float)worldTcamera.translation().z());
+		octomath::Vector3 ray = pt_world-cameraOrigin;
+		octomap::point3d collision;
+		bool hit = octree->castRay(cameraOrigin, ray, collision, true);
+		assert(hit);
+		collision = octree->keyToCoord(octree->coordToKey(collision)); // regularize
+
+		Eigen::Vector3d gHat = -Eigen::Vector3d::UnitZ();
+		Eigen::Vector3d pHat = -Eigen::Map<const Eigen::Vector3f>(&ray(0)).cast<double>().cross(gHat).normalized();
+		Eigen::Vector3d nHat = gHat.cross(pHat).normalized();
+
+		Eigen::Affine3d pushFrame;
+		pushFrame.linear() << pHat.normalized(), nHat.normalized(), gHat.normalized();
+		pushFrame.translation() = Eigen::Map<const Eigen::Vector3f>(&collision(0)).cast<double>();
+		// Display occluded point and push frame
 		{
-			return (pt-currentState.getFrameTransform(a->getOnlyOneEndEffectorTip()->getName()).translation()).squaredNorm()
-			       < (pt-currentState.getFrameTransform(b->getOnlyOneEndEffectorTip()->getName()).translation()).squaredNorm();
+			tf::Transform t = tf::Transform::getIdentity();
+			Eigen::Vector3d pt_camera = cameraTtable * pt;
+			t.setOrigin({pt_camera.x(), pt_camera.y(), pt_camera.z()});
+			broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), cameraFrame, "occluded_point"));
+
+			tf::poseEigenToTF(pushFrame, t);
+			broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), globalFrame, "push_frame"));
+		}
+
+		const auto& iter = coordToSegment.find(collision);
+		if (iter == coordToSegment.end()) { continue; }
+		int pushSegmentID = iter->second;
+
+		std::vector<Eigen::Affine3d> pushGripperFrames(2, Eigen::Affine3d::Identity());
+		{
+			octomap::point3d_collection segmentPoints = getPoints(completedSegments[pushSegmentID].get());
+
+			Eigen::Vector3d minProj = Eigen::Vector3d::Ones() * std::numeric_limits<float>::max();
+			Eigen::Vector3d maxProj = Eigen::Vector3d::Ones() * std::numeric_limits<float>::lowest();
+			for (const auto& segPt : segmentPoints)
+			{
+				Eigen::Vector3d pushFramePt = pushFrame.linear().transpose() * Eigen::Map<const Eigen::Vector3f>(&segPt(0)).cast<double>();
+				for (int d=0; d < 3; ++d)
+				{
+					minProj[d] = std::min(minProj[d], pushFramePt[d]);
+					maxProj[d] = std::max(maxProj[d], pushFramePt[d]);
+				}
+			}
+
+			const double GRIPPER_HALFWIDTH = 5.0*2.54/100.0;
+			pushGripperFrames[0].translation() = pushFrame.linear() * Eigen::Vector3d(maxProj.x(), (maxProj.y()+minProj.y())/2.0, maxProj.z())
+				                                 + GRIPPER_HALFWIDTH*Eigen::Vector3d::UnitZ();
+			pushGripperFrames[1].translation() = pushFrame.linear() * Eigen::Vector3d(minProj.x(), (maxProj.y()+minProj.y())/2.0, maxProj.z())
+			                                     + GRIPPER_HALFWIDTH*Eigen::Vector3d::UnitZ();
+			pushGripperFrames[0].linear() = pushFrame.linear()
+			                                *(Eigen::AngleAxisd(-M_PI/2.0, Eigen::Vector3d::UnitY())
+			                                  *Eigen::AngleAxisd(M_PI/2.0, Eigen::Vector3d::UnitZ())).matrix();
+			pushGripperFrames[1].linear() = pushFrame.linear()
+			                                *(Eigen::AngleAxisd(M_PI/2.0, Eigen::Vector3d::UnitY())
+			                                  *Eigen::AngleAxisd(-M_PI/2.0, Eigen::Vector3d::UnitZ())).matrix();
+
+			// Display occluded point and push frame
+			{
+				tf::Transform t = tf::Transform::getIdentity();
+				tf::poseEigenToTF(pushGripperFrames[0], t);
+				broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), globalFrame, "push_gripper_frame_0"));
+				tf::poseEigenToTF(pushGripperFrames[1], t);
+				broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), globalFrame, "push_gripper_frame_1"));
+			}
+		}
+
+		std::sort(manipulators.begin(), manipulators.end(), [&](const Manipulator& A, const Manipulator& B)->bool
+		{
+			const robot_model::JointModelGroup* a = A.arm;
+			const robot_model::JointModelGroup* b = B.arm;
+			return (pushFrame.translation()-currentState.getFrameTransform(a->getOnlyOneEndEffectorTip()->getName()).translation()).squaredNorm()
+			       < (pushFrame.translation()-currentState.getFrameTransform(b->getOnlyOneEndEffectorTip()->getName()).translation()).squaredNorm();
 		});
 
-		for (robot_model::JointModelGroup* jmg : jmgs)
+		for (const auto& pushGripperFrame : pushGripperFrames)
 		{
-			const kinematics::KinematicsBaseConstPtr& solver = jmg->getSolverInstance();
-			assert(solver.get());
-
-			Eigen::Affine3d solverTrobot = Eigen::Affine3d::Identity();
-			currentState.setToIKSolverFrame(solverTrobot, solver);
-
-			// Convert to solver frame
-			Eigen::Isometry3d goalPose = Eigen::Isometry3d::Identity();
-			goalPose.rotate(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()));
-			goalPose.translation() = pt;
-			goalPose.translation() += 0.25 * Eigen::Vector3d::UnitZ();
-			Eigen::Affine3d pt_solver = solverTrobot * robotTworld * goalPose;
-
-			std::vector<geometry_msgs::Pose> targetPoses;
-			Eigen::Quaterniond q(pt_solver.linear());
-			geometry_msgs::Pose pose;
-			pose.position.x = pt_solver.translation().x();
-			pose.position.y = pt_solver.translation().y();
-			pose.position.z = pt_solver.translation().z();
-			pose.orientation.x = q.x();
-			pose.orientation.y = q.y();
-			pose.orientation.z = q.z();
-			pose.orientation.w = q.w();
-			targetPoses.push_back(pose);
-
-			for (size_t i = 0; i < targetPoses.size(); ++i)
+			const double stepSize = 0.015;
+			std::vector<Eigen::Affine3d> pushTrajectory;
+			for (int s = -15; s < 10; ++s)
 			{
-				const geometry_msgs::Pose& p = targetPoses[i];
-				if (!latestJoints)
-				{
-					tf::Transform t2;
-					tf::transformEigenToTF(solverTrobot, t2);
-					broadcaster->sendTransform(
-						tf::StampedTransform(t2.inverse(), ros::Time::now(), pModel->getRootLinkName(), solver->getBaseFrame()));
-				}
-
-				tf::Transform t;
-				tf::poseMsgToTF(p, t);
-				broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), solver->getBaseFrame(),
-				                                                solver->getBaseFrame() + "_goal_pose_" + std::to_string(i)));
-				ros::Duration(0.2).sleep();
+				Eigen::Affine3d step = pushGripperFrame;
+				step.translation() += s*stepSize*pushGripperFrame.linear().col(2);
+				pushTrajectory.push_back(step);
 			}
 
-
-//			solver->getTipFrame();
-
-			std::vector<double> seed(jmg->getVariableCount(), 0.0);
-//			currentState.copyJointGroupPositions(jmg, seed);
-			kinematics::KinematicsResult result;
-			kinematics::KinematicsQueryOptions options;
-			options.discretization_method = kinematics::DiscretizationMethod::ALL_DISCRETIZED;
-			solver->getPositionIK(targetPoses, seed, solutions, result, options);
-
-			// Toss out invalid options
-			if (maxStepSize < std::numeric_limits<double>::infinity())
+			for (Manipulator& manipulator : manipulators)
 			{
-				solutions.erase(std::remove_if(solutions.begin(), solutions.end(),
-				                               [&](const std::vector<double>& sln){ return SeedDistanceFunctor::distance(seed, sln) > maxStepSize;}),
-				                solutions.end());
-			}
-
-			SeedDistanceFunctor functor(seed);
-			std::priority_queue<std::vector<double>, std::vector<std::vector<double>>, SeedDistanceFunctor>
-				slnQueue(solutions.begin(), solutions.end(), functor);
-
-			while (!slnQueue.empty())
-			{
-				toState.setJointGroupPositions(jmg, slnQueue.top());
-				planning_scene::PlanningScene ps(pModel);
-
-				collision_detection::CollisionRequest collision_request;
-				collision_detection::CollisionResult collision_result;
-
-				ps.checkSelfCollision(collision_request, collision_result, toState);
-
-				if (!collision_result.collision)
+				if (manipulator.cartesianPath(pushTrajectory, robotTworld, currentState, cmd))
 				{
-					active_jmg = jmg;
-
-					const int INTERPOLATE_STEPS = 15;
-					cmd.joint_names = active_jmg->getActiveJointModelNames();
-					cmd.points.resize(INTERPOLATE_STEPS);
-
-					// Verify the "plan" is collision-free
-
-					for (int i = 0; i < INTERPOLATE_STEPS; ++i)
-					{
-						double t = i/static_cast<double>(INTERPOLATE_STEPS-1);
-						robot_state::RobotState interpState(currentState);
-						currentState.interpolate(toState, t, interpState, jmg);
-
-						ps.checkSelfCollision(collision_request, collision_result, interpState);
-						if (collision_result.collision)
-						{
-							active_jmg = nullptr;
-							break;
-						}
-
-						interpState.copyJointGroupPositions(active_jmg, cmd.points[i].positions);
-						cmd.points[i].time_from_start = ros::Duration(t*3.0);
-					}
-
-					if (active_jmg)
-					{
-						break;
-					}
+					active_jmg = manipulator.arm;
+					break;
 				}
-				slnQueue.pop();
 			}
 
 			if (active_jmg)
@@ -1071,11 +1054,13 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	dt.trajectory.push_back(drt);
 	displayPub.publish(dt);
 
-	tracker->startCapture();
+	ros::Duration(10.0).sleep();
+
+//	tracker->startCapture();
 	commandPub.publish(cmd);
-	ros::Duration(1.0).sleep();
-	tracker->stopCapture();
-	tracker->track();
+	ros::Duration(15.0).sleep();
+//	tracker->stopCapture();
+//	tracker->track();
 	cv::waitKey(10);
 
 //	for (const std::shared_ptr<octomap::OcTree>& segment : completedSegments)
@@ -1153,23 +1138,30 @@ int main(int argc, char* argv[])
 	{
 		if (jmg->isChain() && jmg->getSolverInstance())
 		{
-			jmgs.push_back(jmg);
+//			jmgs.push_back(jmg);
 			jmg->getSolverInstance()->setSearchDiscretization(0.1); // ~5 degrees
 			const auto& ees = jmg->getAttachedEndEffectorNames();
 			std::cerr << "Loaded jmg '" << jmg->getName() << "' " << jmg->getSolverInstance()->getBaseFrame() << std::endl;
 			for (const std::string& eeName : ees)
 			{
-				const robot_model::JointModelGroup* ee = pModel->getEndEffector(eeName);
+				robot_model::JointModelGroup* ee = pModel->getEndEffector(eeName);
 				ee->getJointRoots();
 				const robot_model::JointModel* rootJoint = ee->getCommonRoot();
 				rootJoint->getNonFixedDescendantJointModels();
 
-				std::cerr << "\t-" << eeName << ee->getFixedJointModels().size() << std::endl;
+				std::cerr << "\t-" << eeName << "\t" << ee->getFixedJointModels().size() << std::endl;
+				for (const std::string& eeSubName : ee->getAttachedEndEffectorNames())
+				{
+					std::cerr << "\t\t-" << eeSubName << "\t" << pModel->getEndEffector(eeSubName)->getFixedJointModels().size() << std::endl;
+
+					manipulators.emplace_back(Manipulator{pModel, jmg, ee, pModel->getEndEffector(eeSubName)->getLinkModelNames().front()});
+				}
 			}
 		}
 		else
 		{
 			std::cerr << "Did not load jmg '" << jmg->getName() << "'" << std::endl;
+			std::cerr << "\t is " << (jmg->isEndEffector()?"":"not ") << "end-effector." << std::endl;
 		}
 	}
 

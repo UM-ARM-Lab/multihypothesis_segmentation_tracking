@@ -29,8 +29,8 @@ cv::Mat ROI::getMask(const tf::StampedTransform& cameraTworld,
 
 	if (depth)
 	{
-		cv::Mat depthMask = (*depth) > DepthTraits::fromMeters(minZ)
-		                    & (*depth) < DepthTraits::fromMeters(maxZ);
+		cv::Mat depthMask = ((*depth) > DepthTraits::fromMeters(minZ))
+		                    & ((*depth) < DepthTraits::fromMeters(maxZ));
 		cv::dilate(depthMask, depthMask, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(25,25)));
 		cv::erode(depthMask, depthMask, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(25,25)));
 		cv::erode(depthMask, depthMask, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(25,25)));
