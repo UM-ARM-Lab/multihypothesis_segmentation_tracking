@@ -28,15 +28,15 @@ public:
 
 
 	bool interpolate(const robot_state::RobotState& currentState, const robot_state::RobotState& toState,
-	                 trajectory_msgs::JointTrajectory& cmd, const int INTERPOLATE_STEPS = 15);
+	                 trajectory_msgs::JointTrajectory& cmd, const int INTERPOLATE_STEPS = 15) const;
 
-	std::vector<std::vector<double>> IK(const Eigen::Affine3d& worldGoalPose, const Eigen::Affine3d& robotTworld, robot_state::RobotState& currentState);
+	std::vector<std::vector<double>> IK(const Eigen::Affine3d& worldGoalPose, const Eigen::Affine3d& robotTworld, const robot_state::RobotState& currentState) const;
 
 	bool cartesianPath(const std::vector<Eigen::Affine3d>& worldGoalPoses, const Eigen::Affine3d& robotTworld,
-	                   robot_state::RobotState& currentState, trajectory_msgs::JointTrajectory& cmd);
+	                   const robot_state::RobotState& currentState, trajectory_msgs::JointTrajectory& cmd) const;
 
 protected:
-	std::vector<double> qHome;
+	mutable std::vector<double> qHome;
 };
 
 #endif // PROJECT_MANIPULATOR_H

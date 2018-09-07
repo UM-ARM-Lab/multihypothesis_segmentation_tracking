@@ -16,6 +16,12 @@
 #include <CGAL/min_quadrilateral_2.h>
 #include <CGAL/Projection_traits_xy_3.h>
 
+#include <CGAL/Polygon_mesh_processing/orientation.h>
+//#include <CGAL/boost/graph/property_maps.h>
+#include <CGAL/boost/graph/graph_traits_Polyhedron_3.h>
+#include <CGAL/boost/graph/properties_Polyhedron_3.h>
+//#include <CGAL/Polyhedron_items_with_id_3.h>
+
 #include <octomap/octomap_types.h>
 #include <octomap/OcTree.h>
 
@@ -75,13 +81,45 @@ std::shared_ptr<shapes::Mesh> convex_hull(const PointContainerT& points)
 		std::cout << "Triangle " << *t << std::endl;
 		return std::shared_ptr<shapes::Mesh>(nullptr);
 	}
-	else if(const Polyhedron_3* poly = CGAL::object_cast<Polyhedron_3>(&obj))
+	else if(const Polyhedron_3* p = CGAL::object_cast<Polyhedron_3>(&obj))
 	{
+		Polyhedron_3 poly = *p;
 //		poly->size_of_vertices();
 //		point_set.insert(poly->points_begin(), poly->points_end());
+
+		if (!CGAL::Polygon_mesh_processing::is_outward_oriented(poly))
+		{
+//			CGAL::Polyhedron_3<K, CGAL::Polyhedron_items_with_id_3> polyGraph();
+//			typedef typename CGAL::Polygon_mesh_processing::GetFaceIndexMap<Polyhedron_3,
+//			                                 CGAL::cgal_bgl_named_params<bool, CGAL::internal_np::all_default_t>>::const_type Fid_map;
+//			CGAL::cgal_bgl_named_params<bool, CGAL::internal_np::all_default_t> np = CGAL::parameters::all_default();
+//			Fid_map fid_map = boost::choose_param(boost::get_param(np, CGAL::internal_np::face_index),
+//			                               get_const_property_map(boost::face_index, poly));
+//			std::vector<std::size_t> face_cc(CGAL::num_faces(poly), std::size_t(-1));
+//			auto temp = CGAL::make_property_map(face_cc);
+//			typedef typename boost::property_traits<Fid_map> Fid_traits;
+//			Fid_traits::key_type;
+//
+//
+//			typedef boost::graph_traits<Polyhedron_3>::face_descriptor face_descriptor;
+//
+//			auto temp2 = CGAL::bind_property_maps(fid_map, temp);
+//			std::size_t nb_cc = boost::connected_components(poly,
+//			                                                CGAL::bind_property_maps(fid_map, CGAL::make_property_map(face_cc)),
+//			                                                CGAL::parameters::face_index_map(fid_map));
+
+			// https://stackoverflow.com/questions/50199661/cgal-isotropic-remeshing-with-polyhedron-3/50207226
+			typedef boost::graph_traits<Polyhedron_3>::face_descriptor face_descriptor;
+			std::map<face_descriptor, std::size_t> fi_map;
+			std::size_t id =0;
+			BOOST_FOREACH(face_descriptor f, CGAL::faces(poly)) { fi_map[f]=id++; }
+			CGAL::Polygon_mesh_processing::orient(poly,
+			                                      CGAL::parameters::face_index_map(boost::make_assoc_property_map(fi_map))
+				                                      .outward_orientation(true));
+		}
 		std::map<Point_3, unsigned> vertex_map;
-		std::shared_ptr<shapes::Mesh> m = std::make_shared<shapes::Mesh>(poly->size_of_vertices(), poly->size_of_facets());
-		for (auto iter = poly->points_begin(); iter != poly->points_end(); ++iter)
+		std::shared_ptr<shapes::Mesh> m = std::make_shared<shapes::Mesh>(poly.size_of_vertices(), poly.size_of_facets());
+		for (auto iter = poly.points_begin(); iter != poly.points_end(); ++iter)
 		{
 			const auto& pt = *iter;
 			// Insert if missing
@@ -98,8 +136,8 @@ std::shared_ptr<shapes::Mesh> convex_hull(const PointContainerT& points)
 
 		int idx_count = 0;
 
-		for (Polyhedron_3::Facet_const_iterator facet_iter = poly->facets_begin();
-			facet_iter != poly->facets_end(); ++facet_iter)
+		for (Polyhedron_3::Facet_const_iterator facet_iter = poly.facets_begin();
+			facet_iter != poly.facets_end(); ++facet_iter)
 		{
 //			Polyhedron_3::Halfedge_const_handle h = facet.halfedge();
 			Polyhedron_3::Halfedge_around_facet_const_circulator h = facet_iter->facet_begin();//facet.facet_begin();
@@ -117,8 +155,9 @@ std::shared_ptr<shapes::Mesh> convex_hull(const PointContainerT& points)
 			if (3 != vertex_count)
 				throw std::runtime_error("Facet contains " + std::to_string(vertex_count) + " vertices.");
 		}
-		assert(idx_count == poly->size_of_facets()*3);
+		assert(idx_count == poly.size_of_facets()*3);
 
+		m->computeTriangleNormals();
 		return m;
 	}
 	else { throw std::runtime_error("Unknown object type."); }
@@ -166,7 +205,7 @@ std::shared_ptr<shapes::Mesh> prism(const PointContainerT& points)
 }
 
 template <typename PointContainerT, typename PointT>
-std::shared_ptr<shapes::Mesh> ZABB(const PointContainerT& points)
+std::shared_ptr<shapes::Mesh> ZAMBB(const PointContainerT& points)
 {
 	using Scalar = std::remove_reference_t<typename std::remove_const_t<decltype(std::declval<PointT>().x())>>;
 

@@ -43,7 +43,7 @@ double Manipulator::transitionCost(const std::vector<double>& q1, const double t
 
 
 bool Manipulator::interpolate(const robot_state::RobotState& currentState, const robot_state::RobotState& toState,
-                              trajectory_msgs::JointTrajectory& cmd, const int INTERPOLATE_STEPS)
+                              trajectory_msgs::JointTrajectory& cmd, const int INTERPOLATE_STEPS) const
 {
 	planning_scene::PlanningScene ps(pModel);
 
@@ -80,14 +80,16 @@ bool Manipulator::interpolate(const robot_state::RobotState& currentState, const
 	return true;
 }
 
-std::vector<std::vector<double>> Manipulator::IK(const Eigen::Affine3d& worldGoalPose, const Eigen::Affine3d& robotTworld, robot_state::RobotState& currentState)
+std::vector<std::vector<double>> Manipulator::IK(const Eigen::Affine3d& worldGoalPose, const Eigen::Affine3d& robotTworld, const robot_state::RobotState& currentState) const
 {
 	std::vector<std::vector<double>> solutions;
 	const kinematics::KinematicsBaseConstPtr& solver = arm->getSolverInstance();
 	assert(solver.get());
 
+	// NB: The (possibly dirty) frames in RobotState are not marked mutable, hence the const casting.
 	Eigen::Affine3d solverbaseTrobot = Eigen::Affine3d::Identity();
-	currentState.setToIKSolverFrame(solverbaseTrobot, solver);
+	const_cast<robot_state::RobotState&>(currentState).updateLinkTransforms();
+	const_cast<robot_state::RobotState&>(currentState).setToIKSolverFrame(solverbaseTrobot, solver);
 
 	Eigen::Affine3d solvertipTgoal = currentState.getFrameTransform(solver->getTipFrame()).inverse(Eigen::Isometry) * currentState.getFrameTransform(this->palmName);
 
@@ -117,7 +119,7 @@ std::vector<std::vector<double>> Manipulator::IK(const Eigen::Affine3d& worldGoa
 }
 
 bool Manipulator::cartesianPath(const std::vector<Eigen::Affine3d>& worldGoalPoses, const Eigen::Affine3d& robotTworld,
-                                robot_state::RobotState& currentState, trajectory_msgs::JointTrajectory& cmd)
+                                const robot_state::RobotState& currentState, trajectory_msgs::JointTrajectory& cmd) const
 {
 	const auto stateCostFn = [&](const std::vector<double>& q){ return this->stateCost(q); };
 	const auto transitionCostFn = [&](const std::vector<double>& q1, const double t1, const std::vector<double>& q2, const double t2){ return this->transitionCost(q1, t1, q2, t2); };
@@ -160,17 +162,17 @@ bool Manipulator::cartesianPath(const std::vector<Eigen::Affine3d>& worldGoalPos
 	startState.setToDefaultValues();
 	startState.setJointGroupPositions(arm, trellis[0][cheapestPath[0]]);
 	startState.updateCollisionBodyTransforms();
-
-	int interpSteps = 15;
-	if (!interpolate(currentState, startState, cmd, interpSteps))
-	{
-		return false;
-	}
+//
+//	int interpSteps = 15;
+//	if (!interpolate(currentState, startState, cmd, interpSteps))
+//	{
+//		return false;
+//	}
 
 	for (int i = 0; i < static_cast<int>(worldGoalPoses.size()); ++i)
 	{
 		int slnIdx = cheapestPath[i];
-		double t = cmd.points[interpSteps-1].time_from_start.toSec() + times[i];
+		double t = times[i];
 
 		trajectory_msgs::JointTrajectoryPoint jtpt;
 		jtpt.positions = trellis[i][slnIdx];

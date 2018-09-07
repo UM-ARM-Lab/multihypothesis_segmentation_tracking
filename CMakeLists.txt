@@ -27,9 +27,6 @@ find_package(catkin REQUIRED COMPONENTS
   tf_conversions
 )
 
-#set(CMAKE_BUILD_TYPE Release)
-set(CMAKE_BUILD_TYPE Debug)
-
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -47,11 +44,36 @@ include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 link_libraries(${OpenCV_LIBS})
 
 # CGAL and its components
-find_package(CGAL REQUIRED COMPONENTS
+find_package(CGAL 4.12 REQUIRED COMPONENTS
+  Polygon_mesh_processing
   QP_solver
 )
 include( ${CGAL_USE_FILE} )
+set(CGAL_DONT_OVERRIDE_CMAKE_FLAGS TRUE CACHE BOOL "Force CGAL to maintain CMAKE flags")
 
+option(ASAN "Adds flags for AddressSanitizer." OFF)
+if(ASAN)
+  set(CMAKE_BUILD_TYPE "Debug")
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
+  set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
+  set(CMAKE_CXX_FLAGS_DEBUG "-fsanitize=address -fno-omit-frame-pointer ${CMAKE_CXX_FLAGS_DEBUG}")
+  set(CMAKE_LINKER_FLAGS_DEBUG "-fsanitize=address -fno-omit-frame-pointer ${CMAKE_STATIC_LINKER_FLAGS_DEBUG}")
+endif()
+
+option(CLION "Adds flags for debugging in clion." OFF)
+if(CLION)
+  set(CMAKE_BUILD_TYPE "Debug")
+  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
+  set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
+endif()
+set(CMAKE_BUILD_TYPE RelWithDebInfo)
+
+macro(use_strict_compile_flags)
+  set(BUILD_FLAGS "-Wshadow -Wall -Wextra -Wpedantic")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${BUILD_FLAGS}")
+endmacro()
+
+#use_strict_compile_flags()
 
 macro(use_openmp)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
@@ -190,10 +212,11 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/image_utils.cpp
   src/${PROJECT_NAME}/segmentation_utils.cpp
   src/${PROJECT_NAME}/shape_utils.cpp
-  src/${PROJECT_NAME}/MotionModel.cpp
-  src/${PROJECT_NAME}/Tracker.cpp
-  src/${PROJECT_NAME}/ROI.cpp
   src/${PROJECT_NAME}/Manipulator.cpp
+  src/${PROJECT_NAME}/MotionModel.cpp
+  src/${PROJECT_NAME}/MotionPlanner.cpp
+  src/${PROJECT_NAME}/ROI.cpp
+  src/${PROJECT_NAME}/Tracker.cpp
 )
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}

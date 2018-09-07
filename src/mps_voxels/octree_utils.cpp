@@ -199,6 +199,8 @@ void VoxelCompleter::completeShape(
 				{
 					Eigen::Vector3f queryPoint = worldTcamera*Eigen::Vector3f(x, y, z);
 
+					if (queryPoint.z() < 0) { continue; }
+
 					for (auto& tree : treesToUpdate)
 					{
 						om::OcTreeNode* node = tree->search(queryPoint.x(), queryPoint.y(), queryPoint.z());

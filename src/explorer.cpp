@@ -4,6 +4,7 @@
 
 #include "mps_voxels/Manipulator.h"
 #include "mps_voxels/MotionModel.h"
+#include "mps_voxels/MotionPlanner.h"
 #include "mps_voxels/Tracker.h"
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
@@ -35,6 +36,9 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
 
+#include <control_msgs/FollowJointTrajectoryAction.h>
+#include <actionlib/client/simple_action_client.h>
+
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
 #include <tf_conversions/tf_eigen.h>
@@ -48,7 +52,6 @@
 #include <queue>
 
 
-//#include <octomap_server/OctomapServer.h>
 #include <octomap/Pointcloud.h>
 
 template <typename Point>
@@ -59,6 +62,49 @@ void setBBox(const Point& min, const Point& max, octomap::OcTree* ot)
 	ot->setBBXMin(om_min);
 	ot->setBBXMax(om_max);
 	ot->useBBXLimit(true);
+}
+
+/**
+ * @brief Takes a point cloud in camera coordinates (z=depth), a point of view, and incorporates it into a tree map
+ * @param cloud
+ * @param worldTcamera
+ * @param tree
+ */
+void insertCloudInOctree(const pcl::PointCloud<PointT>::Ptr& cloud, const Eigen::Affine3d& worldTcamera, octomap::OcTree* tree)
+{
+	if (cloud->empty()) { throw std::runtime_error("Trying to insert empty cloud!"); }
+
+	pcl::PointCloud<PointT>::Ptr transformed_cloud (new pcl::PointCloud<PointT>());
+	pcl::transformPointCloud (*cloud, *transformed_cloud, worldTcamera);
+
+	octomap::point3d min = tree->getBBXMin(), max = tree->getBBXMax();
+	for (int i = 0; i < 3; ++i)
+	{
+		min(i) = std::min(min(i), (float)worldTcamera.translation()[i]);
+		max(i) = std::max(max(i), (float)worldTcamera.translation()[i]);
+	}
+	setBBox(min, max, tree);
+
+	octomap::Pointcloud pc;
+	pc.reserve(transformed_cloud->size());
+	for (const PointT& pt : *transformed_cloud)
+	{
+		pc.push_back(pt.x, pt.y, pt.z);
+		assert(pt.x > min(0)); assert(pt.x < max(0));
+		assert(pt.y > min(1)); assert(pt.y < max(1));
+		assert(pt.z > min(2)); assert(pt.z < max(2));
+	}
+	assert(pc.size() == cloud->size());
+	octomap::point3d origin((float)worldTcamera.translation().x(),
+	                        (float)worldTcamera.translation().y(),
+	                        (float)worldTcamera.translation().z());
+//	m_octree->insertPointCloud(pc, origin, -1, true, false);
+//	m_octree->insertPointCloudRays(pc, origin, -1, true);
+
+	tree->insertPointCloud(pc, origin, -1, false, true);
+	tree->updateInnerOccupancy();
+
+	assert(tree->size() > 0);
 }
 
 class LocalOctreeServer// : public octomap_server::OctomapServer
@@ -92,30 +138,7 @@ public:
 
 	void insertCloud(const pcl::PointCloud<PointT>::Ptr& cloud, const Eigen::Affine3d& worldTcamera)
 	{
-		pcl::PointCloud<PointT>::Ptr transformed_cloud (new pcl::PointCloud<PointT>());
-		pcl::transformPointCloud (*cloud, *transformed_cloud, worldTcamera);
-
-		octomap::point3d min = m_octree->getBBXMin(), max = m_octree->getBBXMax();
-		for (int i = 0; i < 3; ++i)
-		{
-			min(i) = std::min(min(i), (float)worldTcamera.translation()[i]);
-			max(i) = std::max(max(i), (float)worldTcamera.translation()[i]);
-		}
-		setBBox(min, max, m_octree.get());
-
-		octomap::Pointcloud pc;
-		pc.reserve(transformed_cloud->size());
-		for (const PointT& pt : *transformed_cloud)
-		{
-			pc.push_back(pt.x, pt.y, pt.z);
-		}
-		octomap::point3d origin((float)worldTcamera.translation().x(),
-		                        (float)worldTcamera.translation().y(),
-		                        (float)worldTcamera.translation().z());
-//		m_octree->insertPointCloud(pc, origin, -1, true, false);
-//		m_octree->insertPointCloudRays(pc, origin, -1, true);
-		m_octree->insertPointCloud(pc, origin, -1, false, true);
-		m_octree->updateInnerOccupancy();
+		insertCloudInOctree(cloud, worldTcamera, m_octree.get());
 	}
 
 	const std::string& getWorldFrame() const { return this->m_worldFrameId; }
@@ -268,52 +291,34 @@ std::shared_ptr<shapes::Mesh> approximateShape(const octomap::OcTree* tree)
 	// Convex hull
 	octomap::point3d_collection pts = getPoints(tree);
 //	std::shared_ptr<shapes::Mesh> hull = convex_hull(pts);
-
 	std::shared_ptr<shapes::Mesh> hull = prism(pts);
+//	std::shared_ptr<shapes::Mesh> hull = ZAMBB(pts);
 	return hull;
-
-//	octomap::point3d_collection box;
-//	ZABB(pts, box);
 }
 
+using TrajectoryClient = actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>;
 
 std::shared_ptr<LocalOctreeServer> mapServer;
 //std::shared_ptr<OctreeRetriever> mapClient;
 std::shared_ptr<VoxelCompleter> completionClient;
 std::shared_ptr<RGBDSegmenter> segmentationClient;
+std::shared_ptr<TrajectoryClient> trajectoryClient;
 std::unique_ptr<Tracker> tracker;
 ros::Publisher octreePub;
 ros::Publisher targetPub;
-ros::Publisher commandPub;
+//ros::Publisher commandPub;
 ros::Publisher displayPub;
 std::shared_ptr<tf::TransformListener> listener;
 std::shared_ptr<tf::TransformBroadcaster> broadcaster;
 robot_model::RobotModelPtr pModel;
-std::vector<Manipulator> manipulators;
+std::vector<std::shared_ptr<Manipulator>> manipulators;
+std::shared_ptr<MotionPlanner> planner;
 sensor_msgs::JointState::ConstPtr latestJoints;
 std::map<std::string, std::unique_ptr<MotionModel>> motionModels;
 
 int octomapBurnInCounter = 0;
 const int OCTOMAP_BURN_IN = 2; /// Number of point clouds to process before using octree
 const double maxStepSize = std::numeric_limits<double>::infinity();
-
-void publishOctree(octomap::OcTree* tree, const std::string& globalFrame, const std::string& ns = "")
-{
-	bool publishMarkerArray = (octreePub.getNumSubscribers()>0);
-
-	if (publishMarkerArray)
-	{
-		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(tree, globalFrame);
-		if (!ns.empty())
-		{
-			for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
-			{
-				m.ns = ns;
-			}
-		}
-		octreePub.publish(occupiedNodesVis);
-	}
-}
 
 void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 {
@@ -336,8 +341,9 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	Eigen::Vector4f maxExtent(0.4f, 0.6f, 0.5f, 1);
 	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.05f, 1);
-
 	setBBox(minExtent, maxExtent, mapServer->getOctree());
+	planner->minExtent = minExtent.head<3>().cast<double>();
+	planner->maxExtent = maxExtent.head<3>().cast<double>();
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
@@ -667,22 +673,29 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	for (const pcl::PointCloud<PointT>::Ptr& segment_cloud : segments)
 	{
 		if (!ros::ok()) { break; }
+		assert(!segment_cloud->empty());
 
 		// Compute bounding box
 		Eigen::Vector3f min, max;
 		getBoundingCube(*segment_cloud, min, max);
 
 		std::shared_ptr<octomap::OcTree> subtree(octree->create());
-		for (const PointT& pt : *segment_cloud)
-		{
-			Eigen::Vector3f worldPt = worldTcamera.cast<float>()*pt.getVector3fMap();
-			assert(worldPt.cwiseMax(maxExtent.head<3>())==maxExtent.head<3>());
-			assert(worldPt.cwiseMin(minExtent.head<3>())==minExtent.head<3>());
-
-			octomap::OcTreeNode* node = subtree->setNodeValue(worldPt.x(), worldPt.y(), worldPt.z(),
-			                                                  std::numeric_limits<float>::infinity(), false);
-			assert(node);
-		}
+		subtree->setProbMiss(0.05);
+		subtree->setProbHit(0.95);
+		setBBox(minExtent, maxExtent, subtree.get());
+		insertCloudInOctree(segment_cloud, worldTcamera, subtree.get());
+		std::cerr << subtree->size() << std::endl;
+//		for (const PointT& pt : *segment_cloud)
+//		{
+//			Eigen::Vector3f worldPt = worldTcamera.cast<float>()*pt.getVector3fMap();
+//			assert(worldPt.cwiseMax(maxExtent.head<3>())==maxExtent.head<3>());
+//			assert(worldPt.cwiseMin(minExtent.head<3>())==minExtent.head<3>());
+//
+//			octomap::OcTreeNode* node = subtree->setNodeValue(worldPt.x(), worldPt.y(), worldPt.z(),
+//			                                                  std::numeric_limits<float>::infinity(), false);
+//			subtree->insertPointCloud()
+//			assert(node);
+//		}
 
 		if (completionClient->completionClient.exists())
 		{
@@ -897,6 +910,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	listener->lookupTransform(robotFrame, globalFrame, ros::Time(0), robotFrameInGlobalCoordinates);
 	Eigen::Isometry3d robotTworld;
 	tf::transformTFToEigen(robotFrameInGlobalCoordinates, robotTworld);
+	planner->robotTworld = robotTworld;
 
 	robot_model::JointModelGroup* active_jmg = nullptr;
 
@@ -958,7 +972,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		const auto& iter = coordToSegment.find(collision);
 		if (iter == coordToSegment.end()) { continue; }
 		int pushSegmentID = iter->second;
-
+/*
 		std::vector<Eigen::Affine3d> pushGripperFrames(2, Eigen::Affine3d::Identity());
 		{
 			octomap::point3d_collection segmentPoints = getPoints(completedSegments[pushSegmentID].get());
@@ -997,10 +1011,10 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 			}
 		}
 
-		std::sort(manipulators.begin(), manipulators.end(), [&](const Manipulator& A, const Manipulator& B)->bool
+		std::sort(manipulators.begin(), manipulators.end(), [&](const std::shared_ptr<Manipulator>& A, const std::shared_ptr<Manipulator>& B)->bool
 		{
-			const robot_model::JointModelGroup* a = A.arm;
-			const robot_model::JointModelGroup* b = B.arm;
+			const robot_model::JointModelGroup* a = A->arm;
+			const robot_model::JointModelGroup* b = B->arm;
 			return (pushFrame.translation()-currentState.getFrameTransform(a->getOnlyOneEndEffectorTip()->getName()).translation()).squaredNorm()
 			       < (pushFrame.translation()-currentState.getFrameTransform(b->getOnlyOneEndEffectorTip()->getName()).translation()).squaredNorm();
 		});
@@ -1016,11 +1030,11 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 				pushTrajectory.push_back(step);
 			}
 
-			for (Manipulator& manipulator : manipulators)
+			for (auto& manipulator : manipulators)
 			{
-				if (manipulator.cartesianPath(pushTrajectory, robotTworld, currentState, cmd))
+				if (manipulator->cartesianPath(pushTrajectory, robotTworld, currentState, cmd))
 				{
-					active_jmg = manipulator.arm;
+					active_jmg = manipulator->arm;
 					break;
 				}
 			}
@@ -1030,14 +1044,15 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 				break;
 			}
 		}
-
-		if (active_jmg)
+*/
+		cmd = planner->planDrag(completedSegments[pushSegmentID].get(), currentState, pushFrame);
+		if (!cmd.points.empty())
 		{
 			break;
 		}
 	}
 
-	if (!active_jmg)
+	if (cmd.points.empty())
 	{
 		ROS_WARN("Unable to find a solution to any occluded point from any arm.");
 		return;
@@ -1054,13 +1069,23 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	dt.trajectory.push_back(drt);
 	displayPub.publish(dt);
 
-	ros::Duration(10.0).sleep();
+	cv::waitKey(10);
 
-//	tracker->startCapture();
-	commandPub.publish(cmd);
-	ros::Duration(15.0).sleep();
-//	tracker->stopCapture();
-//	tracker->track();
+	if (trajectoryClient->isServerConnected())
+	{
+		// Allow some visualization time
+		ros::Duration(10.0).sleep();
+
+		control_msgs::FollowJointTrajectoryGoal goal;
+		goal.trajectory = cmd;
+
+		tracker->startCapture();
+		trajectoryClient->sendGoalAndWait(goal, ros::Duration(10.0) + cmd.points.back().time_from_start);
+		tracker->stopCapture();
+		tracker->track();
+	}
+
+
 	cv::waitKey(10);
 
 //	for (const std::shared_ptr<octomap::OcTree>& segment : completedSegments)
@@ -1111,7 +1136,7 @@ int main(int argc, char* argv[])
 
 	octreePub = nh.advertise<visualization_msgs::MarkerArray>("occluded_points", 1, true);
 	targetPub = nh.advertise<geometry_msgs::Point>("target_point", 1, false);
-	commandPub = nh.advertise<trajectory_msgs::JointTrajectory>("/joint_trajectory", 1, false);
+//	commandPub = nh.advertise<trajectory_msgs::JointTrajectory>("/joint_trajectory", 1, false);
 	displayPub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, false);
 	auto vizPub = nh.advertise<visualization_msgs::MarkerArray>("roi", 10, true);
 	mapServer = std::make_shared<LocalOctreeServer>(pnh);
@@ -1119,6 +1144,11 @@ int main(int argc, char* argv[])
 //	mapClient = std::make_shared<OctreeRetriever>(nh);
 	completionClient = std::make_shared<VoxelCompleter>(nh);
 	segmentationClient = std::make_shared<RGBDSegmenter>(nh);
+	trajectoryClient = std::make_shared<TrajectoryClient>("follow_joint_trajectory", true);
+	if (!trajectoryClient->waitForServer(ros::Duration(10.0)))
+	{
+		ROS_WARN("Trajectory server not connected.");
+	}
 
 	std::shared_ptr<robot_model_loader::RobotModelLoader> mpLoader
 		= std::make_shared<robot_model_loader::RobotModelLoader>();
@@ -1154,7 +1184,7 @@ int main(int argc, char* argv[])
 				{
 					std::cerr << "\t\t-" << eeSubName << "\t" << pModel->getEndEffector(eeSubName)->getFixedJointModels().size() << std::endl;
 
-					manipulators.emplace_back(Manipulator{pModel, jmg, ee, pModel->getEndEffector(eeSubName)->getLinkModelNames().front()});
+					manipulators.emplace_back(std::make_shared<Manipulator>(pModel, jmg, ee, pModel->getEndEffector(eeSubName)->getLinkModelNames().front()));
 				}
 			}
 		}
@@ -1164,6 +1194,12 @@ int main(int argc, char* argv[])
 			std::cerr << "\t is " << (jmg->isEndEffector()?"":"not ") << "end-effector." << std::endl;
 		}
 	}
+
+	planner = std::make_shared<MotionPlanner>();
+	planner->globalFrame = mapServer->getWorldFrame();
+	planner->visualize = true;
+	planner->manipulators = manipulators;
+	planner->broadcaster = broadcaster;
 
 	std::string topic_prefix = "/kinect2_victor_head/qhd";
 //	ros::Subscriber camInfoSub = nh.subscribe("kinect2_victor_head/qhd/camera_info", 1, camera_cb);
