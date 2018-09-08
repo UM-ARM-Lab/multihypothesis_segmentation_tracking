@@ -2,16 +2,21 @@
 // Created by arprice on 9/3/18.
 //
 
-#ifndef PROJECT_MANIPULATOR_H
-#define PROJECT_MANIPULATOR_H
+#ifndef MPS_MANIPULATOR_H
+#define MPS_MANIPULATOR_H
 
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/robot_state/robot_state.h>
 #include <moveit/robot_state/conversions.h>
 
+#include <Eigen/StdVector>
+
 class Manipulator
 {
 public:
+	using Pose = Eigen::Affine3d;
+	using PoseSequence = std::vector<Pose, Eigen::aligned_allocator<Pose>>;
+
 	robot_model::RobotModelPtr pModel;
 	robot_model::JointModelGroup* arm;
 	robot_model::JointModelGroup* gripper;
@@ -32,11 +37,11 @@ public:
 
 	std::vector<std::vector<double>> IK(const Eigen::Affine3d& worldGoalPose, const Eigen::Affine3d& robotTworld, const robot_state::RobotState& currentState) const;
 
-	bool cartesianPath(const std::vector<Eigen::Affine3d>& worldGoalPoses, const Eigen::Affine3d& robotTworld,
+	bool cartesianPath(const PoseSequence& worldGoalPoses, const Eigen::Affine3d& robotTworld,
 	                   const robot_state::RobotState& currentState, trajectory_msgs::JointTrajectory& cmd) const;
 
 protected:
 	mutable std::vector<double> qHome;
 };
 
-#endif // PROJECT_MANIPULATOR_H
+#endif // MPS_MANIPULATOR_H

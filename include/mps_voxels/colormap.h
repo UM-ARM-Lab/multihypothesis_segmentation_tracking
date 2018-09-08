@@ -9,8 +9,8 @@
 //}
 //
 
-#ifndef PROJECT_COLORMAP_H
-#define PROJECT_COLORMAP_H
+#ifndef MPS_COLORMAP_H
+#define MPS_COLORMAP_H
 
 namespace igl
 {
@@ -1334,4 +1334,4 @@ inline void colormap(
 	b = std::max(zero, std::min(one, (one - t) * _b[0] + t * _b[1]));
 }
 
-#endif // PROJECT_COLORMAP_H
+#endif // MPS_COLORMAP_H

@@ -2,8 +2,8 @@
 // Created by arprice on 8/31/18.
 //
 
-#ifndef PROJECT_SHAPE_UTILS_IMPL_H
-#define PROJECT_SHAPE_UTILS_IMPL_H
+#ifndef MPS_SHAPE_UTILS_IMPL_H
+#define MPS_SHAPE_UTILS_IMPL_H
 
 #include "mps_voxels/shape_utils.h"
 
@@ -248,4 +248,4 @@ std::shared_ptr<shapes::Mesh> ZAMBB(const PointContainerT& points)
 	return convex_hull(supports);
 }
 
-#endif //PROJECT_SHAPE_UTILS_IMPL_H
+#endif //MPS_SHAPE_UTILS_IMPL_H

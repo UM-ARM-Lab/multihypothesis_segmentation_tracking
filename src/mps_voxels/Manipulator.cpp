@@ -118,7 +118,7 @@ std::vector<std::vector<double>> Manipulator::IK(const Eigen::Affine3d& worldGoa
 	return solutions;
 }
 
-bool Manipulator::cartesianPath(const std::vector<Eigen::Affine3d>& worldGoalPoses, const Eigen::Affine3d& robotTworld,
+bool Manipulator::cartesianPath(const PoseSequence& worldGoalPoses, const Eigen::Affine3d& robotTworld,
                                 const robot_state::RobotState& currentState, trajectory_msgs::JointTrajectory& cmd) const
 {
 	const auto stateCostFn = [&](const std::vector<double>& q){ return this->stateCost(q); };

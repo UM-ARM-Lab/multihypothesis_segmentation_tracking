@@ -163,8 +163,8 @@ MotionModel::MotionParameters estimateRigidTransform3D(const Eigen::Matrix3Xd& A
 	Eigen::Vector3d centroidB = B.rowwise().mean();
 
 	// Center the point sets
-	Eigen::Matrix3Xd AA = A - centroidA.replicate(1, A.cols());
-	Eigen::Matrix3Xd BB = B - centroidB.replicate(1, B.cols());
+	Eigen::Matrix3Xd AA = A.colwise() - centroidA;//.replicate(1, A.cols());
+	Eigen::Matrix3Xd BB = B.colwise() - centroidB;//.replicate(1, B.cols());
 
 	Eigen::Matrix3d H = AA * BB.transpose();
 	Eigen::JacobiSVD<Eigen::Matrix3d> svd(H, Eigen::ComputeFullU | Eigen::ComputeFullV);
@@ -181,11 +181,11 @@ MotionModel::MotionParameters estimateRigidTransform3D(const Eigen::Matrix3Xd& A
 	return theta;
 }
 
-bool loadLinkMotionModels(const robot_model::RobotModel* pModel, std::map<std::string, std::unique_ptr<MotionModel>>& motionModels)
+bool loadLinkMotionModels(const robot_model::RobotModel* pModel, std::map<std::string, std::shared_ptr<MotionModel>>& motionModels)
 {
 	for (const robot_model::LinkModel* link : pModel->getLinkModels())
 	{
-		std::unique_ptr<RigidMotionModel> rmm = std::make_unique<RigidMotionModel>();
+		std::shared_ptr<RigidMotionModel> rmm = std::make_shared<RigidMotionModel>();
 
 		// Don't add no-geometry frames
 		if (link->getShapes().empty()) { continue; }

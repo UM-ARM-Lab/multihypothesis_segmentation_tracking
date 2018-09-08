@@ -214,9 +214,11 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/shape_utils.cpp
   src/${PROJECT_NAME}/Manipulator.cpp
   src/${PROJECT_NAME}/MotionModel.cpp
-  src/${PROJECT_NAME}/MotionPlanner.cpp
   src/${PROJECT_NAME}/ROI.cpp
   src/${PROJECT_NAME}/Tracker.cpp
+  src/${PROJECT_NAME}/planning/State.cpp
+  src/${PROJECT_NAME}/planning/Action.cpp
+  src/${PROJECT_NAME}/planning/MotionPlanner.cpp
 )
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}

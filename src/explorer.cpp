@@ -4,13 +4,13 @@
 
 #include "mps_voxels/Manipulator.h"
 #include "mps_voxels/MotionModel.h"
-#include "mps_voxels/MotionPlanner.h"
 #include "mps_voxels/Tracker.h"
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/shape_utils.h"
+#include "mps_voxels/planning/MotionPlanner.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
@@ -116,7 +116,7 @@ public:
 	std::string m_worldFrameId; // the map frame
 	std::unique_ptr<OcTreeT> m_octree;
 
-	LocalOctreeServer(ros::NodeHandle private_nh_ = ros::NodeHandle("~"))
+	LocalOctreeServer(const ros::NodeHandle& private_nh_ = ros::NodeHandle("~"))
 		: m_res(0.05),
 		  m_worldFrameId("/map"),
 		  m_octree(nullptr)
@@ -144,32 +144,6 @@ public:
 	const std::string& getWorldFrame() const { return this->m_worldFrameId; }
 	const OcTreeT* getOctree() const { return this->m_octree.get(); }
 	OcTreeT* getOctree() { return this->m_octree.get(); }
-};
-
-template<int DIM,
-	typename PointT=Eigen::Matrix<double, DIM, 1>>
-struct vector_less_than
-{
-//	bool operator()(const PointT& a,
-//	                const PointT& b) const
-//	{
-//		for(int i=0; i<DIM; ++i)
-//		{
-//			if(a[i]<b[i]) return true;
-//			if(a[i]>b[i]) return false;
-//		}
-//		return false;
-//	}
-	bool operator()(const PointT& a,
-	                const PointT& b) const
-	{
-		for(int i=0; i<DIM; ++i)
-		{
-			if(a(i)<b(i)) return true;
-			if(a(i)>b(i)) return false;
-		}
-		return false;
-	}
 };
 
 
@@ -312,9 +286,10 @@ std::shared_ptr<tf::TransformListener> listener;
 std::shared_ptr<tf::TransformBroadcaster> broadcaster;
 robot_model::RobotModelPtr pModel;
 std::vector<std::shared_ptr<Manipulator>> manipulators;
+std::unique_ptr<PlanningEnvironment> planningEnvironment;
 std::shared_ptr<MotionPlanner> planner;
 sensor_msgs::JointState::ConstPtr latestJoints;
-std::map<std::string, std::unique_ptr<MotionModel>> motionModels;
+std::map<std::string, std::shared_ptr<MotionModel>> motionModels;
 
 int octomapBurnInCounter = 0;
 const int OCTOMAP_BURN_IN = 2; /// Number of point clouds to process before using octree
@@ -342,8 +317,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	Eigen::Vector4f maxExtent(0.4f, 0.6f, 0.5f, 1);
 	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.05f, 1);
 	setBBox(minExtent, maxExtent, mapServer->getOctree());
-	planner->minExtent = minExtent.head<3>().cast<double>();
-	planner->maxExtent = maxExtent.head<3>().cast<double>();
+	planningEnvironment->minExtent = minExtent.head<3>().cast<double>();
+	planningEnvironment->maxExtent = maxExtent.head<3>().cast<double>();
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
@@ -357,6 +332,9 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	octomap::OcTree* octree = mapServer->getOctree();
 	const std::string globalFrame = mapServer->getWorldFrame();
 	const std::string cameraFrame = cam_msg->header.frame_id;
+	planningEnvironment->worldFrame = globalFrame;
+	planningEnvironment->cameraFrame = cameraFrame;
+	planningEnvironment->sceneOctree = octree;
 //	std::tie(octree, globalFrame) = mapClient->getOctree();
 	if (!octree)
 	{
@@ -370,6 +348,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	Eigen::Affine3d cameraTtable, worldTcamera;
 	tf::transformTFToEigen(cameraFrameInTableCoordinates, cameraTtable);
 	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
+	planningEnvironment->worldTcamera = worldTcamera;
 
 	cv_bridge::CvImagePtr cv_rgb_ptr;
 	try
@@ -669,7 +648,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-	std::vector<std::shared_ptr<octomap::OcTree>> completedSegments;
+	std::vector<std::shared_ptr<octomap::OcTree>>& completedSegments = planningEnvironment->completedSegments;
+	completedSegments.clear();
 	for (const pcl::PointCloud<PointT>::Ptr& segment_cloud : segments)
 	{
 		if (!ros::ok()) { break; }
@@ -678,6 +658,10 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		// Compute bounding box
 		Eigen::Vector3f min, max;
 		getBoundingCube(*segment_cloud, min, max);
+		double edge_length = max.x()-min.x(); // all edge of cube are same size
+		double inflation = edge_length/10.0;
+		min -= inflation * Eigen::Vector3f::Ones();
+		max += inflation * Eigen::Vector3f::Ones();
 
 		std::shared_ptr<octomap::OcTree> subtree(octree->create());
 		subtree->setProbMiss(0.05);
@@ -760,14 +744,10 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		getAABB(*transformed_cloud, min, max);
 		minExtent.head<3>() = min; maxExtent.head<3>() = max;
 	}
-	octomap::point3d_collection occluded_pts;
+	octomap::point3d_collection& occluded_pts = planningEnvironment->occluded_pts;
 	std::shared_ptr<octomap::OcTree> occlusionTree;
 	std::tie(occluded_pts, occlusionTree) = getOcclusionsInFOV(octree, cameraModel, cameraTtable, minExtent.head<3>(), maxExtent.head<3>());
-//	octomap::point3d cameraOrigin(worldTcamera.translation().x(), worldTcamera.translation().y(), worldTcamera.translation().z());
-//	octomap::point3d collision;
-//	bool collided = octree->castRay(cameraOrigin, -cameraOrigin, collision, false);
-//	assert(collided);
-//	collided = octree->castRay(cameraOrigin, octomap::point3d(0, 0, 0.25)-cameraOrigin, collision, false);
+//	planningEnvironment->occluded_pts = occluded_pts;
 
 	if (occluded_pts.empty())
 	{
@@ -855,7 +835,9 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 			occludedBySegmentCount[iter->second]++;
 		}
 	}
-	int mostOccludingSegmentIdx = std::distance(occludedBySegmentCount.begin(),
+	planningEnvironment->coordToObject = coordToSegment;
+
+	int mostOccludingSegmentIdx = (int)std::distance(occludedBySegmentCount.begin(),
 		std::max_element(occludedBySegmentCount.begin(), occludedBySegmentCount.end()));
 	visualization_msgs::MarkerArray objToMoveVis = visualizeOctree(completedSegments[mostOccludingSegmentIdx].get(), globalFrame);
 	for (visualization_msgs::Marker& m : objToMoveVis.markers)
@@ -893,13 +875,6 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	assert(!manipulators.empty());
 
-//	for (const robot_model::JointModelGroup* ee : pModel->getEndEffectors())
-//	{
-//		assert(ee->isEndEffector());
-//		ee->getEndEffectorParentGroup();
-//		ee->getEndEffectorName();
-//	}
-
 	const std::string& robotFrame = pModel->getRootLinkName();
 	tf::StampedTransform robotFrameInGlobalCoordinates;
 	if (!listener->waitForTransform(robotFrame, globalFrame, ros::Time(0), ros::Duration(1.0)))
@@ -910,145 +885,34 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	listener->lookupTransform(robotFrame, globalFrame, ros::Time(0), robotFrameInGlobalCoordinates);
 	Eigen::Isometry3d robotTworld;
 	tf::transformTFToEigen(robotFrameInGlobalCoordinates, robotTworld);
-	planner->robotTworld = robotTworld;
+	planningEnvironment->worldTrobot = robotTworld.inverse(Eigen::Isometry);
 
-	robot_model::JointModelGroup* active_jmg = nullptr;
-
-	auto& push_points_world = occluded_pts;
-//	octomap::point3d_collection push_points_world;
-//
-////	for (const std::shared_ptr<octomap::OcTree>& ot : completedSegments)
-//	{
-//		auto& ot = completedSegments[mostOccludingSegmentIdx];
-//		{
-//			for (octomap::OcTree::iterator it = ot->begin(ot->getTreeDepth()),
-//				     end = ot->end(); it!=end; ++it)
-//			{
-//				if (ot->isNodeOccupied(*it))
-//				{
-//					push_points_world.emplace_back(
-//						octomath::Vector3{(float) it.getX(), (float) it.getY(), (float) it.getZ()});
-//				}
-//			}
-//		}
-//	}
-	std::shuffle(push_points_world.begin(), push_points_world.end(), g);
 
 	trajectory_msgs::JointTrajectory cmd;
 	cmd.header.frame_id = pModel->getRootLinkName();
-	std::vector<std::vector<double>> solutions;
-	for (const auto& pt_world : push_points_world)
+
+
+	using RankedPose = std::pair<double, std::shared_ptr<Motion>>;
+	auto comp = [](const RankedPose& a, const RankedPose& b ) { return a.first < b.first; };
+	std::priority_queue<RankedPose, std::vector<RankedPose>, decltype(comp)> motionQueue(comp);
+	for (int i = 0; i < 10; ++i)
 	{
-		// Get a randomly selected shadowed point
-		if (pt_world.z() < 0.05) { continue; }
-		Eigen::Vector3d pt(pt_world.x(), pt_world.y(), pt_world.z()); // Eigen::Map<const Eigen::Vector3f> pt(&pt_world(0));
-
-
-		octomap::point3d cameraOrigin((float)worldTcamera.translation().x(), (float)worldTcamera.translation().y(), (float)worldTcamera.translation().z());
-		octomath::Vector3 ray = pt_world-cameraOrigin;
-		octomap::point3d collision;
-		bool hit = octree->castRay(cameraOrigin, ray, collision, true);
-		assert(hit);
-		collision = octree->keyToCoord(octree->coordToKey(collision)); // regularize
-
-		Eigen::Vector3d gHat = -Eigen::Vector3d::UnitZ();
-		Eigen::Vector3d pHat = -Eigen::Map<const Eigen::Vector3f>(&ray(0)).cast<double>().cross(gHat).normalized();
-		Eigen::Vector3d nHat = gHat.cross(pHat).normalized();
-
-		Eigen::Affine3d pushFrame;
-		pushFrame.linear() << pHat.normalized(), nHat.normalized(), gHat.normalized();
-		pushFrame.translation() = Eigen::Map<const Eigen::Vector3f>(&collision(0)).cast<double>();
-		// Display occluded point and push frame
+		std::shared_ptr<Motion> motion = planner->sampleSlide(currentState);
+		if (motion)
 		{
-			tf::Transform t = tf::Transform::getIdentity();
-			Eigen::Vector3d pt_camera = cameraTtable * pt;
-			t.setOrigin({pt_camera.x(), pt_camera.y(), pt_camera.z()});
-			broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), cameraFrame, "occluded_point"));
-
-			tf::poseEigenToTF(pushFrame, t);
-			broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), globalFrame, "push_frame"));
+			motionQueue.push({planner->reward(motion.get()), motion});
+			ros::Duration(0.2).sleep();
 		}
-
-		const auto& iter = coordToSegment.find(collision);
-		if (iter == coordToSegment.end()) { continue; }
-		int pushSegmentID = iter->second;
-/*
-		std::vector<Eigen::Affine3d> pushGripperFrames(2, Eigen::Affine3d::Identity());
+	}
+	std::shared_ptr<Motion> motion = motionQueue.top().second;
+	if (motion && motion->action && std::dynamic_pointer_cast<JointTrajectoryAction>(motion->action))
+	{
+		cmd = std::dynamic_pointer_cast<JointTrajectoryAction>(motion->action)->cmd;
+		int i = 0;
+		for (const auto& interpPose : std::dynamic_pointer_cast<JointTrajectoryAction>(motion->action)->palm_trajectory)
 		{
-			octomap::point3d_collection segmentPoints = getPoints(completedSegments[pushSegmentID].get());
-
-			Eigen::Vector3d minProj = Eigen::Vector3d::Ones() * std::numeric_limits<float>::max();
-			Eigen::Vector3d maxProj = Eigen::Vector3d::Ones() * std::numeric_limits<float>::lowest();
-			for (const auto& segPt : segmentPoints)
-			{
-				Eigen::Vector3d pushFramePt = pushFrame.linear().transpose() * Eigen::Map<const Eigen::Vector3f>(&segPt(0)).cast<double>();
-				for (int d=0; d < 3; ++d)
-				{
-					minProj[d] = std::min(minProj[d], pushFramePt[d]);
-					maxProj[d] = std::max(maxProj[d], pushFramePt[d]);
-				}
-			}
-
-			const double GRIPPER_HALFWIDTH = 5.0*2.54/100.0;
-			pushGripperFrames[0].translation() = pushFrame.linear() * Eigen::Vector3d(maxProj.x(), (maxProj.y()+minProj.y())/2.0, maxProj.z())
-				                                 + GRIPPER_HALFWIDTH*Eigen::Vector3d::UnitZ();
-			pushGripperFrames[1].translation() = pushFrame.linear() * Eigen::Vector3d(minProj.x(), (maxProj.y()+minProj.y())/2.0, maxProj.z())
-			                                     + GRIPPER_HALFWIDTH*Eigen::Vector3d::UnitZ();
-			pushGripperFrames[0].linear() = pushFrame.linear()
-			                                *(Eigen::AngleAxisd(-M_PI/2.0, Eigen::Vector3d::UnitY())
-			                                  *Eigen::AngleAxisd(M_PI/2.0, Eigen::Vector3d::UnitZ())).matrix();
-			pushGripperFrames[1].linear() = pushFrame.linear()
-			                                *(Eigen::AngleAxisd(M_PI/2.0, Eigen::Vector3d::UnitY())
-			                                  *Eigen::AngleAxisd(-M_PI/2.0, Eigen::Vector3d::UnitZ())).matrix();
-
-			// Display occluded point and push frame
-			{
-				tf::Transform t = tf::Transform::getIdentity();
-				tf::poseEigenToTF(pushGripperFrames[0], t);
-				broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), globalFrame, "push_gripper_frame_0"));
-				tf::poseEigenToTF(pushGripperFrames[1], t);
-				broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), globalFrame, "push_gripper_frame_1"));
-			}
-		}
-
-		std::sort(manipulators.begin(), manipulators.end(), [&](const std::shared_ptr<Manipulator>& A, const std::shared_ptr<Manipulator>& B)->bool
-		{
-			const robot_model::JointModelGroup* a = A->arm;
-			const robot_model::JointModelGroup* b = B->arm;
-			return (pushFrame.translation()-currentState.getFrameTransform(a->getOnlyOneEndEffectorTip()->getName()).translation()).squaredNorm()
-			       < (pushFrame.translation()-currentState.getFrameTransform(b->getOnlyOneEndEffectorTip()->getName()).translation()).squaredNorm();
-		});
-
-		for (const auto& pushGripperFrame : pushGripperFrames)
-		{
-			const double stepSize = 0.015;
-			std::vector<Eigen::Affine3d> pushTrajectory;
-			for (int s = -15; s < 10; ++s)
-			{
-				Eigen::Affine3d step = pushGripperFrame;
-				step.translation() += s*stepSize*pushGripperFrame.linear().col(2);
-				pushTrajectory.push_back(step);
-			}
-
-			for (auto& manipulator : manipulators)
-			{
-				if (manipulator->cartesianPath(pushTrajectory, robotTworld, currentState, cmd))
-				{
-					active_jmg = manipulator->arm;
-					break;
-				}
-			}
-
-			if (active_jmg)
-			{
-				break;
-			}
-		}
-*/
-		cmd = planner->planDrag(completedSegments[pushSegmentID].get(), currentState, pushFrame);
-		if (!cmd.points.empty())
-		{
-			break;
+			tf::Transform temp; tf::poseEigenToTF(interpPose, temp);
+			broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, "slide_"+std::to_string(i++)));
 		}
 	}
 
@@ -1145,7 +1009,7 @@ int main(int argc, char* argv[])
 	completionClient = std::make_shared<VoxelCompleter>(nh);
 	segmentationClient = std::make_shared<RGBDSegmenter>(nh);
 	trajectoryClient = std::make_shared<TrajectoryClient>("follow_joint_trajectory", true);
-	if (!trajectoryClient->waitForServer(ros::Duration(10.0)))
+	if (!trajectoryClient->waitForServer(ros::Duration(3.0)))
 	{
 		ROS_WARN("Trajectory server not connected.");
 	}
@@ -1195,11 +1059,14 @@ int main(int argc, char* argv[])
 		}
 	}
 
+	planningEnvironment = std::make_unique<PlanningEnvironment>();
 	planner = std::make_shared<MotionPlanner>();
-	planner->globalFrame = mapServer->getWorldFrame();
-	planner->visualize = true;
-	planner->manipulators = manipulators;
-	planner->broadcaster = broadcaster;
+	planner->env = planningEnvironment.get();
+	planner->objectSampler.env = planningEnvironment.get();
+	planningEnvironment->worldFrame = mapServer->getWorldFrame();
+	planningEnvironment->visualize = true;
+	planningEnvironment->manipulators = manipulators;
+	planningEnvironment->broadcaster = broadcaster;
 
 	std::string topic_prefix = "/kinect2_victor_head/qhd";
 //	ros::Subscriber camInfoSub = nh.subscribe("kinect2_victor_head/qhd/camera_info", 1, camera_cb);

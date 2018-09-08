@@ -44,6 +44,9 @@ public:
 //protected:
 	std::vector<std::unique_ptr<AbstractShapeBase>> membershipShapes;
 	bodies::BoundingSphere boundingSphere;
+
+	enum { NeedsToAlign = (sizeof(Pose)%16)==0 };
+	EIGEN_MAKE_ALIGNED_OPERATOR_NEW_IF(NeedsToAlign);
 };
 
 #ifndef linear_part
@@ -71,6 +74,6 @@ MotionModel::MotionParameters estimateRigidTransform3D(const Eigen::Matrix3Xd& A
 
 #include <moveit/robot_model/robot_model.h>
 
-bool loadLinkMotionModels(const robot_model::RobotModel* pModel, std::map<std::string, std::unique_ptr<MotionModel>>& motionModels);
+bool loadLinkMotionModels(const robot_model::RobotModel* pModel, std::map<std::string, std::shared_ptr<MotionModel>>& motionModels);
 
 #endif // MPS_VOXELS_MOTIONMODEL_H
