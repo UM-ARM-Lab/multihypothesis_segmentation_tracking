@@ -24,6 +24,8 @@
 #include <image_geometry/pinhole_camera_model.h>
 #include <sensor_msgs/CameraInfo.h>
 
+#include <realtime_tools/realtime_publisher.h>
+
 // Point cloud utilities
 #include <depth_image_proc/depth_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -279,7 +281,8 @@ std::shared_ptr<RGBDSegmenter> segmentationClient;
 std::shared_ptr<TrajectoryClient> trajectoryClient;
 std::unique_ptr<Tracker> tracker;
 ros::Publisher octreePub;
-ros::Publisher targetPub;
+std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperLPub;
+std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperRPub;
 //ros::Publisher commandPub;
 ros::Publisher displayPub;
 std::shared_ptr<tf::TransformListener> listener;
@@ -315,7 +318,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 
 	Eigen::Vector4f maxExtent(0.4f, 0.6f, 0.5f, 1);
-	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.05f, 1);
+	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.015f, 1);
 	setBBox(minExtent, maxExtent, mapServer->getOctree());
 	planningEnvironment->minExtent = minExtent.head<3>().cast<double>();
 	planningEnvironment->maxExtent = maxExtent.head<3>().cast<double>();
@@ -659,7 +662,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		Eigen::Vector3f min, max;
 		getBoundingCube(*segment_cloud, min, max);
 		double edge_length = max.x()-min.x(); // all edge of cube are same size
-		double inflation = edge_length/10.0;
+		double inflation = edge_length/5.0;
 		min -= inflation * Eigen::Vector3f::Ones();
 		max += inflation * Eigen::Vector3f::Ones();
 
@@ -895,21 +898,28 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	using RankedPose = std::pair<double, std::shared_ptr<Motion>>;
 	auto comp = [](const RankedPose& a, const RankedPose& b ) { return a.first < b.first; };
 	std::priority_queue<RankedPose, std::vector<RankedPose>, decltype(comp)> motionQueue(comp);
-	for (int i = 0; i < 10; ++i)
+	for (int i = 0; i < 25; ++i)
 	{
 		std::shared_ptr<Motion> motion = planner->sampleSlide(currentState);
 		if (motion)
 		{
 			motionQueue.push({planner->reward(motion.get()), motion});
-			ros::Duration(0.2).sleep();
+//			ros::Duration(2.0).sleep();
 		}
 	}
 	std::shared_ptr<Motion> motion = motionQueue.top().second;
-	if (motion && motion->action && std::dynamic_pointer_cast<JointTrajectoryAction>(motion->action))
+	if (motion && motion->action && std::dynamic_pointer_cast<CompositeAction>(motion->action))
 	{
-		cmd = std::dynamic_pointer_cast<JointTrajectoryAction>(motion->action)->cmd;
+		auto actions = std::dynamic_pointer_cast<CompositeAction>(motion->action);
+		cmd.joint_names = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[1])->cmd.joint_names;
+		for (int idx : std::vector<int>{1, 2, 4, 6, 7})
+		{
+			auto subTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[idx]);
+			cmd.points.insert(cmd.points.end(), subTraj->cmd.points.begin(), subTraj->cmd.points.end());
+		}
+
 		int i = 0;
-		for (const auto& interpPose : std::dynamic_pointer_cast<JointTrajectoryAction>(motion->action)->palm_trajectory)
+		for (const auto& interpPose : std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[4])->palm_trajectory)
 		{
 			tf::Transform temp; tf::poseEigenToTF(interpPose, temp);
 			broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, "slide_"+std::to_string(i++)));
@@ -938,29 +948,88 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	if (trajectoryClient->isServerConnected())
 	{
 		// Allow some visualization time
-		ros::Duration(10.0).sleep();
+		ros::Duration(3.0+cmd.points.size()/20.0).sleep();
 
-		control_msgs::FollowJointTrajectoryGoal goal;
-		goal.trajectory = cmd;
+		auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
+		for (size_t a = 0; a < compositeAction->actions.size(); ++a)
+		{
+			const auto& action = compositeAction->actions[a];
+			bool isPrimaryAction = ((compositeAction->primaryAction >= 0) && (compositeAction->primaryAction == static_cast<int>(a)));
 
-		tracker->startCapture();
-		trajectoryClient->sendGoalAndWait(goal, ros::Duration(10.0) + cmd.points.back().time_from_start);
-		tracker->stopCapture();
-		tracker->track();
+			if (isPrimaryAction)
+			{
+				tracker->startCapture();
+			}
+
+			auto armAction = std::dynamic_pointer_cast<JointTrajectoryAction>(action);
+			if (armAction)
+			{
+				control_msgs::FollowJointTrajectoryGoal goal;
+				goal.trajectory = armAction->cmd;
+
+				std::cerr << "Sending joint trajectory." << std::endl;
+
+				auto res = trajectoryClient->sendGoalAndWait(goal, ros::Duration(30.0) + cmd.points.back().time_from_start);
+				if (!res.isDone())
+				{
+					ROS_ERROR_STREAM("Trajectory client timed out.");
+					return;
+				}
+				else if (res.state_ != actionlib::SimpleClientGoalState::SUCCEEDED)
+				{
+					ROS_ERROR_STREAM("Trajectory following failed: " << res.text_);
+					return;
+				}
+				std::cerr << "Finished joint trajectory." << std::endl;
+				ros::Duration(4.0).sleep(); // Trajectory seems to terminate slightly early
+			}
+
+			auto gripAction = std::dynamic_pointer_cast<GripperCommandAction>(action);
+			if (gripAction)
+			{
+				gripAction->grasp.header.frame_id = pModel->getRootLinkName();
+				gripAction->grasp.header.stamp = ros::Time::now();
+				realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>* gripperPub = nullptr;
+				if (gripAction->jointGroupName.find("left") != std::string::npos)
+				{
+					std::cerr << "Sending left gripper command." << std::endl;
+					gripperPub = gripperLPub.get();
+				}
+				else if (gripAction->jointGroupName.find("right") != std::string::npos)
+				{
+					std::cerr << "Sending right gripper command." << std::endl;
+					gripperPub = gripperRPub.get();
+				}
+				else
+				{
+					throw std::runtime_error("Unknown gripper.");
+				}
+
+
+				if (gripperPub->trylock())
+				{
+					gripperPub->msg_ = gripAction->grasp;
+					gripperPub->unlockAndPublish();
+				}
+				ros::Duration(4.0).sleep();
+			}
+
+			if (isPrimaryAction)
+			{
+				tracker->stopCapture();
+				tracker->track();
+			}
+
+		}
+
+	}
+	else if (cmd.points.size() > 10)
+	{
+		// Allow some visualization time
+		ros::Duration(3.0+cmd.points.size()/20.0).sleep();
 	}
 
-
 	cv::waitKey(10);
-
-//	for (const std::shared_ptr<octomap::OcTree>& segment : completedSegments)
-//	{
-//
-//	}
-
-//	for (int t = 0; t < (int)tracker->flows.size(); ++t)
-//	{
-//		fitModels(tracker->flows[t], 1);
-//	}
 
 }
 
@@ -999,7 +1068,8 @@ int main(int argc, char* argv[])
 	setIfMissing(pnh, "sensor_model/max_range", 8.0);
 
 	octreePub = nh.advertise<visualization_msgs::MarkerArray>("occluded_points", 1, true);
-	targetPub = nh.advertise<geometry_msgs::Point>("target_point", 1, false);
+	gripperLPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/left_arm/gripper_command", 1, false);
+	gripperRPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/right_arm/gripper_command", 1, false);
 //	commandPub = nh.advertise<trajectory_msgs::JointTrajectory>("/joint_trajectory", 1, false);
 	displayPub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, false);
 	auto vizPub = nh.advertise<visualization_msgs::MarkerArray>("roi", 10, true);

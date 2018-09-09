@@ -20,11 +20,14 @@ find_package(catkin REQUIRED COMPONENTS
 #  octomap_server
   pcl_conversions
   pcl_ros
+  realtime_tools
   roscpp
   rospy
   sensor_msgs
   tf
   tf_conversions
+
+  victor_hardware_interface
 )
 
 ## System dependencies are found with CMake's conventions
@@ -44,6 +47,7 @@ include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 link_libraries(${OpenCV_LIBS})
 
 # CGAL and its components
+set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE)
 find_package(CGAL 4.12 REQUIRED COMPONENTS
   Polygon_mesh_processing
   QP_solver

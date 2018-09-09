@@ -76,7 +76,7 @@ public:
 	PointT maxExtent;
 	std::string frame_id;
 
-	ROI(const PointT& min = PointT{-0.4f, -0.6f, -0.05f},
+	ROI(const PointT& min = PointT{-0.4f, -0.6f, -0.015f},
 		const PointT& max = PointT{0.4f, 0.6f, 0.4f},
 		const std::string& frame = "table_surface")
 		: minExtent(min), maxExtent(max), frame_id(frame) {}

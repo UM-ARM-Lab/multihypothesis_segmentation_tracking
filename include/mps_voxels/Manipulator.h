@@ -9,6 +9,9 @@
 #include <moveit/robot_state/robot_state.h>
 #include <moveit/robot_state/conversions.h>
 
+#include <moveit_msgs/Grasp.h>
+#include <trajectory_msgs/JointTrajectory.h>
+
 #include <Eigen/StdVector>
 
 class Manipulator
@@ -31,6 +34,7 @@ public:
 
 	double transitionCost(const std::vector<double>& q1, const double t1, const std::vector<double>& q2, const double t2) const;
 
+	bool interpolate(const Pose& from, const Pose& to, PoseSequence& sequence, const int INTERPOLATE_STEPS = 15) const;
 
 	bool interpolate(const robot_state::RobotState& currentState, const robot_state::RobotState& toState,
 	                 trajectory_msgs::JointTrajectory& cmd, const int INTERPOLATE_STEPS = 15) const;
@@ -39,6 +43,8 @@ public:
 
 	bool cartesianPath(const PoseSequence& worldGoalPoses, const Eigen::Affine3d& robotTworld,
 	                   const robot_state::RobotState& currentState, trajectory_msgs::JointTrajectory& cmd) const;
+
+	bool grasp(const robot_state::RobotState& currentState, moveit_msgs::Grasp& grasp) const;
 
 protected:
 	mutable std::vector<double> qHome;

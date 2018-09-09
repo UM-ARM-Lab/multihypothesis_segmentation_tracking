@@ -4,6 +4,7 @@
 
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/image_utils.h"
+#include "mps_voxels/pointcloud_utils.h"
 
 #include <mps_msgs/SegmentRGBD.h>
 
@@ -49,14 +50,22 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 {
 	assert(roi.width == labels.cols);
 	assert(roi.height == labels.rows);
-	std::set<uint16_t> uniqueLabels = unique(labels);
+	using LabelT = uint16_t;
+	const LabelT BUFFER_VALUE = std::numeric_limits<LabelT>::max();
+	std::set<LabelT> uniqueLabels = unique(labels);
 
 	std::vector<pcl::PointCloud<PointT>::Ptr> segment_clouds;
-	std::map<uint16_t, int> labelMap;
+	std::map<LabelT, int> labelMap;
+	cv::Mat filtered_labels(labels.size(), labels.type(), BUFFER_VALUE);
 	for (const auto label : uniqueLabels)
 	{
 		labelMap.insert({label, (int)labelMap.size()});
 		segment_clouds.push_back(pcl::PointCloud<PointT>::Ptr(new pcl::PointCloud<PointT>()));
+
+		// Erode the boundary of the label slightly
+		cv::Mat labelMask = (labels == label);
+		cv::erode(labelMask, labelMask, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5)));
+		filtered_labels.setTo(label, labelMask);
 	}
 
 	cv::Rect bounds(cv::Point(), labels.size());
@@ -71,7 +80,8 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 
 		if (bounds.contains(imagePt))
 		{
-			uint16_t label = labels.at<uint16_t>(imagePt);
+			LabelT label = filtered_labels.at<LabelT>(imagePt);
+			if (BUFFER_VALUE == label) { continue; }
 			segment_clouds[labelMap.at(label)]->push_back(pt);
 		}
 		else
@@ -81,6 +91,14 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	}
 
 	const int threshold = 100;
+
+	for (auto& segment : segment_clouds)
+	{
+		if (segment->size() >= threshold)
+		{
+			segment = filterOutliers(segment, threshold);
+		}
+	}
 
 	for (const auto label : uniqueLabels)
 	{

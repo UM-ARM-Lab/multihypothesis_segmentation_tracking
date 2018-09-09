@@ -42,6 +42,23 @@ double Manipulator::transitionCost(const std::vector<double>& q1, const double t
 }
 
 
+bool Manipulator::interpolate(const Pose& from, const Pose& to, PoseSequence& sequence, const int INTERPOLATE_STEPS ) const
+{
+	sequence.reserve(INTERPOLATE_STEPS);
+	Eigen::Quaterniond qStart(from.linear()), qEnd(to.linear());
+	for (int i = 0; i<INTERPOLATE_STEPS; ++i)
+	{
+		double t = i/static_cast<double>(INTERPOLATE_STEPS-1);
+		Eigen::Affine3d interpPose = Eigen::Affine3d::Identity();
+		interpPose.translation() = ((1.0-t)*from.translation())+(t*to.translation());
+		interpPose.linear() = qStart.slerp(t, qEnd).matrix();
+		sequence.push_back(interpPose);
+	}
+
+	return true;
+}
+
+
 bool Manipulator::interpolate(const robot_state::RobotState& currentState, const robot_state::RobotState& toState,
                               trajectory_msgs::JointTrajectory& cmd, const int INTERPOLATE_STEPS) const
 {
@@ -182,4 +199,18 @@ bool Manipulator::cartesianPath(const PoseSequence& worldGoalPoses, const Eigen:
 	cmd.joint_names = arm->getActiveJointModelNames();
 
 	return true;
+}
+
+bool Manipulator::grasp(const robot_state::RobotState& currentState, moveit_msgs::Grasp& grasp) const
+{
+	grasp.grasp_posture.joint_names = gripper->getActiveJointModelNames();
+	grasp.grasp_posture.points.resize(1);
+
+	std::map<std::string, size_t> jointNameToIdx;
+	for (const std::string& name : grasp.grasp_posture.joint_names)
+	{
+		jointNameToIdx.insert({name, jointNameToIdx.size()});
+	}
+
+//	grasp.grasp_posture.points.front().positions[]
 }

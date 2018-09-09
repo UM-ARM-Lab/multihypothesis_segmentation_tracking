@@ -110,7 +110,7 @@ public:
 		ROI roi;
 
 		TrackingOptions() : featureRadius(250.0f), pixelRadius(30.0f), meterRadius(0.05),
-		                    roi({-0.4f, -0.6f, -0.05f}, {0.4f, 0.6f, 0.4f}, "table_surface")
+		                    roi({-0.4f, -0.6f, -0.015f}, {0.4f, 0.6f, 0.4f}, "table_surface")
 		{
 		}
 	};

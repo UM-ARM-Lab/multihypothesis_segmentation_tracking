@@ -43,12 +43,16 @@
   <!--<depend>octomap_server</depend>-->
   <depend>pcl_conversions</depend>
   <depend>pcl_ros</depend>
+  <depend>realtime_tools</depend>
   <depend>roscpp</depend>
   <depend>rospy</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>tf</depend>
   <depend>tf_conversions</depend>
+
+
+  <depend>victor_hardware_interface</depend>
 
   <build_depend>message_generation</build_depend>
   <exec_depend>message_runtime</exec_depend>

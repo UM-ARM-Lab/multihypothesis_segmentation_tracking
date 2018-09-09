@@ -95,7 +95,22 @@ MotionPlanner::reward(const Motion* motion) const
 	Eigen::Matrix3Xd deltas = centroids.colwise() - centroid;
 	double spread = deltas.colwise().squaredNorm().sum();
 
-	return spread;
+	// Compute direction of push/slide
+	double dir = 0;
+	auto jointTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(std::dynamic_pointer_cast<CompositeAction>(motion->action)->actions[3]);
+	if (jointTraj)
+	{
+		if (jointTraj->palm_trajectory.size() > 1)
+		{
+			const Pose& begin = jointTraj->palm_trajectory.front();
+			const Pose& end = jointTraj->palm_trajectory.back();
+			Eigen::Vector3d cb = (begin.translation()-centroid).normalized(); ///< Vector from centroid to beginning of move
+			Eigen::Vector3d be = end.translation()-begin.translation(); ///< Vector of move
+			dir = cb.dot(be);
+		}
+	}
+
+	return spread + 10.0*dir;
 }
 
 trajectory_msgs::JointTrajectory
@@ -282,20 +297,32 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 		}
 	}
 
-	const int INTERPOLATE_STEPS = 15;
+	const int INTERPOLATE_STEPS = 25;
+	const int TRANSIT_INTERPOLATE_STEPS = 50;
 	const int SAMPLE_ATTEMPTS = 100;
+	const double PALM_DISTANCE = 0.02;
+	const double APPROACH_DISTANCE = 0.20;
+	const double TABLE_BUFFER = 0.20;
+	const double Z_SAFETY_HEIGHT = 0.25;
 
 	trajectory_msgs::JointTrajectory cmd;
 	bool foundSolution = false;
-	std::uniform_real_distribution<double> xDistr(env->minExtent.x(), env->maxExtent.x());
-	std::uniform_real_distribution<double> yDistr(env->minExtent.y(), env->maxExtent.y());
+	std::uniform_real_distribution<double> xDistr(env->minExtent.x()+TABLE_BUFFER, env->maxExtent.x()-TABLE_BUFFER);
+	std::uniform_real_distribution<double> yDistr(env->minExtent.y()+TABLE_BUFFER, env->maxExtent.y()-TABLE_BUFFER);
 	std::uniform_real_distribution<double> thetaDistr(0.0, 2.0*M_PI);
+
+	// Shuffle manipulators (without shuffling underlying array)
+	std::vector<unsigned int> manip_indices(env->manipulators.size());
+	std::iota(manip_indices.begin(), manip_indices.end(), 0);
+	std::shuffle(manip_indices.begin(), manip_indices.end(), env->rng);
 
 	while (!graspPoses.empty())
 	{
 		const auto& pair = graspPoses.top();
 		Eigen::Affine3d gripperPose = pair.second;
 		gripperPose.linear() = gripperPose.linear() * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).matrix();
+		gripperPose.translation() -= PALM_DISTANCE*gripperPose.linear().col(2);
+		gripperPose.translation().z() = std::max(gripperPose.translation().z(), Z_SAFETY_HEIGHT);
 		if (env->visualize)
 		{
 			tf::Transform t = tf::Transform::getIdentity();
@@ -303,8 +330,9 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 			env->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->worldFrame, "putative_start"));
 		}
 
-		for (auto& manipulator : env->manipulators)
+		for (unsigned int manip_idx : manip_indices)
 		{
+			auto& manipulator = env->manipulators[manip_idx];
 			std::vector<std::vector<double>> sln = manipulator->IK(gripperPose, robotTworld, robotState);
 			if (!sln.empty())
 			{
@@ -315,6 +343,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 					goalPose.linear() = goalPose.linear() * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).matrix();
 					goalPose.linear() = goalPose.linear() * Eigen::AngleAxisd(thetaDistr(env->rng), Eigen::Vector3d::UnitZ()).matrix();
 					goalPose.translation() = Eigen::Vector3d(xDistr(env->rng), yDistr(env->rng), gripperPose.translation().z());
+					goalPose.translation() -= PALM_DISTANCE/5.0*goalPose.linear().col(2);
 					sln = manipulator->IK(goalPose, robotTworld, robotState);
 
 					if (env->visualize)
@@ -325,32 +354,123 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 
 					if (!sln.empty())
 					{
-						PoseSequence slideTrajectory; slideTrajectory.reserve(INTERPOLATE_STEPS);
-						Eigen::Quaterniond qStart(gripperPose.linear()), qEnd(goalPose.linear());
-						for (int i = 0; i<INTERPOLATE_STEPS; ++i)
-						{
-							double t = i/static_cast<double>(INTERPOLATE_STEPS-1);
-							Eigen::Affine3d interpPose = Eigen::Affine3d::Identity();
-							interpPose.translation() = ((1.0-t)*gripperPose.translation())+(t*goalPose.translation());
-							interpPose.linear() = qStart.slerp(t, qEnd).matrix();
-							slideTrajectory.push_back(interpPose);
+						// Allocate the action sequence needed for a slide
+						std::shared_ptr<CompositeAction> compositeAction = std::make_shared<CompositeAction>();
+						auto pregraspAction = std::make_shared<GripperCommandAction>();  compositeAction->actions.push_back(pregraspAction);
+						auto transitAction = std::make_shared<JointTrajectoryAction>();  compositeAction->actions.push_back(transitAction);
+						auto approachAction = std::make_shared<JointTrajectoryAction>(); compositeAction->actions.push_back(approachAction);
+						auto graspAction = std::make_shared<GripperCommandAction>();     compositeAction->actions.push_back(graspAction);
+						auto slideAction = std::make_shared<JointTrajectoryAction>();    compositeAction->actions.push_back(slideAction);
+						auto releaseAction = std::make_shared<GripperCommandAction>();   compositeAction->actions.push_back(releaseAction);
+						auto retractAction = std::make_shared<JointTrajectoryAction>();  compositeAction->actions.push_back(retractAction);
+						auto homeAction = std::make_shared<JointTrajectoryAction>();     compositeAction->actions.push_back(homeAction);
+						compositeAction->primaryAction = 4;
 
-							if (env->visualize)
-							{
-								tf::Transform temp; tf::poseEigenToTF(interpPose, temp);
-								env->broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), env->worldFrame, "slide_"+std::to_string(i)));
-							}
-						}
+						// Lay out the Cartesian Path
+						Eigen::Affine3d gripperApproachPose = gripperPose;
+						gripperApproachPose.translation() -= APPROACH_DISTANCE*gripperApproachPose.linear().col(2);
 
-						if (manipulator->cartesianPath(slideTrajectory, robotTworld, robotState, cmd))
+						Eigen::Affine3d gripperRetractPose = goalPose;
+						gripperRetractPose.translation() -= APPROACH_DISTANCE*gripperRetractPose.linear().col(2);
+
+						PoseSequence approachTrajectory, slideTrajectory, retractTrajectory, fullTrajectory;
+
+						manipulator->interpolate(gripperApproachPose, gripperPose, approachTrajectory, INTERPOLATE_STEPS/3);
+						manipulator->interpolate(gripperPose, goalPose, slideTrajectory, INTERPOLATE_STEPS);
+						manipulator->interpolate(goalPose, gripperRetractPose, retractTrajectory, INTERPOLATE_STEPS/3);
+
+						fullTrajectory.reserve(approachTrajectory.size()+slideTrajectory.size()+retractTrajectory.size());
+						fullTrajectory.insert(fullTrajectory.end(), approachTrajectory.begin(), approachTrajectory.end());
+						fullTrajectory.insert(fullTrajectory.end(), slideTrajectory.begin(), slideTrajectory.end());
+						fullTrajectory.insert(fullTrajectory.end(), retractTrajectory.begin(), retractTrajectory.end());
+
+
+						if (manipulator->cartesianPath(fullTrajectory, robotTworld, robotState, cmd))
 						{
 							std::shared_ptr<Motion> motion = std::make_shared<Motion>();
 							motion->state = std::make_shared<State>(objectState);
-							motion->action = std::make_shared<JointTrajectoryAction>();
+							motion->action = compositeAction;
 
-							std::dynamic_pointer_cast<JointTrajectoryAction>(motion->action)->cmd = cmd;
-							std::dynamic_pointer_cast<JointTrajectoryAction>(motion->action)->palm_trajectory = slideTrajectory;
+							// Pregrasp
+							pregraspAction->grasp.finger_a_command.position = 0.0;
+							pregraspAction->grasp.finger_a_command.speed = 1.0;
+							pregraspAction->grasp.finger_a_command.force = 1.0;
+							pregraspAction->grasp.finger_b_command.position = 0.0;
+							pregraspAction->grasp.finger_b_command.speed = 1.0;
+							pregraspAction->grasp.finger_b_command.force = 1.0;
+							pregraspAction->grasp.finger_c_command.position = 0.0;
+							pregraspAction->grasp.finger_c_command.speed = 1.0;
+							pregraspAction->grasp.finger_c_command.force = 1.0;
+							pregraspAction->grasp.scissor_command.position = 0.5;
+							pregraspAction->grasp.scissor_command.speed = 1.0;
+							pregraspAction->grasp.scissor_command.force = 1.0;
+							pregraspAction->jointGroupName = manipulator->gripper->getName();
+
+							// Move to start
+							robot_state::RobotState approachState(robotState);
+							approachState.setJointGroupPositions(manipulator->arm, cmd.points.front().positions);
+							approachState.updateCollisionBodyTransforms();
+							if (!manipulator->interpolate(robotState, approachState, transitAction->cmd, TRANSIT_INTERPOLATE_STEPS))
+							{
+								continue;
+							}
+
+							// Approach
+							approachAction->palm_trajectory = approachTrajectory;
+							approachAction->cmd.joint_names = cmd.joint_names;
+							approachAction->cmd.points.insert(approachAction->cmd.points.end(), cmd.points.begin(), cmd.points.begin()+approachTrajectory.size()+1);
+
+							// Grasp
+							graspAction->grasp.finger_a_command.position = 0.4;
+							graspAction->grasp.finger_a_command.speed = 1.0;
+							graspAction->grasp.finger_a_command.force = 1.0;
+							graspAction->grasp.finger_b_command.position = 0.4;
+							graspAction->grasp.finger_b_command.speed = 1.0;
+							graspAction->grasp.finger_b_command.force = 1.0;
+							graspAction->grasp.finger_c_command.position = 0.4;
+							graspAction->grasp.finger_c_command.speed = 1.0;
+							graspAction->grasp.finger_c_command.force = 1.0;
+							graspAction->grasp.scissor_command.position = 0.5;
+							graspAction->grasp.scissor_command.speed = 1.0;
+							graspAction->grasp.scissor_command.force = 1.0;
+							graspAction->jointGroupName = manipulator->gripper->getName();
+
+
+							// Slide
+							slideAction->palm_trajectory = slideTrajectory;
+							slideAction->cmd.joint_names = cmd.joint_names;
+							slideAction->cmd.points.insert(slideAction->cmd.points.end(), cmd.points.begin()+approachTrajectory.size(), cmd.points.begin()+approachTrajectory.size()+slideTrajectory.size()+1);
 							motion->state->poses[slideSegmentID] = gripperPose.inverse(Eigen::Isometry) * goalPose;
+
+
+							// Release
+							releaseAction->grasp.finger_a_command.position = 0.0;
+							releaseAction->grasp.finger_a_command.speed = 1.0;
+							releaseAction->grasp.finger_a_command.force = 1.0;
+							releaseAction->grasp.finger_b_command.position = 0.0;
+							releaseAction->grasp.finger_b_command.speed = 1.0;
+							releaseAction->grasp.finger_b_command.force = 1.0;
+							releaseAction->grasp.finger_c_command.position = 0.0;
+							releaseAction->grasp.finger_c_command.speed = 1.0;
+							releaseAction->grasp.finger_c_command.force = 1.0;
+							releaseAction->grasp.scissor_command.position = 0.5;
+							releaseAction->grasp.scissor_command.speed = 1.0;
+							releaseAction->grasp.scissor_command.force = 1.0;
+							releaseAction->jointGroupName = manipulator->gripper->getName();
+
+							// Retract
+							retractAction->palm_trajectory = retractTrajectory;
+							retractAction->cmd.joint_names = cmd.joint_names;
+							retractAction->cmd.points.insert(retractAction->cmd.points.end(), cmd.points.begin()+approachTrajectory.size()+slideTrajectory.size(), cmd.points.end());
+
+							// Move to home
+							robot_state::RobotState retractState(robotState);
+							retractState.setJointGroupPositions(manipulator->arm, cmd.points.back().positions);
+							retractState.updateCollisionBodyTransforms();
+							if (!manipulator->interpolate(retractState, robotState, homeAction->cmd, TRANSIT_INTERPOLATE_STEPS))
+							{
+								continue;
+							}
 
 							assert(motion->state->poses.size() == env->completedSegments.size());
 							return motion;
