@@ -63,7 +63,11 @@ void Tracker::stopCapture()
 
 void Tracker::track()
 {
-	if (rgb_buffer.empty() || depth_buffer.empty()) { return; }
+	if (rgb_buffer.empty() || depth_buffer.empty())
+	{
+		ROS_WARN_STREAM("Tracking failed: Capture buffer empty.");
+		return;
+	}
 	////////////////////////////////////////
 	//// Set up Mask
 	////////////////////////////////////////
@@ -71,7 +75,7 @@ void Tracker::track()
 
 	if (!listener->waitForTransform(rgb_buffer.back()->header.frame_id, "table_surface", ros::Time(0), ros::Duration(5.0)))
 	{
-		ROS_WARN_STREAM("Failed to look up transform between '" << rgb_buffer.back()->header.frame_id << "' and '" << "table_surface" << "'.");
+		ROS_WARN_STREAM("Tracking failed: Failed to look up transform between '" << rgb_buffer.back()->header.frame_id << "' and '" << "table_surface" << "'.");
 		return;
 	}
 	tf::StampedTransform cameraTworld;
@@ -179,6 +183,7 @@ void Tracker::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
                       const sensor_msgs::ImageConstPtr& depth_msg,
                       const sensor_msgs::CameraInfoConstPtr& cam_msg)
 {
+	std::cerr << "Tracking callback." << std::endl;
 	cv_bridge::CvImagePtr cv_rgb_ptr;
 	try
 	{

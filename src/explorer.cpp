@@ -25,6 +25,7 @@
 #include <sensor_msgs/CameraInfo.h>
 
 #include <realtime_tools/realtime_publisher.h>
+#include <mutex>
 
 // Point cloud utilities
 #include <depth_image_proc/depth_conversions.h>
@@ -293,6 +294,7 @@ std::unique_ptr<PlanningEnvironment> planningEnvironment;
 std::shared_ptr<MotionPlanner> planner;
 sensor_msgs::JointState::ConstPtr latestJoints;
 std::map<std::string, std::shared_ptr<MotionModel>> motionModels;
+std::mutex joint_mtx;
 
 int octomapBurnInCounter = 0;
 const int OCTOMAP_BURN_IN = 2; /// Number of point clouds to process before using octree
@@ -300,8 +302,25 @@ const double maxStepSize = std::numeric_limits<double>::infinity();
 
 void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 {
+	std::lock_guard<std::mutex> lk(joint_mtx);
 	latestJoints = js;
 	ROS_DEBUG_ONCE("Joint joints!");
+}
+
+robot_state::RobotState getCurrentRobotState()
+{
+	robot_state::RobotState currentState(pModel);
+	currentState.setToDefaultValues();
+	{
+		std::lock_guard<std::mutex> lk(joint_mtx);
+		if (latestJoints)
+		{
+			moveit::core::jointStateToRobotState(*latestJoints, currentState);
+		}
+	}
+	currentState.update();
+
+	return currentState;
 }
 
 //void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg,
@@ -310,6 +329,12 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
                const sensor_msgs::ImageConstPtr& depth_msg,
                const sensor_msgs::CameraInfoConstPtr& cam_msg)
 {
+//	std::unique_lock<std::mutex> lk(control_mutex, std::try_to_lock);
+//	if (!lk.owns_lock())
+//	{
+//		std::cerr << "Got message, but control is executing in another thread." << std::endl;
+//		return;
+//	}
 	std::cerr << "Got message." << std::endl;
 	if (!listener->waitForTransform(mapServer->getWorldFrame(), cam_msg->header.frame_id, ros::Time(0), ros::Duration(5.0)))
 	{
@@ -398,17 +423,6 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	/////////////////////////////////////////////////////////////////
 	// Apply prior motion models
 	/////////////////////////////////////////////////////////////////
-	robot_state::RobotState currentState(pModel);
-	robot_state::RobotState toState(pModel);
-	currentState.setToDefaultValues();
-	toState.setToDefaultValues();
-	if (latestJoints)
-	{
-		moveit::core::jointStateToRobotState(*latestJoints, currentState);
-		moveit::core::jointStateToRobotState(*latestJoints, toState);
-		currentState.updateLinkTransforms();
-		toState.updateLinkTransforms();
-	}
 
 	// Update from robot state + TF
 	for (const auto& model : motionModels)
@@ -578,6 +592,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 		octreePub.publish(occupiedNodesVis);
 	}
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	// Generate an ROI from the cropped, filtered cloud
 	pcl::PointCloud<PointT>::Ptr pile_cloud = filterPlane(cropped_cloud, 0.02);
@@ -587,6 +602,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		ROS_ERROR_STREAM("No points in pile cloud.");
 		return;
 	}
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	std::vector<pcl::PointCloud<PointT>::Ptr> segments;
 	{
@@ -621,10 +637,13 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		cam_msg_cropped.K[2] -= roi.x;
 		cam_msg_cropped.K[5] -= roi.y;
 		for (auto& d : cam_msg_cropped.D) { d = 0.0; }
+		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 		cv::imshow("rgb", rgb_cropped);
 		cv::waitKey(10);
+		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 		cv_bridge::CvImagePtr seg = segmentationClient->segment(cv_rgb_cropped, cv_depth_cropped, cam_msg_cropped);
+		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 		if (!seg)
 		{
@@ -900,7 +919,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	std::priority_queue<RankedPose, std::vector<RankedPose>, decltype(comp)> motionQueue(comp);
 	for (int i = 0; i < 25; ++i)
 	{
-		std::shared_ptr<Motion> motion = planner->sampleSlide(currentState);
+		std::shared_ptr<Motion> motion = planner->sampleSlide(getCurrentRobotState());
 		if (motion)
 		{
 			motionQueue.push({planner->reward(motion.get()), motion});
@@ -937,7 +956,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 //	moveit_msgs::RobotState drs;
 	moveit_msgs::RobotTrajectory drt;
 
-	moveit::core::robotStateToRobotStateMsg(currentState, dt.trajectory_start);
+	moveit::core::robotStateToRobotStateMsg(getCurrentRobotState(), dt.trajectory_start);
 	dt.model_id = pModel->getName();
 	drt.joint_trajectory = cmd;
 	dt.trajectory.push_back(drt);
@@ -1051,13 +1070,17 @@ int main(int argc, char* argv[])
 	ros::init(argc, argv, "scene_explorer");
 	ros::NodeHandle nh, pnh("~");
 
+	ros::CallbackQueue sensor_queue;
+	ros::AsyncSpinner sensor_spinner(1, &sensor_queue);
+
 	listener = std::make_shared<tf::TransformListener>();
 	broadcaster = std::make_shared<tf::TransformBroadcaster>();
 
 	tracker = std::make_unique<Tracker>();
 	tracker->stopCapture();
 
-	ros::Subscriber joint_sub = nh.subscribe("joint_states", 2, handleJointState);
+	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>("joint_states", 2, handleJointState, ros::VoidPtr(), &sensor_queue);
+	ros::Subscriber joint_sub = nh.subscribe(joint_sub_options);
 
 	setIfMissing(pnh, "frame_id", "table_surface");
 	setIfMissing(pnh, "resolution", 0.005);
@@ -1103,7 +1126,7 @@ int main(int argc, char* argv[])
 		if (jmg->isChain() && jmg->getSolverInstance())
 		{
 //			jmgs.push_back(jmg);
-			jmg->getSolverInstance()->setSearchDiscretization(0.1); // ~5 degrees
+			jmg->getSolverInstance()->setSearchDiscretization(0.05); // 0.1 = ~5 degrees
 			const auto& ees = jmg->getAttachedEndEffectorNames();
 			std::cerr << "Loaded jmg '" << jmg->getName() << "' " << jmg->getSolverInstance()->getBaseFrame() << std::endl;
 			for (const std::string& eeName : ees)
@@ -1169,7 +1192,11 @@ int main(int argc, char* argv[])
 	//(new octomap::OcTree(d));
 
 
+	sensor_spinner.start();
 	ros::spin();
+	sensor_spinner.stop();
+
+//	spinner.spin();
 
 	return 0;
 }

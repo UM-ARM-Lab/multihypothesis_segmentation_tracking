@@ -301,9 +301,9 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 	const int TRANSIT_INTERPOLATE_STEPS = 50;
 	const int SAMPLE_ATTEMPTS = 100;
 	const double PALM_DISTANCE = 0.02;
-	const double APPROACH_DISTANCE = 0.20;
+	const double APPROACH_DISTANCE = 0.15;
 	const double TABLE_BUFFER = 0.20;
-	const double Z_SAFETY_HEIGHT = 0.25;
+	const double Z_SAFETY_HEIGHT = 0.18;
 
 	trajectory_msgs::JointTrajectory cmd;
 	bool foundSolution = false;
@@ -375,9 +375,9 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 
 						PoseSequence approachTrajectory, slideTrajectory, retractTrajectory, fullTrajectory;
 
-						manipulator->interpolate(gripperApproachPose, gripperPose, approachTrajectory, INTERPOLATE_STEPS/3);
+						manipulator->interpolate(gripperApproachPose, gripperPose, approachTrajectory, INTERPOLATE_STEPS/2);
 						manipulator->interpolate(gripperPose, goalPose, slideTrajectory, INTERPOLATE_STEPS);
-						manipulator->interpolate(goalPose, gripperRetractPose, retractTrajectory, INTERPOLATE_STEPS/3);
+						manipulator->interpolate(goalPose, gripperRetractPose, retractTrajectory, INTERPOLATE_STEPS/2);
 
 						fullTrajectory.reserve(approachTrajectory.size()+slideTrajectory.size()+retractTrajectory.size());
 						fullTrajectory.insert(fullTrajectory.end(), approachTrajectory.begin(), approachTrajectory.end());
@@ -401,7 +401,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 							pregraspAction->grasp.finger_c_command.position = 0.0;
 							pregraspAction->grasp.finger_c_command.speed = 1.0;
 							pregraspAction->grasp.finger_c_command.force = 1.0;
-							pregraspAction->grasp.scissor_command.position = 0.5;
+							pregraspAction->grasp.scissor_command.position = 0.1;
 							pregraspAction->grasp.scissor_command.speed = 1.0;
 							pregraspAction->grasp.scissor_command.force = 1.0;
 							pregraspAction->jointGroupName = manipulator->gripper->getName();
@@ -430,7 +430,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 							graspAction->grasp.finger_c_command.position = 0.4;
 							graspAction->grasp.finger_c_command.speed = 1.0;
 							graspAction->grasp.finger_c_command.force = 1.0;
-							graspAction->grasp.scissor_command.position = 0.5;
+							graspAction->grasp.scissor_command.position = 0.2;
 							graspAction->grasp.scissor_command.speed = 1.0;
 							graspAction->grasp.scissor_command.force = 1.0;
 							graspAction->jointGroupName = manipulator->gripper->getName();
@@ -453,7 +453,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 							releaseAction->grasp.finger_c_command.position = 0.0;
 							releaseAction->grasp.finger_c_command.speed = 1.0;
 							releaseAction->grasp.finger_c_command.force = 1.0;
-							releaseAction->grasp.scissor_command.position = 0.5;
+							releaseAction->grasp.scissor_command.position = 0.2;
 							releaseAction->grasp.scissor_command.speed = 1.0;
 							releaseAction->grasp.scissor_command.force = 1.0;
 							releaseAction->jointGroupName = manipulator->gripper->getName();
