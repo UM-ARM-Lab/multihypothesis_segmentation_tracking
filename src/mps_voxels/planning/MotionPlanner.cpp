@@ -5,6 +5,8 @@
 #include "mps_voxels/planning/MotionPlanner.h"
 #include "mps_voxels/octree_utils.h"
 
+#include <moveit/planning_scene/planning_scene.h>
+
 #include <Eigen/StdVector>
 
 #include <tf_conversions/tf_eigen.h>
@@ -16,16 +18,45 @@
 #include <CGAL/min_quadrilateral_2.h>
 #include <boost/heap/priority_queue.hpp>
 
+#define _unused(x) ((void)(x))
+
+const std::string PlanningEnvironment::CLUTTER_NAME = "clutter";
+collision_detection::WorldConstPtr
+PlanningEnvironment::getCollisionWorldConst() const
+{
+	if (!collisionWorld)
+	{
+		collisionWorld = std::make_shared<collision_detection::World>();
+
+
+		Pose robotTworld = worldTrobot.inverse(Eigen::Isometry);
+
+		for (auto& completedSegment : completedSegments)
+		{
+			collisionWorld->addToObject(CLUTTER_NAME, std::make_shared<shapes::OcTree>(completedSegment), robotTworld);
+		}
+	}
+
+	return collisionWorld;
+}
+
+collision_detection::WorldPtr
+PlanningEnvironment::getCollisionWorld()
+{
+	getCollisionWorldConst();
+	return this->collisionWorld;
+}
+
 bool ObjectSampler::sampleObject(int& id, Pose& pushFrame) const
 {
-	const int N = static_cast<int>(env->occluded_pts.size());
+	const int N = static_cast<int>(env->occludedPts.size());
 	std::vector<unsigned int> indices(N);
 	std::iota(indices.begin(), indices.end(), 0);
 	std::shuffle(indices.begin(), indices.end(), env->rng);
 
 	for (const unsigned int index : indices)
 	{
-		const auto& pt_original = env->occluded_pts[index];
+		const auto& pt_original = env->occludedPts[index];
 
 		// Get a randomly selected shadowed point
 		Eigen::Vector3d pt(pt_original.x(), pt_original.y(), pt_original.z());
@@ -36,7 +67,7 @@ bool ObjectSampler::sampleObject(int& id, Pose& pushFrame) const
 		octomath::Vector3 ray = pt_original-cameraOrigin;
 		octomap::point3d collision;
 		bool hit = env->sceneOctree->castRay(cameraOrigin, ray, collision, true);
-		assert(hit);
+		assert(hit); _unused(hit);
 		collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision)); // regularize
 
 		Eigen::Vector3d gHat = -Eigen::Vector3d::UnitZ();
@@ -72,8 +103,8 @@ bool ObjectSampler::sampleObject(int& id, Pose& pushFrame) const
 double
 MotionPlanner::reward(const Motion* motion) const
 {
-	const int nClusters = static_cast<int>(motion->state->poses.size());
-	assert(nClusters == static_cast<int>(env->completedSegments.size()));
+	const size_t nClusters = motion->state->poses.size();
+	assert(nClusters == env->completedSegments.size());
 
 	Eigen::Matrix3Xd centroids(3, nClusters);
 	for (size_t i = 0; i < nClusters; ++i)
@@ -201,9 +232,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 {
 	using K =         CGAL::Exact_predicates_inexact_constructions_kernel;
 	using Point_2 =   K::Point_2;
-	using Line_2 =    K::Line_2;
 	using Polygon_2 = CGAL::Polygon_2<K>;
-	using Segment_2 = Polygon_2::Segment_2;
 
 	Pose robotTworld = env->worldTrobot.inverse(Eigen::Isometry);
 	State objectState{State::Poses(env->completedSegments.size(), State::Pose::Identity())};
@@ -256,7 +285,6 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 		double minV = std::numeric_limits<double>::infinity();
 		double maxV = -std::numeric_limits<double>::infinity();
 		double maxN = -std::numeric_limits<double>::infinity();
-		size_t maxNidx = i;
 		Eigen::Vector2d maxNpt;
 
 		for (size_t j_step = 0; j_step < nPts-2; ++j_step)
@@ -275,7 +303,6 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 			if (projN > maxN)
 			{
 				maxN = projN;
-				maxNidx = j;
 				maxNpt = p;
 			}
 		}
@@ -300,13 +327,12 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 	const int INTERPOLATE_STEPS = 25;
 	const int TRANSIT_INTERPOLATE_STEPS = 50;
 	const int SAMPLE_ATTEMPTS = 100;
-	const double PALM_DISTANCE = 0.02;
+	const double PALM_DISTANCE = 0.025;
 	const double APPROACH_DISTANCE = 0.15;
 	const double TABLE_BUFFER = 0.20;
 	const double Z_SAFETY_HEIGHT = 0.18;
 
 	trajectory_msgs::JointTrajectory cmd;
-	bool foundSolution = false;
 	std::uniform_real_distribution<double> xDistr(env->minExtent.x()+TABLE_BUFFER, env->maxExtent.x()-TABLE_BUFFER);
 	std::uniform_real_distribution<double> yDistr(env->minExtent.y()+TABLE_BUFFER, env->maxExtent.y()-TABLE_BUFFER);
 	std::uniform_real_distribution<double> thetaDistr(0.0, 2.0*M_PI);
@@ -336,6 +362,32 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 			std::vector<std::vector<double>> sln = manipulator->IK(gripperPose, robotTworld, robotState);
 			if (!sln.empty())
 			{
+				// Check whether the hand collides with the scene
+				{
+					planning_scene::PlanningScene ps(manipulator->pModel, env->getCollisionWorld());
+
+					collision_detection::CollisionRequest collision_request;
+					collision_detection::CollisionResult collision_result;
+					collision_request.contacts = true;
+
+					robot_state::RobotState collisionState(robotState);
+					collisionState.setJointGroupPositions(manipulator->arm, sln.front());
+					collisionState.update();
+					collision_detection::AllowedCollisionMatrix acm;
+					acm.setEntry(true); // Only check things we're explicitly requesting
+					for (const auto& linkName : manipulator->pModel->getLinkModelNames())
+					{
+						acm.setDefaultEntry(linkName, true);
+					}
+					acm.setEntry(env->CLUTTER_NAME, manipulator->gripper->getLinkModelNames(), false);
+					ps.checkCollision(collision_request, collision_result, collisionState, acm);
+
+					if (collision_result.collision)
+					{
+						continue;
+					}
+				}
+
 				Eigen::Affine3d goalPose;
 				for (int attempt = 0; attempt < SAMPLE_ATTEMPTS; ++attempt)
 				{

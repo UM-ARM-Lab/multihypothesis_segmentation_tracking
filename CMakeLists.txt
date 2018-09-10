@@ -77,7 +77,7 @@ macro(use_strict_compile_flags)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${BUILD_FLAGS}")
 endmacro()
 
-#use_strict_compile_flags()
+use_strict_compile_flags()
 
 macro(use_openmp)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
@@ -216,6 +216,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/image_utils.cpp
   src/${PROJECT_NAME}/segmentation_utils.cpp
   src/${PROJECT_NAME}/shape_utils.cpp
+  src/${PROJECT_NAME}/colormap.cpp
   src/${PROJECT_NAME}/Manipulator.cpp
   src/${PROJECT_NAME}/MotionModel.cpp
   src/${PROJECT_NAME}/ROI.cpp

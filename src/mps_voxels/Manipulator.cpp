@@ -69,6 +69,8 @@ bool Manipulator::interpolate(const robot_state::RobotState& currentState, const
 
 	ps.checkSelfCollision(collision_request, collision_result, toState);
 
+	ps.getCollisionWorld();
+
 	if (collision_result.collision)
 	{
 		return false;

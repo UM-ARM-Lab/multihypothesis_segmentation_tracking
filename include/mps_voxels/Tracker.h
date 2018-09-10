@@ -84,7 +84,7 @@ public:
 	struct SubscriptionOptions
 	{
 		ros::NodeHandle nh, pnh;
-		image_transport::ImageTransport it;
+//		image_transport::ImageTransport it;
 		image_transport::TransportHints hints;
 		int buffer;
 		std::string topic_prefix;
@@ -93,7 +93,8 @@ public:
 		std::string cam_topic;
 		SubscriptionOptions(const std::string& prefix = "/kinect2_victor_head/hd")
 			: nh(), pnh("~"),
-			  it(nh), hints("compressed", ros::TransportHints(), pnh),
+//			  it(nh),
+			  hints("compressed", ros::TransportHints(), pnh),
 			  buffer(10), topic_prefix(prefix),
 			  rgb_topic(topic_prefix+"/image_color_rect"),
 			  depth_topic(topic_prefix+"/image_depth_rect"),
@@ -121,6 +122,7 @@ public:
 	std::vector<cv_bridge::CvImagePtr> depth_buffer;
 	image_geometry::PinholeCameraModel cameraModel;
 
+	std::unique_ptr<image_transport::ImageTransport> it;
 	std::unique_ptr<image_transport::SubscriberFilter> rgb_sub;
 	std::unique_ptr<image_transport::SubscriberFilter> depth_sub;
 	std::unique_ptr<message_filters::Subscriber<sensor_msgs::CameraInfo>> cam_sub;
@@ -134,6 +136,9 @@ public:
 
 	std::shared_ptr<tf::TransformListener> listener;
 	ros::Publisher vizPub;
+
+	ros::CallbackQueue callback_queue;
+	ros::AsyncSpinner spinner;
 
 	explicit
 	Tracker(const size_t _buffer = 500,

@@ -178,7 +178,7 @@ struct SeedDistanceFunctor
 //{
 //
 //}
-
+/*
 double fitModels(const std::vector<std::pair<Tracker::Vector, Tracker::Vector>>& flow, const int K = 1)
 {
 	const int N = static_cast<int>(flow.size());
@@ -261,6 +261,7 @@ double fitModels(const std::vector<std::pair<Tracker::Vector, Tracker::Vector>>&
 
 	return L;
 }
+*/
 
 #include <geometric_shapes/shape_operations.h>
 std::shared_ptr<shapes::Mesh> approximateShape(const octomap::OcTree* tree)
@@ -624,9 +625,9 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		cv::Rect roi = cv::boundingRect(pile_points);
 		const int buffer = 25;
 		if (buffer < roi.x) { roi.x -= buffer; roi.width += buffer; }
-		if (roi.x+roi.width < cam_msg->width-buffer) { roi.width += buffer; }
+		if (roi.x+roi.width < static_cast<int>(cam_msg->width)-buffer) { roi.width += buffer; }
 		if (buffer < roi.y) { roi.y -= buffer; roi.height += buffer; }
-		if (roi.y+roi.height < cam_msg->height-buffer) { roi.height += buffer; }
+		if (roi.y+roi.height < static_cast<int>(cam_msg->height)-buffer) { roi.height += buffer; }
 		cv::Mat rgb_cropped(cv_rgb_ptr->image, roi);
 		cv::Mat depth_cropped(cv_depth_ptr->image, roi);
 		cv_bridge::CvImage cv_rgb_cropped(cv_rgb_ptr->header, cv_rgb_ptr->encoding, rgb_cropped);
@@ -766,7 +767,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		getAABB(*transformed_cloud, min, max);
 		minExtent.head<3>() = min; maxExtent.head<3>() = max;
 	}
-	octomap::point3d_collection& occluded_pts = planningEnvironment->occluded_pts;
+	octomap::point3d_collection& occluded_pts = planningEnvironment->occludedPts;
 	std::shared_ptr<octomap::OcTree> occlusionTree;
 	std::tie(occluded_pts, occlusionTree) = getOcclusionsInFOV(octree, cameraModel, cameraTtable, minExtent.head<3>(), maxExtent.head<3>());
 //	planningEnvironment->occluded_pts = occluded_pts;
@@ -917,7 +918,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	using RankedPose = std::pair<double, std::shared_ptr<Motion>>;
 	auto comp = [](const RankedPose& a, const RankedPose& b ) { return a.first < b.first; };
 	std::priority_queue<RankedPose, std::vector<RankedPose>, decltype(comp)> motionQueue(comp);
-	for (int i = 0; i < 25; ++i)
+	for (int i = 0; i < 5; ++i)
 	{
 		std::shared_ptr<Motion> motion = planner->sampleSlide(getCurrentRobotState());
 		if (motion)
@@ -1036,7 +1037,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 			if (isPrimaryAction)
 			{
 				tracker->stopCapture();
-				tracker->track();
+//				tracker->track();
 			}
 
 		}
@@ -1179,8 +1180,9 @@ int main(int argc, char* argv[])
 	ma.markers.push_back(tracker->track_options.roi.getMarker());
 	vizPub.publish(ma);
 
-	auto rgb_sub = std::make_unique<image_transport::SubscriberFilter>(options.it, options.rgb_topic, options.buffer, options.hints);
-	auto depth_sub = std::make_unique<image_transport::SubscriberFilter>(options.it, options.depth_topic, options.buffer, options.hints);
+	image_transport::ImageTransport it(nh);
+	auto rgb_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.rgb_topic, options.buffer, options.hints);
+	auto depth_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.depth_topic, options.buffer, options.hints);
 	auto cam_sub = std::make_unique<message_filters::Subscriber<sensor_msgs::CameraInfo>>(options.nh, options.cam_topic, options.buffer);
 
 	auto sync = std::make_unique<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(options.buffer), *rgb_sub, *depth_sub, *cam_sub);

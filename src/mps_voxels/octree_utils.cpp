@@ -227,7 +227,7 @@ octomap::point3d_collection getPoints(const octomap::OcTree* tree)
 	{
 		if (tree->isNodeOccupied(*it))
 		{
-			unsigned idx = it.getDepth();
+//			unsigned idx = it.getDepth();
 
 			pts.emplace_back(it.getCoordinate());
 		}

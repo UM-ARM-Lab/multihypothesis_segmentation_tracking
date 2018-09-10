@@ -26,31 +26,39 @@ void drawKeypoint(cv::Mat& display, const cv::KeyPoint& kp, const cv::Scalar& co
 }
 
 Tracker::Tracker(const size_t _buffer, SubscriptionOptions _options, TrackingOptions _track_options)
-	: MAX_BUFFER_LEN(_buffer), options(std::move(_options)), track_options(std::move(_track_options))
+	: MAX_BUFFER_LEN(_buffer), options(std::move(_options)), track_options(std::move(_track_options)),
+	  callback_queue(),
+	  spinner(1, &callback_queue)
 {
+	options.nh.setCallbackQueue(&callback_queue);
+	options.pnh.setCallbackQueue(&callback_queue);
+
 	rgb_buffer.reserve(MAX_BUFFER_LEN);
 	depth_buffer.reserve(MAX_BUFFER_LEN);
 
-	cv::namedWindow("prev", cv::WINDOW_GUI_NORMAL);
+	cv::namedWindow("Tracking", cv::WINDOW_GUI_NORMAL);
 
 	listener = std::make_shared<tf::TransformListener>();
 
 	vizPub = options.nh.advertise<visualization_msgs::MarkerArray>("flow", 10, true);
 
-	rgb_sub = std::make_unique<image_transport::SubscriberFilter>(options.it, options.rgb_topic, options.buffer, options.hints);
-	depth_sub = std::make_unique<image_transport::SubscriberFilter>(options.it, options.depth_topic, options.buffer, options.hints);
+	it = std::make_unique<image_transport::ImageTransport>(options.nh);
+	rgb_sub = std::make_unique<image_transport::SubscriberFilter>(*it, options.rgb_topic, options.buffer, options.hints);
+	depth_sub = std::make_unique<image_transport::SubscriberFilter>(*it, options.depth_topic, options.buffer, options.hints);
 	cam_sub = std::make_unique<message_filters::Subscriber<sensor_msgs::CameraInfo>>(options.nh, options.cam_topic, options.buffer);
 
 	sync = std::make_unique<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(options.buffer), *rgb_sub, *depth_sub, *cam_sub);
 	sync->registerCallback(boost::bind(&Tracker::imageCb, this, _1, _2, _3));
+
+	spinner.start();
 }
 
 void Tracker::startCapture()
 {
 	rgb_buffer.clear();
 	depth_buffer.clear();
-	rgb_sub->subscribe(options.it, options.rgb_topic, options.buffer, options.hints);
-	depth_sub->subscribe(options.it, options.depth_topic, options.buffer, options.hints);
+	rgb_sub->subscribe(*it, options.rgb_topic, options.buffer, options.hints);
+	depth_sub->subscribe(*it, options.depth_topic, options.buffer, options.hints);
 	cam_sub->subscribe(options.nh, options.cam_topic, options.buffer);
 }
 
@@ -71,7 +79,7 @@ void Tracker::track()
 	////////////////////////////////////////
 	//// Set up Mask
 	////////////////////////////////////////
-	const auto& img = rgb_buffer.back()->image;
+//	const auto& img = rgb_buffer.back()->image;
 
 	if (!listener->waitForTransform(rgb_buffer.back()->header.frame_id, "table_surface", ros::Time(0), ros::Duration(5.0)))
 	{
@@ -84,7 +92,7 @@ void Tracker::track()
 	mask = this->track_options.roi.getMask(cameraTworld, cameraModel);
 
 
-	cv::imshow("prev", mask);
+	cv::imshow("Tracking", mask);
 	cv::waitKey(100);
 
 	////////////////////////////////////////
@@ -167,7 +175,7 @@ void Tracker::track()
 
 		video.write(rgb_buffer[i-1]->image);
 		tracking.write(display);
-		cv::imshow("prev", display);
+		cv::imshow("Tracking", display);
 		cv::waitKey(1);
 
 		std::swap(gray1, gray2);
@@ -183,7 +191,6 @@ void Tracker::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
                       const sensor_msgs::ImageConstPtr& depth_msg,
                       const sensor_msgs::CameraInfoConstPtr& cam_msg)
 {
-	std::cerr << "Tracking callback." << std::endl;
 	cv_bridge::CvImagePtr cv_rgb_ptr;
 	try
 	{

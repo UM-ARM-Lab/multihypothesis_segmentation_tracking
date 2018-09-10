@@ -46,7 +46,7 @@ public:
 	bodies::BoundingSphere boundingSphere;
 
 	enum { NeedsToAlign = (sizeof(Pose)%16)==0 };
-	EIGEN_MAKE_ALIGNED_OPERATOR_NEW_IF(NeedsToAlign);
+	EIGEN_MAKE_ALIGNED_OPERATOR_NEW_IF(NeedsToAlign)
 };
 
 #ifndef linear_part

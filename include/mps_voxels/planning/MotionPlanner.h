@@ -9,6 +9,9 @@
 #include "mps_voxels/Manipulator.h"
 #include "mps_voxels/vector_less_than.h"
 
+#include <moveit/collision_detection/world.h>
+//#include <moveit/collision_detection/collision_world.h>
+
 #include <octomap/OcTree.h>
 #include <tf/transform_broadcaster.h>
 
@@ -35,11 +38,16 @@ public:
 	octomap::OcTree* sceneOctree;
 	std::map<octomap::point3d, int, vector_less_than<3, octomap::point3d>> coordToObject;
 	std::vector<std::shared_ptr<octomap::OcTree>> completedSegments;
-	octomap::point3d_collection occluded_pts;
+	octomap::point3d_collection occludedPts;
+
+	static const std::string CLUTTER_NAME;
+	mutable collision_detection::WorldPtr collisionWorld;
+	collision_detection::WorldConstPtr getCollisionWorldConst() const;
+	collision_detection::WorldPtr getCollisionWorld();
 
 
 	enum { NeedsToAlign = (sizeof(Pose)%16)==0 };
-	EIGEN_MAKE_ALIGNED_OPERATOR_NEW_IF(NeedsToAlign);
+	EIGEN_MAKE_ALIGNED_OPERATOR_NEW_IF(NeedsToAlign)
 };
 
 class ObjectSampler
