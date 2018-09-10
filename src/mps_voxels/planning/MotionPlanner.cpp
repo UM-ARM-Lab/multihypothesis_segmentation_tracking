@@ -21,31 +21,25 @@
 #define _unused(x) ((void)(x))
 
 const std::string PlanningEnvironment::CLUTTER_NAME = "clutter";
-collision_detection::WorldConstPtr
-PlanningEnvironment::getCollisionWorldConst() const
+collision_detection::WorldPtr
+PlanningEnvironment::computeCollisionWorld()
 {
-	if (!collisionWorld)
+	collisionWorld = std::make_shared<collision_detection::World>();
+
+	Pose robotTworld = worldTrobot.inverse(Eigen::Isometry);
+
+	for (auto& completedSegment : completedSegments)
 	{
-		collisionWorld = std::make_shared<collision_detection::World>();
-
-
-		Pose robotTworld = worldTrobot.inverse(Eigen::Isometry);
-
-		for (auto& completedSegment : completedSegments)
-		{
-			collisionWorld->addToObject(CLUTTER_NAME, std::make_shared<shapes::OcTree>(completedSegment), robotTworld);
-		}
+		collisionWorld->addToObject(CLUTTER_NAME, std::make_shared<shapes::OcTree>(completedSegment), robotTworld);
 	}
+//	for (auto& approxSegment : approximateSegments)
+//	{
+//		collisionWorld->addToObject(CLUTTER_NAME, approxSegment, robotTworld);
+//	}
 
 	return collisionWorld;
 }
 
-collision_detection::WorldPtr
-PlanningEnvironment::getCollisionWorld()
-{
-	getCollisionWorldConst();
-	return this->collisionWorld;
-}
 
 bool ObjectSampler::sampleObject(int& id, Pose& pushFrame) const
 {
@@ -327,7 +321,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 	const int INTERPOLATE_STEPS = 25;
 	const int TRANSIT_INTERPOLATE_STEPS = 50;
 	const int SAMPLE_ATTEMPTS = 100;
-	const double PALM_DISTANCE = 0.025;
+	const double PALM_DISTANCE = 0.035;
 	const double APPROACH_DISTANCE = 0.15;
 	const double TABLE_BUFFER = 0.20;
 	const double Z_SAFETY_HEIGHT = 0.18;
@@ -364,7 +358,8 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 			{
 				// Check whether the hand collides with the scene
 				{
-					planning_scene::PlanningScene ps(manipulator->pModel, env->getCollisionWorld());
+					assert(env->collisionWorld);
+					planning_scene::PlanningScene ps(manipulator->pModel, env->collisionWorld);
 
 					collision_detection::CollisionRequest collision_request;
 					collision_detection::CollisionResult collision_result;
@@ -372,18 +367,46 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState)
 
 					robot_state::RobotState collisionState(robotState);
 					collisionState.setJointGroupPositions(manipulator->arm, sln.front());
+					std::vector<double> gripperJoints;
+					collisionState.copyJointGroupPositions(manipulator->gripper, gripperJoints);
 					collisionState.update();
 					collision_detection::AllowedCollisionMatrix acm;
-					acm.setEntry(true); // Only check things we're explicitly requesting
+//					acm.setEntry(true); // Only check things we're explicitly requesting
+					std::set<std::string> gripperLinks(manipulator->gripper->getLinkModelNames().begin(), manipulator->gripper->getLinkModelNames().end());
 					for (const auto& linkName : manipulator->pModel->getLinkModelNames())
 					{
-						acm.setDefaultEntry(linkName, true);
+						// Not sure why this is necessary, but it seems to be
+						if (gripperLinks.find(linkName) == gripperLinks.end())
+						{
+							acm.setDefaultEntry(linkName, true);
+						}
+					}
+					for (const auto& link1Name : gripperLinks)
+					{
+						for (const auto& link2Name : gripperLinks)
+						{
+							if (link1Name == link2Name) { continue; }
+
+							acm.setEntry(link1Name, link2Name, true);
+						}
 					}
 					acm.setEntry(env->CLUTTER_NAME, manipulator->gripper->getLinkModelNames(), false);
 					ps.checkCollision(collision_request, collision_result, collisionState, acm);
 
 					if (collision_result.collision)
 					{
+//						for (size_t i = 0; i < manipulator->gripper->getVariableCount(); ++i)
+//						{
+//							std::cerr << manipulator->gripper->getVariableNames()[i] << ": " << gripperJoints[i] << std::endl;
+//						}
+//						for (const auto& p : collision_result.contacts)
+//						{
+//							std::cerr << p.first.first << " X " << p.first.second << std::endl;
+//							for (const auto& c : p.second)
+//							{
+//								std::cerr << c.pos.transpose() << std::endl;
+//							}
+//						}
 						continue;
 					}
 				}

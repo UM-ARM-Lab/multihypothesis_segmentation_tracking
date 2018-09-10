@@ -69,8 +69,6 @@ bool Manipulator::interpolate(const robot_state::RobotState& currentState, const
 
 	ps.checkSelfCollision(collision_request, collision_result, toState);
 
-	ps.getCollisionWorld();
-
 	if (collision_result.collision)
 	{
 		return false;
@@ -215,4 +213,5 @@ bool Manipulator::grasp(const robot_state::RobotState& currentState, moveit_msgs
 	}
 
 //	grasp.grasp_posture.points.front().positions[]
+	return false;
 }

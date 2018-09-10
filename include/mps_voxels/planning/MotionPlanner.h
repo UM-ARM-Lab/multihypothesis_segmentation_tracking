@@ -38,12 +38,12 @@ public:
 	octomap::OcTree* sceneOctree;
 	std::map<octomap::point3d, int, vector_less_than<3, octomap::point3d>> coordToObject;
 	std::vector<std::shared_ptr<octomap::OcTree>> completedSegments;
+	std::vector<std::shared_ptr<shapes::Mesh>> approximateSegments;
 	octomap::point3d_collection occludedPts;
 
 	static const std::string CLUTTER_NAME;
-	mutable collision_detection::WorldPtr collisionWorld;
-	collision_detection::WorldConstPtr getCollisionWorldConst() const;
-	collision_detection::WorldPtr getCollisionWorld();
+	collision_detection::WorldPtr collisionWorld;
+	collision_detection::WorldPtr computeCollisionWorld();
 
 
 	enum { NeedsToAlign = (sizeof(Pose)%16)==0 };
