@@ -46,7 +46,7 @@ RGBDSegmenter::segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& 
 
 std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	const pcl::PointCloud<PointT>::Ptr& cloud, const cv::Mat& labels,
-	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi)
+	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi, std::map<uint16_t, int>* labelToIndexLookup)
 {
 	assert(roi.width == labels.cols);
 	assert(roi.height == labels.rows);
@@ -54,13 +54,13 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	const LabelT BUFFER_VALUE = std::numeric_limits<LabelT>::max();
 	std::set<LabelT> uniqueLabels = unique(labels);
 
-	std::vector<pcl::PointCloud<PointT>::Ptr> segment_clouds;
-	std::map<LabelT, int> labelMap;
+	std::map<LabelT, pcl::PointCloud<PointT>::Ptr> segment_clouds;
+//	std::map<LabelT, int> labelMap;
 	cv::Mat filtered_labels(labels.size(), labels.type(), BUFFER_VALUE);
 	for (const auto label : uniqueLabels)
 	{
-		labelMap.insert({label, (int)labelMap.size()});
-		segment_clouds.push_back(pcl::PointCloud<PointT>::Ptr(new pcl::PointCloud<PointT>()));
+//		labelMap.insert({label, (int)labelMap.size()});
+		segment_clouds.insert({label, pcl::PointCloud<PointT>::Ptr(new pcl::PointCloud<PointT>())});
 
 		// Erode the boundary of the label slightly
 		cv::Mat labelMask = (labels == label);
@@ -82,7 +82,7 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 		{
 			LabelT label = filtered_labels.at<LabelT>(imagePt);
 			if (BUFFER_VALUE == label) { continue; }
-			segment_clouds[labelMap.at(label)]->push_back(pt);
+			segment_clouds[label]->push_back(pt);
 		}
 		else
 		{
@@ -94,9 +94,9 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 
 	for (auto& segment : segment_clouds)
 	{
-		if (segment->size() >= threshold)
+		if (segment.second->size() >= threshold)
 		{
-			segment = filterOutliers(segment, threshold);
+			segment.second = filterOutliers(segment.second, threshold);
 		}
 	}
 
@@ -104,14 +104,24 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	{
 		if (label < 100)
 		{
-			segment_clouds.erase(segment_clouds.begin() + labelMap.at(label));
+			segment_clouds.erase(label);
 			break;
 		}
 	}
 
-	segment_clouds.erase(std::remove_if(segment_clouds.begin(), segment_clouds.end(),
-	                                  [](const pcl::PointCloud<PointT>::Ptr& pc){ return pc->size() < threshold;}),
-	                     segment_clouds.end());
+	std::vector<pcl::PointCloud<PointT>::Ptr> retVal;
+	retVal.reserve(segment_clouds.size());
+	for (auto& pair : segment_clouds)
+	{
+		if (pair.second->size() >= threshold)
+		{
+			retVal.push_back(pair.second);
+			if (labelToIndexLookup)
+			{
+				(*labelToIndexLookup)[pair.first] = retVal.size()-1;
+			}
+		}
+	}
 
-	return segment_clouds;
+	return retVal;
 }

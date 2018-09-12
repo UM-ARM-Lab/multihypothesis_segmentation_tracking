@@ -29,6 +29,7 @@ public:
 
 std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	const pcl::PointCloud<PointT>::Ptr& cloud, const cv::Mat& labels,
-	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi);
+	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi,
+	std::map<uint16_t, int>* labelToIndexLookup = nullptr);
 
 #endif // MPS_VOXELS_SEGMENTATION_UTILS_H

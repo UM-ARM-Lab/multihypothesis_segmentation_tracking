@@ -22,7 +22,7 @@ double Manipulator::stateCost(const std::vector<double>& q1) const
 	double cost = 0;
 	for (size_t j = 0; j < q1.size(); ++j)
 	{
-		cost += (fabs(q1[j]) + pow(fabs(q1[j] - qHome[j]), 2)) * JOINT_WEIGHTS[j];
+		cost += (fabs(q1[j]) + fabs(q1[j] - qHome[j])) * JOINT_WEIGHTS[j];
 	}
 	return cost;
 }
@@ -60,14 +60,24 @@ bool Manipulator::interpolate(const Pose& from, const Pose& to, PoseSequence& se
 
 
 bool Manipulator::interpolate(const robot_state::RobotState& currentState, const robot_state::RobotState& toState,
-                              trajectory_msgs::JointTrajectory& cmd, const int INTERPOLATE_STEPS) const
+                              trajectory_msgs::JointTrajectory& cmd, const int INTERPOLATE_STEPS,
+                              planning_scene::PlanningSceneConstPtr scene) const
 {
-	planning_scene::PlanningScene ps(pModel);
+	planning_scene::PlanningSceneConstPtr ps;
+
+	if (scene)
+	{
+		ps = scene;
+	}
+	else
+	{
+		ps = std::make_unique<planning_scene::PlanningScene>(pModel);
+	}
 
 	collision_detection::CollisionRequest collision_request;
 	collision_detection::CollisionResult collision_result;
 
-	ps.checkSelfCollision(collision_request, collision_result, toState);
+	ps->checkCollision(collision_request, collision_result, toState);
 
 	if (collision_result.collision)
 	{
@@ -84,7 +94,7 @@ bool Manipulator::interpolate(const robot_state::RobotState& currentState, const
 		robot_state::RobotState interpState(currentState);
 		currentState.interpolate(toState, t, interpState, arm);
 
-		ps.checkSelfCollision(collision_request, collision_result, interpState);
+		ps->checkCollision(collision_request, collision_result, interpState);
 		if (collision_result.collision)
 		{
 			return false;

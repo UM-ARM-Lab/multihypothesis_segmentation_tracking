@@ -66,9 +66,9 @@ std::shared_ptr<shapes::Mesh> convex_hull(const PointContainerT& points)
 
 	std::set<Point_3> point_set;
 
-	if(const Point_3* p = CGAL::object_cast<Point_3>(&obj))
+	if(const Point_3* pt = CGAL::object_cast<Point_3>(&obj))
 	{
-		std::cout << "Point " << *p << std::endl;
+		std::cout << "Point " << *pt << std::endl;
 		return std::shared_ptr<shapes::Mesh>(nullptr);
 	}
 	else if(const Segment_3* s = CGAL::object_cast<Segment_3>(&obj))
@@ -161,7 +161,7 @@ std::shared_ptr<shapes::Mesh> convex_hull(const PointContainerT& points)
 		return m;
 	}
 	else { throw std::runtime_error("Unknown object type."); }
-};
+}
 
 template <typename PointContainerT, typename PointT>
 std::shared_ptr<shapes::Mesh> prism(const PointContainerT& points)

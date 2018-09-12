@@ -5,6 +5,7 @@
 #include "mps_voxels/Manipulator.h"
 #include "mps_voxels/MotionModel.h"
 #include "mps_voxels/Tracker.h"
+#include "mps_voxels/TargetDetector.h"
 #include "mps_voxels/LocalOctreeServer.h"
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
@@ -56,6 +57,7 @@
 #include <queue>
 
 
+#define _unused(x) ((void)(x))
 
 
 
@@ -188,12 +190,15 @@ using TrajectoryClient = actionlib::SimpleActionClient<control_msgs::FollowJoint
 std::shared_ptr<LocalOctreeServer> mapServer;
 std::shared_ptr<VoxelCompleter> completionClient;
 std::shared_ptr<RGBDSegmenter> segmentationClient;
-std::shared_ptr<TrajectoryClient> trajectoryClient;
 std::unique_ptr<Tracker> tracker;
-ros::Publisher octreePub;
+std::unique_ptr<TargetDetector> targetDetector;
+std::shared_ptr<TrajectoryClient> trajectoryClient;
 std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperLPub;
 std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperRPub;
+ros::Publisher octreePub;
 ros::Publisher displayPub;
+std::unique_ptr<image_transport::Publisher> segmentationPub;
+std::unique_ptr<image_transport::Publisher> targetPub;
 std::shared_ptr<tf::TransformListener> listener;
 std::shared_ptr<tf::TransformBroadcaster> broadcaster;
 robot_model::RobotModelPtr pModel;
@@ -203,9 +208,6 @@ std::shared_ptr<MotionPlanner> planner;
 sensor_msgs::JointState::ConstPtr latestJoints;
 std::map<std::string, std::shared_ptr<MotionModel>> motionModels;
 std::mutex joint_mtx;
-
-int octomapBurnInCounter = 0;
-const int OCTOMAP_BURN_IN = 2; /// Number of point clouds to process before using octree
 
 void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 {
@@ -242,15 +244,14 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 
 	Eigen::Vector4f maxExtent(0.4f, 0.6f, 0.5f, 1);
-	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.015f, 1);
+	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.020f, 1);
 	setBBox(minExtent, maxExtent, mapServer->getOctree());
 	planningEnvironment->minExtent = minExtent.head<3>().cast<double>();
 	planningEnvironment->maxExtent = maxExtent.head<3>().cast<double>();
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	if (octomapBurnInCounter++ < OCTOMAP_BURN_IN) { return; }
-	if (octomapBurnInCounter > 8*OCTOMAP_BURN_IN) { mapServer->getOctree()->clear(); octomapBurnInCounter = 0; return; }
+	mapServer->getOctree()->clear();
 
 	image_geometry::PinholeCameraModel cameraModel;
 	cameraModel.fromCameraInfo(cam_msg);
@@ -503,6 +504,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
+	int goalSegmentID = -1;
 	std::vector<pcl::PointCloud<PointT>::Ptr> segments;
 	{
 //		static pcl::visualization::CloudViewer viewer("PilePoints");
@@ -538,6 +540,13 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		for (auto& d : cam_msg_cropped.D) { d = 0.0; }
 		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
+		/////////////////////////////////////////////////////////////////
+		// Search for target object
+		/////////////////////////////////////////////////////////////////
+		cv::Mat targetMask = targetDetector->getMask(rgb_cropped);
+		cv::imshow("Target Mask", targetMask);
+		cv::waitKey(10);
+
 		cv::imshow("rgb", rgb_cropped);
 		cv::waitKey(10);
 		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
@@ -555,9 +564,28 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		cv::imshow("segmentation", labelColorsMap);
 		cv::waitKey(10);
 
-//		image_geometry::PinholeCameraModel croppedCameraModel;
-//		croppedCameraModel.fromCameraInfo(cam_msg_cropped);
-		segments = segment(pile_cloud, seg->image, cameraModel, roi);
+		if (segmentationPub->getNumSubscribers() > 0)
+		{
+			segmentationPub->publish(cv_bridge::CvImage(cam_msg->header, "bgr8", labelColorsMap).toImageMsg());
+		}
+
+		std::map<uint16_t, int> labelToIndexLookup;
+		segments = segment(pile_cloud, seg->image, cameraModel, roi, &labelToIndexLookup);
+
+		int matchID = -1;
+		matchID = targetDetector->matchGoalSegment(targetMask, seg->image);
+		if (matchID >= 0)
+		{
+			goalSegmentID = labelToIndexLookup[(unsigned)matchID];
+			std::cerr << "**************************" << std::endl;
+			std::cerr << "Found target: " << matchID << " -> " << goalSegmentID << std::endl;
+			std::cerr << "**************************" << std::endl;
+		}
+
+		if (targetPub->getNumSubscribers() > 0)
+		{
+			targetPub->publish(cv_bridge::CvImage(cam_msg->header, "mono8", targetMask).toImageMsg());
+		}
 	}
 
 	// Perform segmentation
@@ -606,7 +634,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		{
 			completionClient->completeShape(min, max, worldTcamera.cast<float>(), octree, subtree.get(), false);
 		}
-
+		setBBox(Eigen::Vector3f(-2,-2,-2), Eigen::Vector3f(2,2,2), subtree.get());
 		completedSegments.push_back(subtree);
 
 		std_msgs::ColorRGBA colorRGBA;
@@ -748,20 +776,26 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		const auto& pt_world = occluded_pts[i];
 		octomap::point3d cameraOrigin((float)worldTcamera.translation().x(), (float)worldTcamera.translation().y(), (float)worldTcamera.translation().z());
 		octomap::point3d collision;
-		octree->castRay(cameraOrigin, pt_world-cameraOrigin, collision);
+		bool hit = octree->castRay(cameraOrigin, pt_world-cameraOrigin, collision);
+		assert(hit); _unused(hit);
 		collision = octree->keyToCoord(octree->coordToKey(collision)); // regularize
 
 		const auto& iter = coordToSegment.find(collision);
 		if (iter != coordToSegment.end())
 		{
 			#pragma omp critical
-			occludedBySegmentCount[iter->second]++;
+			{
+				occludedBySegmentCount[iter->second]++;
+				planningEnvironment->coordToObject.insert({pt_world, iter->second});
+				planningEnvironment->objectToShadow[iter->second].push_back(pt_world);
+			}
 		}
 	}
-	planningEnvironment->coordToObject = coordToSegment;
+	planningEnvironment->surfaceCoordToObject = coordToSegment;
 
 	int mostOccludingSegmentIdx = (int)std::distance(occludedBySegmentCount.begin(),
 		std::max_element(occludedBySegmentCount.begin(), occludedBySegmentCount.end()));
+	if (goalSegmentID >= 0) { mostOccludingSegmentIdx = goalSegmentID; }
 	visualization_msgs::MarkerArray objToMoveVis = visualizeOctree(completedSegments[mostOccludingSegmentIdx].get(), globalFrame);
 	for (visualization_msgs::Marker& m : objToMoveVis.markers)
 	{
@@ -776,8 +810,6 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	std::random_device rd;
 	std::mt19937 g(rd());
-
-	std::shuffle(occluded_pts.begin(), occluded_pts.end(), g);
 
 	{
 		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(occlusionTree.get(), globalFrame);
@@ -811,81 +843,119 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	planningEnvironment->worldTrobot = robotTworld.inverse(Eigen::Isometry);
 
 
-	trajectory_msgs::JointTrajectory cmd;
-	cmd.header.frame_id = pModel->getRootLinkName();
+//	trajectory_msgs::JointTrajectory cmd;
+//	cmd.header.frame_id = pModel->getRootLinkName();
 
 
-	using RankedPose = std::pair<double, std::shared_ptr<Motion>>;
-	auto comp = [](const RankedPose& a, const RankedPose& b ) { return a.first < b.first; };
-	std::priority_queue<RankedPose, std::vector<RankedPose>, decltype(comp)> motionQueue(comp);
+	using RankedMotion = std::pair<double, std::shared_ptr<Motion>>;
+	auto comp = [](const RankedMotion& a, const RankedMotion& b ) { return a.first < b.first; };
+	std::priority_queue<RankedMotion, std::vector<RankedMotion>, decltype(comp)> motionQueue(comp);
 
 	planningEnvironment->visualize = false;
+	planningEnvironment->obstructions.clear();
 	planningEnvironment->computeCollisionWorld();
-//	#pragma omp parallel for
-	for (int i = 0; i < 25; ++i)
+	planner->computePlanningScene();
+	auto rs = getCurrentRobotState();
+
+	std::shared_ptr<Motion> motion;
+	if (goalSegmentID >= 0)
 	{
-		std::shared_ptr<Motion> motion = planner->sampleSlide(getCurrentRobotState());
-		if (motion)
+		motion = planner->pick(rs, goalSegmentID, planningEnvironment->obstructions);
+		if (!motion)
 		{
-			double reward = planner->reward(motion.get());
-			#pragma omp critical
-			{
-				motionQueue.push({reward, motion});
-			}
-//			ros::Duration(2.0).sleep();
+			ROS_WARN_STREAM("Saw target object, but failed to compute grasp plan.");
 		}
 	}
 
-	if (motionQueue.empty())
+	if (!motion)
 	{
-		ROS_WARN_STREAM("Unable to sample any valid actions for scene.");
-		return;
+		#pragma omp parallel for private(planningEnvironment)
+		for (int i = 0; i<30; ++i)
+		{
+			std::shared_ptr<Motion> motionSlide = planner->sampleSlide(rs);
+			if (motionSlide)
+			{
+				double reward = planner->reward(motionSlide.get());
+				#pragma omp critical
+				{
+					motionQueue.push({reward, motionSlide});
+				}
+			}
+
+			std::shared_ptr<Motion> motionPush = planner->samplePush(rs);
+			if (motionPush)
+			{
+				double reward = planner->reward(motionPush.get());
+				#pragma omp critical
+				{
+					motionQueue.push({reward, motionPush});
+				}
+			}
+		}
+
+		if (motionQueue.empty())
+		{
+			ROS_WARN_STREAM("Unable to sample any valid actions for scene.");
+			return;
+		}
+		else
+		{
+			std::cerr << "Found " << motionQueue.size() << " viable solutions." << std::endl;
+		}
+		motion = motionQueue.top().second;
 	}
 
-	std::shared_ptr<Motion> motion = motionQueue.top().second;
+	moveit_msgs::DisplayTrajectory dt;
+	moveit::core::robotStateToRobotStateMsg(getCurrentRobotState(), dt.trajectory_start);
+	dt.model_id = pModel->getName();
+	ros::Duration totalTime(0.0);
+
 	if (motion && motion->action && std::dynamic_pointer_cast<CompositeAction>(motion->action))
 	{
 		auto actions = std::dynamic_pointer_cast<CompositeAction>(motion->action);
-		cmd.joint_names = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[1])->cmd.joint_names;
-		for (int idx : std::vector<int>{1, 2, 4, 6, 7})
+		for (size_t idx = 0; idx < actions->actions.size(); ++idx)
 		{
 			auto subTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[idx]);
-			cmd.points.insert(cmd.points.end(), subTraj->cmd.points.begin(), subTraj->cmd.points.end());
+			if (subTraj)
+			{
+				moveit_msgs::RobotTrajectory drt;
+				drt.joint_trajectory.joint_names = subTraj->cmd.joint_names;
+				drt.joint_trajectory.points.insert(drt.joint_trajectory.points.end(), subTraj->cmd.points.begin(), subTraj->cmd.points.end());
+				dt.trajectory.push_back(drt);
+				totalTime += subTraj->cmd.points.back().time_from_start-subTraj->cmd.points.front().time_from_start;
+			}
 		}
 
-		int i = 0;
-		for (const auto& interpPose : std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[4])->palm_trajectory)
+		if (actions->primaryAction >= 0)
 		{
-			tf::Transform temp; tf::poseEigenToTF(interpPose, temp);
-			broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, "slide_"+std::to_string(i++)));
+			auto jointTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[actions->primaryAction]);
+			if (jointTraj)
+			{
+				int i = 0;
+				for (const auto& interpPose : jointTraj->palm_trajectory)
+				{
+					tf::Transform temp; tf::poseEigenToTF(interpPose, temp);
+					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, "slide_"+std::to_string(i++)));
+				}
+			}
 		}
 	}
-
-	if (cmd.points.empty())
+	else
 	{
 		ROS_WARN("Unable to find a solution to any occluded point from any arm.");
 		return;
 	}
 
-	cmd.header.stamp = ros::Time::now();
-	moveit_msgs::DisplayTrajectory dt;
-//	moveit_msgs::RobotState drs;
-	moveit_msgs::RobotTrajectory drt;
-
-	moveit::core::robotStateToRobotStateMsg(getCurrentRobotState(), dt.trajectory_start);
-	dt.model_id = pModel->getName();
-	drt.joint_trajectory = cmd;
-	dt.trajectory.push_back(drt);
 	displayPub.publish(dt);
 
 	cv::waitKey(10);
 
 	if (trajectoryClient->isServerConnected())
 	{
-		// Allow some visualization time
-		ros::Duration(3.0+cmd.points.size()/20.0).sleep();
-
 		auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
+		// Allow some visualization time
+		ros::Duration(3.0+compositeAction->actions.size()).sleep();
+
 		for (size_t a = 0; a < compositeAction->actions.size(); ++a)
 		{
 			const auto& action = compositeAction->actions[a];
@@ -904,7 +974,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 				std::cerr << "Sending joint trajectory." << std::endl;
 
-				auto res = trajectoryClient->sendGoalAndWait(goal, ros::Duration(30.0) + cmd.points.back().time_from_start);
+				auto res = trajectoryClient->sendGoalAndWait(goal, ros::Duration(30.0) + totalTime);
 				if (!res.isDone())
 				{
 					ROS_ERROR_STREAM("Trajectory client timed out.");
@@ -946,7 +1016,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 					gripperPub->msg_ = gripAction->grasp;
 					gripperPub->unlockAndPublish();
 				}
-				ros::Duration(4.0).sleep();
+				ros::Duration(2.0).sleep();
 			}
 
 			if (isPrimaryAction)
@@ -958,11 +1028,23 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 
 	}
-	else if (cmd.points.size() > 10)
+	else// if (cmd.points.size() > 10)
 	{
+		auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
 		// Allow some visualization time
-		ros::Duration(3.0+cmd.points.size()/20.0).sleep();
+		ros::Duration(3.0+compositeAction->actions.size()).sleep();
 	}
+
+//	// Check if we used to see the target, but don't anymore
+//	if (goalSegmentID >= 0)
+//	{
+//		cv::Mat targetMask = targetDetector->getMask(targetMask, seg->image);
+//		if (matchID >= 0)
+//		{
+//
+//		}
+//
+//	}
 
 	cv::waitKey(10);
 
@@ -994,6 +1076,7 @@ int main(int argc, char* argv[])
 
 	tracker = std::make_unique<Tracker>();
 	tracker->stopCapture();
+	targetDetector = std::make_unique<TargetDetector>(TargetDetector::TRACK_COLOR::PURPLE);
 
 	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>("joint_states", 2, handleJointState, ros::VoidPtr(), &sensor_queue);
 	ros::Subscriber joint_sub = nh.subscribe(joint_sub_options);
@@ -1042,7 +1125,7 @@ int main(int argc, char* argv[])
 		if (jmg->isChain() && jmg->getSolverInstance())
 		{
 //			jmgs.push_back(jmg);
-			jmg->getSolverInstance()->setSearchDiscretization(0.05); // 0.1 = ~5 degrees
+			jmg->getSolverInstance()->setSearchDiscretization(0.1); // 0.1 = ~5 degrees
 			const auto& ees = jmg->getAttachedEndEffectorNames();
 			std::cerr << "Loaded jmg '" << jmg->getName() << "' " << jmg->getSolverInstance()->getBaseFrame() << std::endl;
 			for (const std::string& eeName : ees)
@@ -1077,6 +1160,31 @@ int main(int argc, char* argv[])
 	planningEnvironment->manipulators = manipulators;
 	planningEnvironment->broadcaster = broadcaster;
 
+	const std::string mocapFrame = "world_origin";
+	if (listener->waitForTransform(mapServer->getWorldFrame(), mocapFrame, ros::Time(0), ros::Duration(5.0)))
+	{
+		tf::StampedTransform tableFrameInMocapCoordinates;
+		listener->lookupTransform(mapServer->getWorldFrame(), mocapFrame, ros::Time(0), tableFrameInMocapCoordinates);
+		Eigen::Affine3d tableTmocap;
+		tf::transformTFToEigen(tableFrameInMocapCoordinates, tableTmocap);
+
+		for (int i = 0; i < 2; ++i)
+		{
+			auto wall = std::make_shared<shapes::Box>();
+			wall->size[0] = 5;
+			wall->size[1] = 0.1;
+			wall->size[2] = 3;
+			Eigen::Affine3d pose = Eigen::Affine3d::Identity();
+			pose.translation() = Eigen::Vector3d(2.0, 1.0, ((0==i)?1.0:-1.0));
+			planningEnvironment->staticObstacles.push_back({wall, tableTmocap*pose});
+		}
+	}
+	else
+	{
+		ROS_WARN_STREAM("Failed to look up transform between '" << mapServer->getWorldFrame() << "' and '" << "world_origin" << "'. Unable to set safety barriers");
+		return -1;
+	}
+
 	std::string topic_prefix = "/kinect2_victor_head/qhd";
 //	ros::Subscriber camInfoSub = nh.subscribe("kinect2_victor_head/qhd/camera_info", 1, camera_cb);
 
@@ -1086,6 +1194,7 @@ int main(int argc, char* argv[])
 //	message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(10), point_sub, info_sub);
 //	sync.registerCallback(cloud_cb);
 
+	cv::namedWindow("Target Mask", cv::WINDOW_GUI_NORMAL);
 	cv::namedWindow("rgb", cv::WINDOW_GUI_NORMAL);
 	cv::namedWindow("segmentation", cv::WINDOW_GUI_NORMAL);
 
@@ -1096,6 +1205,10 @@ int main(int argc, char* argv[])
 	vizPub.publish(ma);
 
 	image_transport::ImageTransport it(nh);
+
+	segmentationPub = std::make_unique<image_transport::Publisher>(it.advertise("segmentation", 1));
+	targetPub = std::make_unique<image_transport::Publisher>(it.advertise("target", 1));
+
 	auto rgb_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.rgb_topic, options.buffer, options.hints);
 	auto depth_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.depth_topic, options.buffer, options.hints);
 	auto cam_sub = std::make_unique<message_filters::Subscriber<sensor_msgs::CameraInfo>>(options.nh, options.cam_topic, options.buffer);
