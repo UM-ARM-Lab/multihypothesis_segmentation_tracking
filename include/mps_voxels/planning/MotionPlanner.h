@@ -35,6 +35,7 @@ public:
 	Eigen::Vector3d minExtent, maxExtent;
 
 	std::vector<std::shared_ptr<Manipulator>> manipulators;
+	std::map<std::string, std::shared_ptr<Manipulator>> jointToManipulator;
 
 	std::vector<std::pair<std::shared_ptr<shapes::Shape>, Pose>> staticObstacles;
 
@@ -81,7 +82,7 @@ public:
 	planning_scene::PlanningSceneConstPtr planningScene;
 	planning_scene::PlanningSceneConstPtr computePlanningScene(bool useCollisionObjects = true);
 
-	double reward(const Motion* motion) const;
+	double reward(const robot_state::RobotState& robotState, const Motion* motion) const;
 
 	collision_detection::AllowedCollisionMatrix gripperEnvironmentACM(const std::shared_ptr<Manipulator>& manipulator) const;
 	bool gripperEnvironmentCollision(const std::shared_ptr<Manipulator>& manipulator, const robot_state::RobotState& robotState) const;

@@ -205,7 +205,7 @@ ObjectSampler::sampleObject(int& id, Pose& pushFrame) const
 }
 
 double
-MotionPlanner::reward(const Motion* motion) const
+MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* motion) const
 {
 	const size_t nClusters = motion->state->poses.size();
 	assert(nClusters == env->completedSegments.size());
@@ -283,23 +283,53 @@ MotionPlanner::reward(const Motion* motion) const
 		std::cerr << "Revealed " << changeCount << " voxels" << std::endl;
 	}
 
-	// Compute direction of push/slide
-	double dir = 0;
 	auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
-	auto jointTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(compositeAction->actions[compositeAction->primaryAction]);
-	if (jointTraj)
+
+	// Compute number of collisions
+	int collisionCount = 0;
+	for (size_t actionIdx = 0; actionIdx < compositeAction->actions.size(); ++actionIdx)
 	{
-		if (jointTraj->palm_trajectory.size() > 1)
+		auto jointTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(compositeAction->actions[actionIdx]);
+		if (jointTraj)
 		{
-			const Pose& begin = jointTraj->palm_trajectory.front();
-			const Pose& end = jointTraj->palm_trajectory.back();
-			Eigen::Vector3d cb = (begin.translation()-centroid).normalized(); ///< Vector from centroid to beginning of move
-			Eigen::Vector3d ce = end.translation()-centroid; ///< Vector of move
-			dir = cb.dot(ce);
+//			auto* arm = env->manipulators.front()->pModel->getJointModelGroup(jointTraj->jointGroupName);
+			const auto& manipulator = env->jointToManipulator[jointTraj->cmd.joint_names.front()];
+			for (size_t stepIdx = 0; stepIdx < jointTraj->cmd.points.size(); ++stepIdx)
+			{
+				jointTraj->cmd.points[stepIdx].positions;
+				robot_state::RobotState collisionState(robotState);
+				collisionState.setJointGroupPositions(manipulator->arm, jointTraj->cmd.points[stepIdx].positions);
+				collisionState.update();
+				if (gripperEnvironmentCollision(manipulator, collisionState))
+				{
+					// This step collided with the world
+					++collisionCount;
+				}
+			}
 		}
 	}
 
-	return spread + 3.0*dir + (double)changeCount/100000.0;
+	// Compute direction of push/slide
+	double dir = 0;
+	if (compositeAction->primaryAction >= 0)
+	{
+		auto jointTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(
+			compositeAction->actions[compositeAction->primaryAction]);
+		if (jointTraj)
+		{
+			if (jointTraj->palm_trajectory.size()>1)
+			{
+				const Pose& begin = jointTraj->palm_trajectory.front();
+				const Pose& end = jointTraj->palm_trajectory.back();
+				Eigen::Vector3d cb = (begin.translation()
+				                      -centroid).normalized(); ///< Vector from centroid to beginning of move
+				Eigen::Vector3d ce = end.translation()-centroid; ///< Vector of move
+				dir = cb.dot(ce);
+			}
+		}
+	}
+
+	return spread + 3.0*dir - 5.0*collisionCount + (double)changeCount/100000.0;
 }
 
 planning_scene::PlanningSceneConstPtr

@@ -977,7 +977,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 			std::shared_ptr<Motion> motionSlide = planner->sampleSlide(rs);
 			if (motionSlide)
 			{
-				double reward = planner->reward(motionSlide.get());
+				double reward = planner->reward(rs, motionSlide.get());
 				#pragma omp critical
 				{
 					motionQueue.push({reward, motionSlide});
@@ -987,7 +987,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 			std::shared_ptr<Motion> motionPush = planner->samplePush(rs);
 			if (motionPush)
 			{
-				double reward = planner->reward(motionPush.get());
+				double reward = planner->reward(rs, motionPush.get());
 				#pragma omp critical
 				{
 					motionQueue.push({reward, motionPush});
@@ -1018,7 +1018,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		for (size_t idx = 0; idx < actions->actions.size(); ++idx)
 		{
 			auto subTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[idx]);
-			if (subTraj && actions->primaryAction == static_cast<int>(idx))
+			if (subTraj)// && actions->primaryAction == static_cast<int>(idx))
 			{
 				moveit_msgs::RobotTrajectory drt;
 				drt.joint_trajectory.joint_names = subTraj->cmd.joint_names;
@@ -1150,6 +1150,9 @@ int main(int argc, char* argv[])
 	motionModels.erase("victor_right_arm_mount");
 
 	assert(!pModel->getJointModelGroupNames().empty());
+
+	planningEnvironment = std::make_unique<PlanningEnvironment>();
+
 	for (robot_model::JointModelGroup* jmg : pModel->getJointModelGroups())
 	{
 		if (jmg->isChain() && jmg->getSolverInstance())
@@ -1170,11 +1173,20 @@ int main(int argc, char* argv[])
 				{
 					std::cerr << "\t\t-" << eeSubName << "\t" << pModel->getEndEffector(eeSubName)->getFixedJointModels().size() << std::endl;
 
-					manipulators.emplace_back(std::make_shared<VictorManipulator>(nh, pModel, jmg, ee, pModel->getEndEffector(eeSubName)->getLinkModelNames().front()));
-					if (!manipulators.back()->configureHardware())
+					auto manip = std::make_shared<VictorManipulator>(nh, pModel, jmg, ee, pModel->getEndEffector(eeSubName)->getLinkModelNames().front());
+					manipulators.emplace_back(manip);
+					if (!manip->configureHardware())
 					{
-						ROS_FATAL_STREAM("Failed to setup hardware '" << manipulators.back()->arm->getName() << "'");
+						ROS_FATAL_STREAM("Failed to setup hardware '" << manip->arm->getName() << "'");
 						throw std::runtime_error("Hardware config failure.");
+					}
+					for (const std::string& jName : manip->arm->getJointModelNames())
+					{
+						planningEnvironment->jointToManipulator[jName] = manip;
+					}
+					for (const std::string& jName : manip->gripper->getJointModelNames())
+					{
+						planningEnvironment->jointToManipulator[jName] = manip;
 					}
 				}
 			}
@@ -1186,7 +1198,6 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	planningEnvironment = std::make_unique<PlanningEnvironment>();
 	planner = std::make_shared<MotionPlanner>();
 	planner->env = planningEnvironment.get();
 	planner->objectSampler.env = planningEnvironment.get();
