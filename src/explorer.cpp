@@ -3,6 +3,7 @@
 //
 
 #include "mps_voxels/Manipulator.h"
+#include "mps_voxels/VictorManipulator.h"
 #include "mps_voxels/MotionModel.h"
 #include "mps_voxels/Tracker.h"
 #include "mps_voxels/TargetDetector.h"
@@ -232,6 +233,107 @@ robot_state::RobotState getCurrentRobotState()
 	return currentState;
 }
 
+bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::RobotState& recoveryState)
+{
+	ros::Duration totalTime(0.0);
+	if (motion && motion->action && std::dynamic_pointer_cast<CompositeAction>(motion->action))
+	{
+		auto actions = std::dynamic_pointer_cast<CompositeAction>(motion->action);
+		for (size_t idx = 0; idx<actions->actions.size(); ++idx)
+		{
+			auto subTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[idx]);
+			if (subTraj)
+			{
+				totalTime += subTraj->cmd.points.back().time_from_start-subTraj->cmd.points.front().time_from_start;
+			}
+		}
+	}
+
+	auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
+	for (size_t a = 0; a < compositeAction->actions.size(); ++a)
+	{
+		const auto& action = compositeAction->actions[a];
+		bool isPrimaryAction = ((compositeAction->primaryAction >= 0) && (compositeAction->primaryAction == static_cast<int>(a)));
+
+		std::unique_ptr<CaptureGuard> captureGuard; ///< RAII-style stopCapture() for various exit paths
+
+		if (isPrimaryAction)
+		{
+			captureGuard = std::make_unique<CaptureGuard>(tracker.get());
+			tracker->startCapture();
+		}
+
+		auto armAction = std::dynamic_pointer_cast<JointTrajectoryAction>(action);
+		if (armAction)
+		{
+			control_msgs::FollowJointTrajectoryGoal goal;
+			goal.trajectory = armAction->cmd;
+
+			std::cerr << "Sending joint trajectory." << std::endl;
+
+			auto res = trajectoryClient->sendGoalAndWait(goal, ros::Duration(30.0) + totalTime);
+			if (!res.isDone() || (res.state_!=actionlib::SimpleClientGoalState::SUCCEEDED))
+			{
+				if (!res.isDone())
+				{
+					ROS_ERROR_STREAM("Trajectory client timed out.");
+				}
+				else if (res.state_!=actionlib::SimpleClientGoalState::SUCCEEDED)
+				{
+					ROS_ERROR_STREAM("Trajectory following failed: " << res.text_);
+				}
+
+				planner->computePlanningScene(false);
+				std::shared_ptr<Motion> recovery = planner->recoverCrash(getCurrentRobotState(), recoveryState);
+				if (recovery)
+				{
+					executeMotion(recovery, recoveryState);
+				}
+				return false;
+			}
+			std::cerr << "Finished joint trajectory." << std::endl;
+			ros::Duration(2.0).sleep(); // Trajectory seems to terminate slightly early
+		}
+
+		auto gripAction = std::dynamic_pointer_cast<GripperCommandAction>(action);
+		if (gripAction)
+		{
+			gripAction->grasp.header.frame_id = pModel->getRootLinkName();
+			gripAction->grasp.header.stamp = ros::Time::now();
+			realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>* gripperPub = nullptr;
+			if (gripAction->jointGroupName.find("left") != std::string::npos)
+			{
+				std::cerr << "Sending left gripper command." << std::endl;
+				gripperPub = gripperLPub.get();
+			}
+			else if (gripAction->jointGroupName.find("right") != std::string::npos)
+			{
+				std::cerr << "Sending right gripper command." << std::endl;
+				gripperPub = gripperRPub.get();
+			}
+			else
+			{
+				throw std::runtime_error("Unknown gripper.");
+			}
+
+
+			if (gripperPub->trylock())
+			{
+				gripperPub->msg_ = gripAction->grasp;
+				gripperPub->unlockAndPublish();
+			}
+			ros::Duration(2.0).sleep();
+		}
+
+		if (isPrimaryAction)
+		{
+			tracker->stopCapture();
+//			tracker->track();
+		}
+	}
+	return true;
+}
+
 void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
                const sensor_msgs::ImageConstPtr& depth_msg,
                const sensor_msgs::CameraInfoConstPtr& cam_msg)
@@ -378,6 +480,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+	SensorModel sensor{worldTcamera.translation()};
 	{
 		std::vector<int> assignments(cropped_cloud->size(), -1);
 		const int nPts = static_cast<int>(cropped_cloud->size());
@@ -389,7 +493,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 			double maxL = std::numeric_limits<double>::lowest();
 			for (const auto& model : motionModels)
 			{
-				double L = model.second->membershipLikelihood(pt);
+				double L = model.second->membershipLikelihood(pt, sensor);
 				if (L > 0.0 && L > maxL)
 				{
 					maxL = L;
@@ -422,8 +526,6 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 
 		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-
-		SensorModel sensor{worldTcamera.translation()};
 
 		#pragma omp parallel for schedule(dynamic)
 		for (size_t i = 0; i < iters.size(); ++i)
@@ -916,7 +1018,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		for (size_t idx = 0; idx < actions->actions.size(); ++idx)
 		{
 			auto subTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[idx]);
-			if (subTraj)
+			if (subTraj && actions->primaryAction == static_cast<int>(idx))
 			{
 				moveit_msgs::RobotTrajectory drt;
 				drt.joint_trajectory.joint_names = subTraj->cmd.joint_names;
@@ -950,89 +1052,17 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	cv::waitKey(10);
 
+	auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
+	// Allow some visualization time
+	ros::Duration(3.0+compositeAction->actions.size()).sleep();
 	if (trajectoryClient->isServerConnected())
 	{
-		auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
-		// Allow some visualization time
-		ros::Duration(3.0+compositeAction->actions.size()).sleep();
-
-		for (size_t a = 0; a < compositeAction->actions.size(); ++a)
+		bool success = executeMotion(motion, getCurrentRobotState());
+		if (success)
 		{
-			const auto& action = compositeAction->actions[a];
-			bool isPrimaryAction = ((compositeAction->primaryAction >= 0) && (compositeAction->primaryAction == static_cast<int>(a)));
-
-			if (isPrimaryAction)
-			{
-				tracker->startCapture();
-			}
-
-			auto armAction = std::dynamic_pointer_cast<JointTrajectoryAction>(action);
-			if (armAction)
-			{
-				control_msgs::FollowJointTrajectoryGoal goal;
-				goal.trajectory = armAction->cmd;
-
-				std::cerr << "Sending joint trajectory." << std::endl;
-
-				auto res = trajectoryClient->sendGoalAndWait(goal, ros::Duration(30.0) + totalTime);
-				if (!res.isDone())
-				{
-					ROS_ERROR_STREAM("Trajectory client timed out.");
-					return;
-				}
-				else if (res.state_ != actionlib::SimpleClientGoalState::SUCCEEDED)
-				{
-					ROS_ERROR_STREAM("Trajectory following failed: " << res.text_);
-					return;
-				}
-				std::cerr << "Finished joint trajectory." << std::endl;
-				ros::Duration(4.0).sleep(); // Trajectory seems to terminate slightly early
-			}
-
-			auto gripAction = std::dynamic_pointer_cast<GripperCommandAction>(action);
-			if (gripAction)
-			{
-				gripAction->grasp.header.frame_id = pModel->getRootLinkName();
-				gripAction->grasp.header.stamp = ros::Time::now();
-				realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>* gripperPub = nullptr;
-				if (gripAction->jointGroupName.find("left") != std::string::npos)
-				{
-					std::cerr << "Sending left gripper command." << std::endl;
-					gripperPub = gripperLPub.get();
-				}
-				else if (gripAction->jointGroupName.find("right") != std::string::npos)
-				{
-					std::cerr << "Sending right gripper command." << std::endl;
-					gripperPub = gripperRPub.get();
-				}
-				else
-				{
-					throw std::runtime_error("Unknown gripper.");
-				}
-
-
-				if (gripperPub->trylock())
-				{
-					gripperPub->msg_ = gripAction->grasp;
-					gripperPub->unlockAndPublish();
-				}
-				ros::Duration(2.0).sleep();
-			}
-
-			if (isPrimaryAction)
-			{
-				tracker->stopCapture();
-//				tracker->track();
-			}
-
+			static int actionCount = 0;
+			std::cerr << "Actions: " << ++actionCount << std::endl;
 		}
-
-	}
-	else// if (cmd.points.size() > 10)
-	{
-		auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
-		// Allow some visualization time
-		ros::Duration(3.0+compositeAction->actions.size()).sleep();
 	}
 
 //	// Check if we used to see the target, but don't anymore
@@ -1076,7 +1106,7 @@ int main(int argc, char* argv[])
 
 	tracker = std::make_unique<Tracker>();
 	tracker->stopCapture();
-	targetDetector = std::make_unique<TargetDetector>(TargetDetector::TRACK_COLOR::PURPLE);
+	targetDetector = std::make_unique<TargetDetector>(TargetDetector::TRACK_COLOR::GREEN);
 
 	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>("joint_states", 2, handleJointState, ros::VoidPtr(), &sensor_queue);
 	ros::Subscriber joint_sub = nh.subscribe(joint_sub_options);
@@ -1140,7 +1170,12 @@ int main(int argc, char* argv[])
 				{
 					std::cerr << "\t\t-" << eeSubName << "\t" << pModel->getEndEffector(eeSubName)->getFixedJointModels().size() << std::endl;
 
-					manipulators.emplace_back(std::make_shared<Manipulator>(pModel, jmg, ee, pModel->getEndEffector(eeSubName)->getLinkModelNames().front()));
+					manipulators.emplace_back(std::make_shared<VictorManipulator>(nh, pModel, jmg, ee, pModel->getEndEffector(eeSubName)->getLinkModelNames().front()));
+					if (!manipulators.back()->configureHardware())
+					{
+						ROS_FATAL_STREAM("Failed to setup hardware '" << manipulators.back()->arm->getName() << "'");
+						throw std::runtime_error("Hardware config failure.");
+					}
 				}
 			}
 		}
@@ -1181,8 +1216,8 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		ROS_WARN_STREAM("Failed to look up transform between '" << mapServer->getWorldFrame() << "' and '" << "world_origin" << "'. Unable to set safety barriers");
-		return -1;
+		ROS_ERROR_STREAM("Failed to look up transform between '" << mapServer->getWorldFrame() << "' and '" << "world_origin" << "'. Unable to set safety barriers");
+		throw std::runtime_error("Safety reference frame failure.");
 	}
 
 	std::string topic_prefix = "/kinect2_victor_head/qhd";

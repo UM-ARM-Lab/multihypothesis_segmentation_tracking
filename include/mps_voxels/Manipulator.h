@@ -33,6 +33,9 @@ public:
 	            robot_model::JointModelGroup* _gripper,
 	            std::string _palmName);
 
+	virtual
+	bool configureHardware() { return true; }
+
 	double stateCost(const std::vector<double>& q1) const;
 
 	double transitionCost(const std::vector<double>& q1, const double t1, const std::vector<double>& q2, const double t2) const;

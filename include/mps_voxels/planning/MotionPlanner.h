@@ -79,7 +79,7 @@ public:
 	ObjectSampler objectSampler;
 
 	planning_scene::PlanningSceneConstPtr planningScene;
-	planning_scene::PlanningSceneConstPtr computePlanningScene();
+	planning_scene::PlanningSceneConstPtr computePlanningScene(bool useCollisionObjects = true);
 
 	double reward(const Motion* motion) const;
 
@@ -89,6 +89,8 @@ public:
 	std::shared_ptr<Motion> samplePush(const robot_state::RobotState& robotState) const;
 	std::shared_ptr<Motion> sampleSlide(const robot_state::RobotState& robotState) const;
 	std::shared_ptr<Motion> pick(const robot_state::RobotState& robotState, const int target, std::set<int>& collisionObjects) const;
+
+	std::shared_ptr<Motion> recoverCrash(const robot_state::RobotState& robotState, const robot_state::RobotState& recoveryState) const;
 };
 
 struct ComparePoses

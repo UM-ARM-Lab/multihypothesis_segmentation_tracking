@@ -11,7 +11,8 @@
 
 #include <tf/transform_datatypes.h>
 #include <visualization_msgs/MarkerArray.h>
-#include <ros/ros.h>
+#include <ros/node_handle.h>
+#include <ros/service_client.h>
 
 #include <Eigen/Geometry>
 #include <memory>

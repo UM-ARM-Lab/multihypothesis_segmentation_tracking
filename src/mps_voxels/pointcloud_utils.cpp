@@ -68,7 +68,8 @@ pcl::PointCloud<PointT>::Ptr cropInCameraFrame(
 
 pcl::PointCloud<PointT>::Ptr filterOutliers(
 	pcl::PointCloud<PointT>::Ptr& cloud,
-	const int k)
+	const int k,
+	const double stddev)
 {
 	pcl::PointCloud<PointT>::Ptr cloud_filtered (new pcl::PointCloud<PointT>);
 
@@ -76,7 +77,7 @@ pcl::PointCloud<PointT>::Ptr filterOutliers(
 	pcl::StatisticalOutlierRemoval<PointT> sor;
 	sor.setInputCloud (cloud);
 	sor.setMeanK (k);
-	sor.setStddevMulThresh (1.0);
+	sor.setStddevMulThresh (stddev);
 	sor.filter (*cloud_filtered);
 
 	return cloud_filtered;

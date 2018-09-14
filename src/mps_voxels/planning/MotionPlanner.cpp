@@ -303,9 +303,18 @@ MotionPlanner::reward(const Motion* motion) const
 }
 
 planning_scene::PlanningSceneConstPtr
-MotionPlanner::computePlanningScene()
+MotionPlanner::computePlanningScene(bool useCollisionObjects)
 {
-	planningScene = std::make_shared<planning_scene::PlanningScene>(env->manipulators.front()->pModel, env->computeCollisionWorld());
+	collision_detection::WorldPtr world;
+	if (useCollisionObjects)
+	{
+		world = env->computeCollisionWorld();
+	}
+	else
+	{
+		world = std::make_shared<collision_detection::World>();
+	}
+	planningScene = std::make_shared<planning_scene::PlanningScene>(env->manipulators.front()->pModel, world);
 	return planningScene;
 }
 
@@ -372,6 +381,16 @@ MotionPlanner::gripperEnvironmentCollision(const std::shared_ptr<Manipulator>& m
 std::shared_ptr<Motion>
 MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 {
+	// Check whether the hand collides with the scene
+	for (const auto& manipulator : env->manipulators)
+	{
+		if (gripperEnvironmentCollision(manipulator, robotState))
+		{
+			std::cerr << manipulator->gripper->getName() << " starts in collision. No solutions will be possible." << std::endl;
+			return std::shared_ptr<Motion>();
+		}
+	}
+
 	Pose robotTworld = env->worldTrobot.inverse(Eigen::Isometry);
 	State objectState{State::Poses(env->completedSegments.size(), State::Pose::Identity())};
 
@@ -574,6 +593,16 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 std::shared_ptr<Motion>
 MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 {
+	// Check whether the hand collides with the scene
+	for (const auto& manipulator : env->manipulators)
+	{
+		if (gripperEnvironmentCollision(manipulator, robotState))
+		{
+			std::cerr << manipulator->gripper->getName() << " starts in collision. No solutions will be possible." << std::endl;
+			return std::shared_ptr<Motion>();
+		}
+	}
+
 	Pose robotTworld = env->worldTrobot.inverse(Eigen::Isometry);
 	State objectState{State::Poses(env->completedSegments.size(), State::Pose::Identity())};
 
@@ -793,6 +822,16 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robotState, const int targetID,
                                             std::set<int>& collisionObjects) const
 {
+	// Check whether the hand collides with the scene
+	for (const auto& manipulator : env->manipulators)
+	{
+		if (gripperEnvironmentCollision(manipulator, robotState))
+		{
+			std::cerr << manipulator->gripper->getName() << " starts in collision. No solutions will be possible." << std::endl;
+			return std::shared_ptr<Motion>();
+		}
+	}
+
 	Pose robotTworld = env->worldTrobot.inverse(Eigen::Isometry);
 	State objectState{State::Poses(env->completedSegments.size(), State::Pose::Identity())};
 
@@ -807,8 +846,6 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 	const double PALM_DISTANCE = 0.025;
 	const double APPROACH_DISTANCE = 0.15;
 	const double Z_SAFETY_HEIGHT = 0.16;
-
-	trajectory_msgs::JointTrajectory cmd;
 
 	// Shuffle manipulators (without shuffling underlying array)
 	std::vector<unsigned int> manip_indices(env->manipulators.size());
@@ -877,11 +914,11 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 									if (hit)
 									{
 										collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision));
-										const auto& iter = env->coordToObject.find(collision);
-										if (iter != env->coordToObject.end())
+										const auto& i = env->coordToObject.find(collision);
+										if (i != env->coordToObject.end())
 										{
-											auto res = collisionObjects.insert(iter->second);
-											if (res.second) { std::cerr << iter->second << std::endl; }
+											auto res = collisionObjects.insert(i->second);
+											if (res.second) { std::cerr << i->second << std::endl; }
 										}
 									}
 								}
@@ -918,7 +955,7 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 				fullTrajectory.insert(fullTrajectory.end(), approachTrajectory.begin(), approachTrajectory.end());
 				fullTrajectory.insert(fullTrajectory.end(), retractTrajectory.begin(), retractTrajectory.end());
 
-
+				trajectory_msgs::JointTrajectory cmd;
 				if (manipulator->cartesianPath(fullTrajectory, robotTworld, robotState, cmd))
 				{
 					std::shared_ptr<Motion> motion = std::make_shared<Motion>();
@@ -997,5 +1034,108 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 	}
 
 
+	return std::shared_ptr<Motion>();
+}
+
+
+std::shared_ptr<Motion>
+MotionPlanner::recoverCrash(const robot_state::RobotState& currentState,
+                            const robot_state::RobotState& recoveryState) const
+{
+	// Check whether the hand collides with the scene
+	for (const auto& manipulator : env->manipulators)
+	{
+		if (gripperEnvironmentCollision(manipulator, currentState))
+		{
+			std::cerr << manipulator->gripper->getName() << " starts in collision. No solutions will be possible." << std::endl;
+			return std::shared_ptr<Motion>();
+		}
+	}
+
+	const double RETREAT_DISTANCE = 0.05;
+	const int INTERPOLATE_STEPS = 10;
+	const int TRANSIT_INTERPOLATE_STEPS = 50;
+
+	for (const auto& manipulator : env->manipulators)
+	{
+		// See if needs recovery
+		Eigen::VectorXd qCurrent, qRecovery;
+		currentState.copyJointGroupPositions(manipulator->arm, qCurrent);
+		recoveryState.copyJointGroupPositions(manipulator->arm, qRecovery);
+		Eigen::VectorXd qErr = qCurrent - qRecovery;
+		bool satisfied = true; for (int i = 0; i < qErr.size(); ++i) { if (fabs(qErr[i]) > 1e-1) { satisfied = false; } }
+		if (satisfied)
+		{
+			std::cerr << manipulator->arm->getName() << " satisfies recovery." << std::endl;
+			continue;
+		}
+
+		Pose worldThand = env->worldTrobot*currentState.getFrameTransform(manipulator->palmName);
+		Pose worldTretreat = worldThand;
+		worldTretreat.translation().z() += RETREAT_DISTANCE;
+		Pose robotTworld = env->worldTrobot.inverse(Eigen::Isometry);
+
+		std::shared_ptr<CompositeAction> compositeAction = std::make_shared<CompositeAction>();
+		auto releaseAction = std::make_shared<GripperCommandAction>();
+		compositeAction->actions.push_back(releaseAction);
+		auto retractAction = std::make_shared<JointTrajectoryAction>();
+		compositeAction->actions.push_back(retractAction);
+		auto homeAction = std::make_shared<JointTrajectoryAction>();
+		compositeAction->actions.push_back(homeAction);
+		compositeAction->primaryAction = -1;
+
+		// Release
+		releaseAction->grasp.finger_a_command.position = 0.0;
+		releaseAction->grasp.finger_a_command.speed = 1.0;
+		releaseAction->grasp.finger_a_command.force = 1.0;
+		releaseAction->grasp.finger_b_command.position = 0.0;
+		releaseAction->grasp.finger_b_command.speed = 1.0;
+		releaseAction->grasp.finger_b_command.force = 1.0;
+		releaseAction->grasp.finger_c_command.position = 0.0;
+		releaseAction->grasp.finger_c_command.speed = 1.0;
+		releaseAction->grasp.finger_c_command.force = 1.0;
+		releaseAction->grasp.scissor_command.position = 0.5;
+		releaseAction->grasp.scissor_command.speed = 1.0;
+		releaseAction->grasp.scissor_command.force = 1.0;
+		releaseAction->jointGroupName = manipulator->gripper->getName();
+
+		// Compute retraction
+		PoseSequence retractTrajectory;
+		if (!manipulator->interpolate(worldThand, worldTretreat, retractTrajectory, INTERPOLATE_STEPS))
+		{
+			std::cerr << "Failed to create Cartesian trajectory." << std::endl;
+			continue;
+		}
+
+		trajectory_msgs::JointTrajectory cmd;
+		if (manipulator->cartesianPath(retractTrajectory, robotTworld, currentState, cmd))
+		{
+			std::cerr << "Failed to follow Cartesian trajectory." << std::endl;
+			continue;
+		}
+
+		// Retract
+		retractAction->palm_trajectory = retractTrajectory;
+		retractAction->cmd.joint_names = cmd.joint_names;
+		retractAction->cmd.points.insert(retractAction->cmd.points.end(), cmd.points.begin(), cmd.points.end());
+
+		// Move to home
+		robot_state::RobotState retractState(currentState);
+		retractState.setJointGroupPositions(manipulator->arm, cmd.points.back().positions);
+		retractState.updateCollisionBodyTransforms();
+		if (!manipulator->interpolate(retractState, recoveryState, homeAction->cmd, TRANSIT_INTERPOLATE_STEPS, planningScene))
+		{
+			std::cerr << "Failed to return home." << std::endl;
+			continue;
+		}
+
+		State objectState{State::Poses(env->completedSegments.size(), State::Pose::Identity())};
+		std::shared_ptr<Motion> motion = std::make_shared<Motion>();
+		motion->state = std::make_shared<State>(objectState);
+		motion->action = compositeAction;
+
+		std::cerr << "Got recovery motion." << std::endl;
+		return motion;
+	}
 	return std::shared_ptr<Motion>();
 }

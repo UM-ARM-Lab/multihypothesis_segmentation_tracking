@@ -11,7 +11,7 @@ Manipulator::Manipulator(robot_model::RobotModelPtr _pModel,
                          robot_model::JointModelGroup* _arm,
                          robot_model::JointModelGroup* _gripper,
                          std::string _palmName)
-	: pModel(_pModel), arm(_arm), gripper(_gripper), palmName(std::move(_palmName))
+	: pModel(std::move(_pModel)), arm(_arm), gripper(_gripper), palmName(std::move(_palmName))
 {
 
 }

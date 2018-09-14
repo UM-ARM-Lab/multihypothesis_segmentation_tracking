@@ -22,7 +22,8 @@ pcl::PointCloud<PointT>::Ptr cropInCameraFrame(
 
 pcl::PointCloud<PointT>::Ptr filterOutliers(
 	pcl::PointCloud<PointT>::Ptr& cloud,
-	const int k = 15);
+	const int k = 15,
+	const double stddev = 1.0);
 
 pcl::PointCloud<PointT>::Ptr filterPlane(
 	pcl::PointCloud<PointT>::Ptr& cloud,

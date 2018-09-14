@@ -156,4 +156,12 @@ public:
 	             const sensor_msgs::CameraInfoConstPtr& cam_msg);
 };
 
+struct CaptureGuard
+{
+public:
+	Tracker* tracker;
+	CaptureGuard(Tracker* t) : tracker(t) {}
+	~CaptureGuard() { if (tracker) { tracker->stopCapture(); } }
+};
+
 #endif // MPS_VOXELS_TRACKER_H

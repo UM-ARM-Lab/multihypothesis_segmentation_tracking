@@ -218,6 +218,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/shape_utils.cpp
   src/${PROJECT_NAME}/colormap.cpp
   src/${PROJECT_NAME}/Manipulator.cpp
+  src/${PROJECT_NAME}/VictorManipulator.cpp
   src/${PROJECT_NAME}/MotionModel.cpp
   src/${PROJECT_NAME}/ROI.cpp
   src/${PROJECT_NAME}/Tracker.cpp

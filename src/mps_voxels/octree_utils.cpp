@@ -126,14 +126,14 @@ void VoxelCompleter::completeShape(
 				{
 					//This cell is unknown
 					unknownCount++;
-					req.observation.data.push_back(0);
+					req.observation.data.push_back(0); // Cell is unknown
 				}
 				else
 				{
 					om::OcTreeNode* local_node = subtree->search(queryPoint.x(), queryPoint.y(), queryPoint.z());
 					bool existsInLocalTree = ((local_node) ? (local_node->getOccupancy()>0.5) : false);
 
-					double cellValue = node->getOccupancy() - 0.5;
+					double cellValue = node->getOccupancy();
 
 //					// Temp code for testing features
 //					for (unsigned int d = 0; d < octree->getTreeDepth(); ++d)
@@ -146,21 +146,26 @@ void VoxelCompleter::completeShape(
 //						om::point3d p = octree->keyToCoord(key, d);
 //					}
 
-					if (cellValue > 0 && existsInLocalTree)
+					if (cellValue > 0.5 && existsInLocalTree)
 					{
 						fullCount++;
-						req.observation.data.push_back(1);
-					}
-					else if (cellValue < 0)
-					{
-						emptyCount++;
-						req.observation.data.push_back(-1);
+						req.observation.data.push_back(1); // Cell is known occupied
 					}
 					else
 					{
-//						std::cerr << "Uncertain value at " << x << ", " << y << ", " << z << std::endl;
-						req.observation.data.push_back(0);
+						emptyCount++;
+						req.observation.data.push_back(-1); // Cell is known free
 					}
+//					else if (cellValue < 0.5)
+//					{
+//						emptyCount++;
+//						req.observation.data.push_back(-1);
+//					}
+//					else
+//					{
+////						std::cerr << "Uncertain value at " << x << ", " << y << ", " << z << std::endl;
+//						req.observation.data.push_back(0);
+//					}
 				}
 			}
 		}
