@@ -63,13 +63,14 @@ bool VictorManipulator::configureHardware()
 	req.new_control_mode.joint_path_execution_params.joint_relative_velocity = 0.2;
 	req.new_control_mode.joint_path_execution_params.joint_relative_acceleration = 0.5;
 
-	req.new_control_mode.joint_impedance_params.joint_damping.joint_1 = 0.7;
-	req.new_control_mode.joint_impedance_params.joint_damping.joint_2 = 0.7;
-	req.new_control_mode.joint_impedance_params.joint_damping.joint_3 = 0.7;
-	req.new_control_mode.joint_impedance_params.joint_damping.joint_4 = 0.7;
-	req.new_control_mode.joint_impedance_params.joint_damping.joint_5 = 0.7;
-	req.new_control_mode.joint_impedance_params.joint_damping.joint_6 = 0.7;
-	req.new_control_mode.joint_impedance_params.joint_damping.joint_7 = 0.7;
+	const double damping = 0.7;
+	req.new_control_mode.joint_impedance_params.joint_damping.joint_1 = damping;
+	req.new_control_mode.joint_impedance_params.joint_damping.joint_2 = damping;
+	req.new_control_mode.joint_impedance_params.joint_damping.joint_3 = damping;
+	req.new_control_mode.joint_impedance_params.joint_damping.joint_4 = damping;
+	req.new_control_mode.joint_impedance_params.joint_damping.joint_5 = damping;
+	req.new_control_mode.joint_impedance_params.joint_damping.joint_6 = damping;
+	req.new_control_mode.joint_impedance_params.joint_damping.joint_7 = damping;
 
 	req.new_control_mode.joint_impedance_params.joint_stiffness.joint_1 = 100.0;
 	req.new_control_mode.joint_impedance_params.joint_stiffness.joint_2 = 100.0;

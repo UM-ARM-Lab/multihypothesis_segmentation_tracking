@@ -117,13 +117,14 @@ PlanningEnvironment::computeCollisionWorld()
 	}
 
 	// Use aliasing shared_ptr constructor
-	world->addToObject(CLUTTER_NAME,
-	                   std::make_shared<shapes::OcTree>(std::shared_ptr<octomap::OcTree>(std::shared_ptr<octomap::OcTree>{}, sceneOctree)),
-	                   robotTworld);
+//	world->addToObject(CLUTTER_NAME,
+//	                   std::make_shared<shapes::OcTree>(std::shared_ptr<octomap::OcTree>(std::shared_ptr<octomap::OcTree>{}, sceneOctree)),
+//	                   robotTworld);
 
-	for (const auto& completedSegment : completedSegments)
+	for (size_t s = 0; s < completedSegments.size(); ++s)
 	{
-		world->addToObject(CLUTTER_NAME, std::make_shared<shapes::OcTree>(completedSegment), robotTworld);
+		const std::shared_ptr<octomap::OcTree>& segment = completedSegments[s];
+		world->addToObject(std::to_string(s), std::make_shared<shapes::OcTree>(segment), robotTworld);
 	}
 
 //	for (auto& approxSegment : approximateSegments)
@@ -286,6 +287,10 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 	auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
 
 	// Compute number of collisions
+	collision_detection::CollisionRequest collision_request;
+	collision_detection::CollisionResult collision_result;
+//	collision_request.contacts = true;
+
 	int collisionCount = 0;
 	for (size_t actionIdx = 0; actionIdx < compositeAction->actions.size(); ++actionIdx)
 	{
@@ -294,16 +299,39 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 		{
 //			auto* arm = env->manipulators.front()->pModel->getJointModelGroup(jointTraj->jointGroupName);
 			const auto& manipulator = env->jointToManipulator[jointTraj->cmd.joint_names.front()];
+			collision_detection::AllowedCollisionMatrix acm = gripperEnvironmentACM(manipulator);
+
+			if (motion->state->poses.size() != env->completedSegments.size()) { throw std::runtime_error("Whoopsie."); }
+
+			for (size_t s = 0; s < env->completedSegments.size(); ++s)
+			{
+				// Since we're moving the objects, allow the gripper to touch moving objects
+				if (!motion->state->poses[s].matrix().isIdentity(1e-6))
+				{
+					acm.setEntry(std::to_string(s), manipulator->gripper->getLinkModelNames(), true);
+				}
+			}
+
 			for (size_t stepIdx = 0; stepIdx < jointTraj->cmd.points.size(); ++stepIdx)
 			{
 				jointTraj->cmd.points[stepIdx].positions;
 				robot_state::RobotState collisionState(robotState);
 				collisionState.setJointGroupPositions(manipulator->arm, jointTraj->cmd.points[stepIdx].positions);
 				collisionState.update();
-				if (gripperEnvironmentCollision(manipulator, collisionState))
+				planningScene->checkCollision(collision_request, collision_result, collisionState, acm);
+				if (collision_result.collision)
 				{
 					// This step collided with the world
 					++collisionCount;
+
+//					for (const auto& p : collision_result.contacts)
+//					{
+//						std::cerr << p.first.first << " X " << p.first.second << std::endl;
+//						for (const auto& c : p.second)
+//						{
+//							std::cerr << c.pos.transpose() << std::endl;
+//						}
+//					}
 				}
 			}
 		}
@@ -323,13 +351,13 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 				const Pose& end = jointTraj->palm_trajectory.back();
 				Eigen::Vector3d cb = (begin.translation()
 				                      -centroid).normalized(); ///< Vector from centroid to beginning of move
-				Eigen::Vector3d ce = end.translation()-centroid; ///< Vector of move
-				dir = cb.dot(ce);
+				Eigen::Vector3d be = end.translation()-begin.translation(); ///< Vector of move
+				dir = cb.dot(be);
 			}
 		}
 	}
 
-	return spread + 3.0*dir - 5.0*collisionCount + (double)changeCount/100000.0;
+	return spread + 3.0*dir - 5.0*collisionCount + (double)changeCount/2000.0;
 }
 
 planning_scene::PlanningSceneConstPtr
@@ -372,6 +400,10 @@ MotionPlanner::gripperEnvironmentACM(const std::shared_ptr<Manipulator>& manipul
 		}
 	}
 	acm.setEntry(env->CLUTTER_NAME, manipulator->gripper->getLinkModelNames(), false);
+	for (size_t s = 0; s < env->completedSegments.size(); ++s)
+	{
+		acm.setEntry(std::to_string(s), manipulator->gripper->getLinkModelNames(), false);
+	}
 
 	return acm;
 }
@@ -411,6 +443,7 @@ MotionPlanner::gripperEnvironmentCollision(const std::shared_ptr<Manipulator>& m
 std::shared_ptr<Motion>
 MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 {
+	// TODO: Set hand posture before planning
 	// Check whether the hand collides with the scene
 	for (const auto& manipulator : env->manipulators)
 	{
@@ -623,6 +656,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 std::shared_ptr<Motion>
 MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 {
+	// TODO: Set hand posture before planning
 	// Check whether the hand collides with the scene
 	for (const auto& manipulator : env->manipulators)
 	{

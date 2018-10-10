@@ -121,6 +121,13 @@ void VoxelCompleter::completeShape(
 
 				Eigen::Vector3f queryPoint = worldTcamera * Eigen::Vector3f(x, y, z);
 
+				// World frame is table surface, so no points below it are allowed
+				if (queryPoint.z() < 0)
+				{
+					req.observation.data.push_back(-1); // Cell is known free (not part of object)
+					continue;
+				}
+
 				om::OcTreeNode* node = octree->search(queryPoint.x(), queryPoint.y(), queryPoint.z());
 				if (!node)
 				{

@@ -36,7 +36,7 @@ Tracker::Tracker(const size_t _buffer, SubscriptionOptions _options, TrackingOpt
 	rgb_buffer.reserve(MAX_BUFFER_LEN);
 	depth_buffer.reserve(MAX_BUFFER_LEN);
 
-	cv::namedWindow("Tracking", cv::WINDOW_GUI_NORMAL);
+//	cv::namedWindow("Tracking", cv::WINDOW_GUI_NORMAL);
 
 	listener = std::make_shared<tf::TransformListener>();
 

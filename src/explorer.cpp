@@ -50,8 +50,6 @@
 #include <tf_conversions/tf_eigen.h>
 #include <ros/ros.h>
 
-#include <opencv2/highgui.hpp>
-
 #include <algorithm>
 #include <memory>
 #include <random>
@@ -60,6 +58,29 @@
 
 #define _unused(x) ((void)(x))
 
+#define HEADLESS true
+
+//#if !HEADLESS
+#include <opencv2/highgui.hpp>
+//#endif
+
+#if HEADLESS
+#define waitKey(x) _unused((x))
+#else
+#define waitKey(x) cv::waitKey((x))
+#endif
+
+#if HEADLESS
+#define imshow(n, t) _unused((n)); _unused((t))
+#else
+#define imshow(n, t) cv::imshow((n), (t))
+#endif
+
+#if HEADLESS
+#define namedWindow(n, t) _unused((n)); _unused((t))
+#else
+#define namedWindow(n, t) cv::namedWindow((n), (t))
+#endif
 
 
 struct SeedDistanceFunctor
@@ -235,6 +256,7 @@ robot_state::RobotState getCurrentRobotState()
 
 bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::RobotState& recoveryState)
 {
+	if (!ros::ok()) { return false; }
 	ros::Duration totalTime(0.0);
 	if (motion && motion->action && std::dynamic_pointer_cast<CompositeAction>(motion->action))
 	{
@@ -339,6 +361,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
                const sensor_msgs::CameraInfoConstPtr& cam_msg)
 {
 	std::cerr << "Got message." << std::endl;
+	if (!ros::ok()) { return; }
 	if (!listener->waitForTransform(mapServer->getWorldFrame(), cam_msg->header.frame_id, ros::Time(0), ros::Duration(5.0)))
 	{
 		ROS_WARN_STREAM("Failed to look up transform between '" << mapServer->getWorldFrame() << "' and '" << cam_msg->header.frame_id << "'.");
@@ -483,6 +506,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	SensorModel sensor{worldTcamera.translation()};
 	{
+		if (!ros::ok()) { return; }
 		std::vector<int> assignments(cropped_cloud->size(), -1);
 		const int nPts = static_cast<int>(cropped_cloud->size());
 		#pragma omp parallel for schedule(dynamic)
@@ -609,6 +633,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	int goalSegmentID = -1;
 	std::vector<pcl::PointCloud<PointT>::Ptr> segments;
 	{
+		if (!ros::ok()) { return; }
 //		static pcl::visualization::CloudViewer viewer("PilePoints");
 //		viewer.showCloud(pile_cloud);
 //		while (!viewer.wasStopped ()){}
@@ -646,11 +671,11 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		// Search for target object
 		/////////////////////////////////////////////////////////////////
 		cv::Mat targetMask = targetDetector->getMask(rgb_cropped);
-		cv::imshow("Target Mask", targetMask);
-		cv::waitKey(10);
+		imshow("Target Mask", targetMask);
+		waitKey(10);
 
-		cv::imshow("rgb", rgb_cropped);
-		cv::waitKey(10);
+		imshow("rgb", rgb_cropped);
+		waitKey(10);
 		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 		cv_bridge::CvImagePtr seg = segmentationClient->segment(cv_rgb_cropped, cv_depth_cropped, cam_msg_cropped);
 		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
@@ -663,8 +688,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		double alpha = 0.75;
 		cv::Mat labelColorsMap = colorByLabel(seg->image);
 		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*rgb_cropped;
-		cv::imshow("segmentation", labelColorsMap);
-		cv::waitKey(10);
+		imshow("segmentation", labelColorsMap);
+		waitKey(10);
 
 		if (segmentationPub->getNumSubscribers() > 0)
 		{
@@ -703,7 +728,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	completedSegments.clear();
 	for (const pcl::PointCloud<PointT>::Ptr& segment_cloud : segments)
 	{
-		if (!ros::ok()) { break; }
+		if (!ros::ok()) { return; }
 		assert(!segment_cloud->empty());
 
 		// Compute bounding box
@@ -768,7 +793,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		visualization_msgs::MarkerArray ms;
 		ms.markers.push_back(m);
 		octreePub.publish(ms);
-		cv::waitKey(10);
+		waitKey(10);
 
 
 		// Search for this segment in past models
@@ -806,6 +831,37 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	{
 		ROS_ERROR_STREAM("Occluded points returned empty.");
 		return;
+	}
+
+	/////////////////////////////////////////////////////////////////
+	// Filter completion results
+	/////////////////////////////////////////////////////////////////
+	{
+		const int nPts = static_cast<int>(occluded_pts.size());
+		std::set<octomap::point3d, vector_less_than<3, octomap::point3d>> rejects;
+		#pragma omp parallel for schedule(dynamic)
+		for (size_t s = 0; s < completedSegments.size(); ++s)
+		{
+			const std::shared_ptr<octomap::OcTree>& segment = completedSegments[s];
+			unsigned d = segment->getTreeDepth();
+			for (int i = 0; i < nPts; ++i)
+			{
+				octomap::OcTreeNode* node = segment->search(occluded_pts[i], d);
+				if (node && node->getOccupancy() > 0.5)
+				{
+					#pragma omp critical
+					{
+						rejects.insert(occluded_pts[i]);
+						occlusionTree->setNodeValue(occluded_pts[i], -std::numeric_limits<float>::infinity(), true);
+					}
+				}
+			}
+		}
+		std::cerr << "Rejected " << rejects.size() << " hidden voxels due to shape completion." << std::endl;
+		occlusionTree->updateInnerOccupancy();
+		occluded_pts.erase(std::remove_if(occluded_pts.begin(), occluded_pts.end(),
+		                                  [&](const octomath::Vector3& p){ return rejects.find(p) != rejects.end();}),
+		                   occluded_pts.end());
 	}
 
 	/////////////////////////////////////////////////////////////////
@@ -908,7 +964,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		m.ns = "worst";// + std::to_string(m.id);
 	}
 	octreePub.publish(objToMoveVis);
-	cv::waitKey(10);
+	waitKey(10);
 
 	std::random_device rd;
 	std::mt19937 g(rd());
@@ -948,6 +1004,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 //	trajectory_msgs::JointTrajectory cmd;
 //	cmd.header.frame_id = pModel->getRootLinkName();
 
+	if (!ros::ok()) { return; }
 
 	using RankedMotion = std::pair<double, std::shared_ptr<Motion>>;
 	auto comp = [](const RankedMotion& a, const RankedMotion& b ) { return a.first < b.first; };
@@ -1012,6 +1069,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	dt.model_id = pModel->getName();
 	ros::Duration totalTime(0.0);
 
+	if (!ros::ok()) { return; }
+
 	if (motion && motion->action && std::dynamic_pointer_cast<CompositeAction>(motion->action))
 	{
 		auto actions = std::dynamic_pointer_cast<CompositeAction>(motion->action);
@@ -1050,13 +1109,22 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	displayPub.publish(dt);
 
-	cv::waitKey(10);
+	waitKey(10);
 
 	auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
 	// Allow some visualization time
 	ros::Duration(3.0+compositeAction->actions.size()).sleep();
+	if (!ros::ok()) { return; }
 	if (trajectoryClient->isServerConnected())
 	{
+		// For safety sake
+		for (auto& manip : manipulators)
+		{
+			manip->configureHardware();
+			ros::Duration(0.5).sleep();
+		}
+		if (!ros::ok()) { return; }
+
 		bool success = executeMotion(motion, getCurrentRobotState());
 		if (success)
 		{
@@ -1076,7 +1144,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 //
 //	}
 
-	cv::waitKey(10);
+	waitKey(10);
 
 }
 
@@ -1104,20 +1172,38 @@ int main(int argc, char* argv[])
 	listener = std::make_shared<tf::TransformListener>();
 	broadcaster = std::make_shared<tf::TransformBroadcaster>();
 
-	tracker = std::make_unique<Tracker>();
-	tracker->stopCapture();
-	targetDetector = std::make_unique<TargetDetector>(TargetDetector::TRACK_COLOR::GREEN);
-
 	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>("joint_states", 2, handleJointState, ros::VoidPtr(), &sensor_queue);
 	ros::Subscriber joint_sub = nh.subscribe(joint_sub_options);
 
 	setIfMissing(pnh, "frame_id", "table_surface");
-	setIfMissing(pnh, "resolution", 0.005);
+	setIfMissing(pnh, "resolution", 0.010);
 	setIfMissing(pnh, "latch", false);
 	setIfMissing(pnh, "filter_ground", false);
 	setIfMissing(pnh, "filter_speckles", true);
 	setIfMissing(pnh, "publish_free_space", false);
 	setIfMissing(pnh, "sensor_model/max_range", 8.0);
+	setIfMissing(pnh, "track_color", "green");
+
+	tracker = std::make_unique<Tracker>();
+	tracker->stopCapture();
+
+	// Get target color
+	std::string track_color;
+	pnh.getParam("track_color", track_color);
+	std::transform(track_color.begin(), track_color.end(), track_color.begin(), ::tolower);
+	if (track_color == "green")
+	{
+		targetDetector = std::make_unique<TargetDetector>(TargetDetector::TRACK_COLOR::GREEN);
+	}
+	else if (track_color == "purple")
+	{
+		targetDetector = std::make_unique<TargetDetector>(TargetDetector::TRACK_COLOR::PURPLE);
+	}
+	else
+	{
+		ROS_ERROR_STREAM("Color must be one of {green, purple}.");
+		throw std::runtime_error("Invalid tracking color.");
+	}
 
 	octreePub = nh.advertise<visualization_msgs::MarkerArray>("occluded_points", 1, true);
 	gripperLPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/left_arm/gripper_command", 1, false);
@@ -1224,6 +1310,13 @@ int main(int argc, char* argv[])
 			pose.translation() = Eigen::Vector3d(2.0, 1.0, ((0==i)?1.0:-1.0));
 			planningEnvironment->staticObstacles.push_back({wall, tableTmocap*pose});
 		}
+		auto table = std::make_shared<shapes::Box>();
+		table->size[0] = 0.8;
+		table->size[1] = 1.2;
+		table->size[2] = 0.1;
+		Eigen::Affine3d pose = Eigen::Affine3d::Identity();
+		pose.translation() = Eigen::Vector3d(0, 0, -table->size[2]/2.0);
+		planningEnvironment->staticObstacles.push_back({table, pose});
 	}
 	else
 	{
@@ -1240,9 +1333,9 @@ int main(int argc, char* argv[])
 //	message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(10), point_sub, info_sub);
 //	sync.registerCallback(cloud_cb);
 
-	cv::namedWindow("Target Mask", cv::WINDOW_GUI_NORMAL);
-	cv::namedWindow("rgb", cv::WINDOW_GUI_NORMAL);
-	cv::namedWindow("segmentation", cv::WINDOW_GUI_NORMAL);
+	namedWindow("Target Mask", cv::WINDOW_GUI_NORMAL);
+	namedWindow("rgb", cv::WINDOW_GUI_NORMAL);
+	namedWindow("segmentation", cv::WINDOW_GUI_NORMAL);
 
 	Tracker::SubscriptionOptions options(topic_prefix);
 
