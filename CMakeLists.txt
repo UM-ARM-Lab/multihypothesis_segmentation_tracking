@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(mps_voxels)
 
-## Compile as C++11, supported in ROS Kinetic and newer
+## Compile as C++14
 add_compile_options(-std=c++14)
 
 ## Find catkin macros and libraries
@@ -30,8 +30,16 @@ find_package(catkin REQUIRED COMPONENTS
   victor_hardware_interface
 )
 
+set(CMAKE_BUILD_TYPE Release)
+#set(CMAKE_BUILD_TYPE Debug)
+
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
+
+find_package(CUDA REQUIRED)
+add_subdirectory(CudaSift)
+include_directories(CudaSift/include)
+link_libraries(cudaSift)
 
 find_package(OCTOMAP 1.9 REQUIRED)
 include_directories(${OCTOMAP_INCLUDE_DIRS})
@@ -268,7 +276,7 @@ target_link_libraries(${PROJECT_NAME}_entropy
 )
 
 
-add_executable(${PROJECT_NAME}_tracker src/tracker.cpp)
+cuda_add_executable(${PROJECT_NAME}_tracker src/tracker.cpp)
 set_target_properties(${PROJECT_NAME}_tracker PROPERTIES OUTPUT_NAME tracker PREFIX "")
 add_dependencies(${PROJECT_NAME}_tracker ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME}_tracker

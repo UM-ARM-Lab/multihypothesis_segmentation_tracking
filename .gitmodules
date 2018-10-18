@@ -1,3 +1,6 @@
 [submodule "Shape-completion"]
 	path = Shape-completion
 	url = git@github.com:UM-ARM-Lab/Shape-completion.git
+[submodule "CudaSift"]
+	path = CudaSift
+	url = git@github.com:svenevs/CudaSift.git
