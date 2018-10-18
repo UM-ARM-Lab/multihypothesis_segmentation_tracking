@@ -149,6 +149,11 @@ public:
 
 	void stopCapture();
 
+	void reset();
+
+	cv::Mat& getMask();
+
+	virtual
 	void track();
 
 	void imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,

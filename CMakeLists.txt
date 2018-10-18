@@ -230,6 +230,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/MotionModel.cpp
   src/${PROJECT_NAME}/ROI.cpp
   src/${PROJECT_NAME}/Tracker.cpp
+  src/${PROJECT_NAME}/CudaTracker.cpp
   src/${PROJECT_NAME}/TargetDetector.cpp
   src/${PROJECT_NAME}/LocalOctreeServer.cpp
   src/${PROJECT_NAME}/planning/State.cpp

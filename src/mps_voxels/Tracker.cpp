@@ -69,6 +69,35 @@ void Tracker::stopCapture()
 	cam_sub->unsubscribe();
 }
 
+void Tracker::reset()
+{
+	stopCapture();
+	rgb_buffer.clear();
+	depth_buffer.clear();
+}
+
+cv::Mat& Tracker::getMask()
+{
+	////////////////////////////////////////
+	//// Set up Mask
+	////////////////////////////////////////
+
+	if (!listener->waitForTransform(rgb_buffer.back()->header.frame_id, "table_surface", ros::Time(0), ros::Duration(5.0)))
+	{
+		ROS_WARN_STREAM("Tracking failed: Failed to look up transform between '" << rgb_buffer.back()->header.frame_id << "' and '" << "table_surface" << "'.");
+		mask = cv::Mat::ones(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_8UC1);
+	}
+	else
+	{
+		tf::StampedTransform cameraTworld;
+		listener->lookupTransform(cameraModel.tfFrame(), "table_surface", ros::Time(0), cameraTworld);
+
+		mask = this->track_options.roi.getMask(cameraTworld, cameraModel);
+	}
+
+	return mask;
+}
+
 void Tracker::track()
 {
 	if (rgb_buffer.empty() || depth_buffer.empty())
@@ -76,21 +105,8 @@ void Tracker::track()
 		ROS_WARN_STREAM("Tracking failed: Capture buffer empty.");
 		return;
 	}
-	////////////////////////////////////////
-	//// Set up Mask
-	////////////////////////////////////////
-//	const auto& img = rgb_buffer.back()->image;
 
-	if (!listener->waitForTransform(rgb_buffer.back()->header.frame_id, "table_surface", ros::Time(0), ros::Duration(5.0)))
-	{
-		ROS_WARN_STREAM("Tracking failed: Failed to look up transform between '" << rgb_buffer.back()->header.frame_id << "' and '" << "table_surface" << "'.");
-		return;
-	}
-	tf::StampedTransform cameraTworld;
-	listener->lookupTransform(cameraModel.tfFrame(), "table_surface", ros::Time(0), cameraTworld);
-
-	mask = this->track_options.roi.getMask(cameraTworld, cameraModel);
-
+	mask = getMask();
 
 	cv::imshow("Tracking", mask);
 	cv::waitKey(100);
