@@ -16,6 +16,7 @@
 class RGBDSegmenter
 {
 public:
+	using LabelType = uint16_t;
 	explicit
 	RGBDSegmenter(ros::NodeHandle& nh);
 
@@ -23,7 +24,7 @@ public:
 	ros::ServiceClient segmentClient;
 
 	cv_bridge::CvImagePtr segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& depth,
-	                              const sensor_msgs::CameraInfo& cam) const;
+	                              const sensor_msgs::CameraInfo& cam, cv_bridge::CvImagePtr* contours = nullptr) const;
 
 };
 

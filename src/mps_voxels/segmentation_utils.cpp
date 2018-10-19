@@ -20,7 +20,7 @@ RGBDSegmenter::RGBDSegmenter(ros::NodeHandle& nh)
 
 cv_bridge::CvImagePtr
 RGBDSegmenter::segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& depth,
-                       const sensor_msgs::CameraInfo& cam) const
+                       const sensor_msgs::CameraInfo& cam, cv_bridge::CvImagePtr* contours) const
 {
 	mps_msgs::SegmentRGBDRequest request;
 	mps_msgs::SegmentRGBDResponse response;
@@ -35,6 +35,7 @@ RGBDSegmenter::segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& 
 		{
 			if (!response.segmentation.data.empty())
 			{
+				if (contours) {*contours = cv_bridge::toCvCopy(response.contours, "64FC1");}
 				return cv_bridge::toCvCopy(response.segmentation, "mono16");
 			}
 		}

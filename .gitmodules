@@ -4,3 +4,6 @@
 [submodule "CudaSift"]
 	path = CudaSift
 	url = git@github.com:svenevs/CudaSift.git
+[submodule "COB"]
+	path = COB
+	url = git@github.com:jinlinyi/COB.git

@@ -55,8 +55,7 @@ Tracker::Tracker(const size_t _buffer, SubscriptionOptions _options, TrackingOpt
 
 void Tracker::startCapture()
 {
-	rgb_buffer.clear();
-	depth_buffer.clear();
+	reset();
 	rgb_sub->subscribe(*it, options.rgb_topic, options.buffer, options.hints);
 	depth_sub->subscribe(*it, options.depth_topic, options.buffer, options.hints);
 	cam_sub->subscribe(options.nh, options.cam_topic, options.buffer);
@@ -71,9 +70,10 @@ void Tracker::stopCapture()
 
 void Tracker::reset()
 {
-	stopCapture();
 	rgb_buffer.clear();
 	depth_buffer.clear();
+	flows2.clear();
+	flows3.clear();
 }
 
 cv::Mat& Tracker::getMask()
@@ -98,7 +98,7 @@ cv::Mat& Tracker::getMask()
 	return mask;
 }
 
-void Tracker::track()
+void Tracker::track(const size_t step)
 {
 	if (rgb_buffer.empty() || depth_buffer.empty())
 	{
@@ -129,7 +129,7 @@ void Tracker::track()
 
 	cv::cvtColor(rgb_buffer.front()->image, gray1, cv::COLOR_BGR2GRAY);
 	detector->detectAndCompute(gray1, mask, kpts1, desc1);
-	for (int i = 1; i < static_cast<int>(rgb_buffer.size()) && ros::ok(); ++i)
+	for (int i = 1; i < static_cast<int>(rgb_buffer.size()) && ros::ok(); i+=step)
 	{
 		rgb_buffer[i-1]->image.copyTo(display);
 		cv::cvtColor(rgb_buffer[i]->image, gray2, cv::COLOR_BGR2GRAY);
@@ -147,8 +147,8 @@ void Tracker::track()
 		double matchEndTime = (double)cv::getTickCount();
 		std::cerr << "Match: " << (matchEndTime - matchStartTime)/cv::getTickFrequency() << std::endl;
 
-
-		std::vector<std::pair<Vector, Vector>> flow;
+		Flow2D flow2;
+		Flow3D flow3;
 
 		for (int ii = 0; ii < static_cast<int>(nn_matches.size()); ++ii)
 		{
@@ -179,15 +179,17 @@ void Tracker::track()
 				Vector v = p2-p1;
 				const double dist_thresh = track_options.meterRadius;
 				if ((v.x()*v.x() + v.y()*v.y() + v.z()*v.z()) > dist_thresh*dist_thresh) { continue; }
-				flow.push_back({p1, v});
+				flow3.push_back({p1, v});
+				flow2.push_back({kp1.pt, kp2.pt});
 			}
 		}
 
 		visualization_msgs::MarkerArray ma;
-		ma.markers.push_back(visualizeFlow(flow));
+		ma.markers.push_back(visualizeFlow(flow3));
 		vizPub.publish(ma);
 
-		flows.push_back(flow);
+		flows2.push_back(flow2);
+		flows3.push_back(flow3);
 
 		video.write(rgb_buffer[i-1]->image);
 		tracking.write(display);

@@ -14,7 +14,7 @@ public:
 	            SubscriptionOptions _options = SubscriptionOptions(),
 	            TrackingOptions _track_options = TrackingOptions());
 
-	void track() override;
+	void track(const size_t step = 1) override;
 };
 
 #endif // MPS_VOXELS_CUDATRACKER_H

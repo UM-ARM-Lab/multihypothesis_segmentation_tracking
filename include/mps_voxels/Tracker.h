@@ -80,6 +80,8 @@ public:
 	using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::Image, sensor_msgs::Image, sensor_msgs::CameraInfo>;
 	using DepthTraits = depth_image_proc::DepthTraits<uint16_t>;
 	using Vector = Eigen::Vector3d;
+	using Flow3D = std::vector<std::pair<Vector, Vector>>;
+	using Flow2D = std::vector<std::pair<cv::Point2f, cv::Point2f>>;
 
 	struct SubscriptionOptions
 	{
@@ -129,7 +131,8 @@ public:
 	std::unique_ptr<message_filters::Synchronizer<SyncPolicy>> sync;
 
 	cv::Mat mask;
-	std::vector<std::vector<std::pair<Vector, Vector>>> flows;
+	std::vector<Flow3D> flows3;
+	std::vector<Flow2D> flows2;
 
 	SubscriptionOptions options;
 	TrackingOptions track_options;
@@ -154,7 +157,7 @@ public:
 	cv::Mat& getMask();
 
 	virtual
-	void track();
+	void track(const size_t step = 1);
 
 	void imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	             const sensor_msgs::ImageConstPtr& depth_msg,

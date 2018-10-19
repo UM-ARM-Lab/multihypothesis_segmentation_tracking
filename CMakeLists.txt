@@ -38,11 +38,11 @@ set(CMAKE_BUILD_TYPE Release)
 
 find_package(CUDA REQUIRED)
 add_subdirectory(CudaSift)
-include_directories(CudaSift/include)
+include_directories(SYSTEM CudaSift/include)
 link_libraries(cudaSift)
 
 find_package(OCTOMAP 1.9 REQUIRED)
-include_directories(${OCTOMAP_INCLUDE_DIRS})
+include_directories(SYSTEM ${OCTOMAP_INCLUDE_DIRS})
 link_libraries(${OCTOMAP_LIBRARIES})
 
 find_package(OpenCV 3.4 REQUIRED COMPONENTS
@@ -53,6 +53,8 @@ find_package(OpenCV 3.4 REQUIRED COMPONENTS
 )
 include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 link_libraries(${OpenCV_LIBS})
+
+include_directories(SYSTEM COB/src/misc)
 
 # CGAL and its components
 set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE)
