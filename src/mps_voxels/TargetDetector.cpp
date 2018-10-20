@@ -47,8 +47,8 @@ cv::Mat TargetDetector::getMask(const cv::Mat& img) const
 
 int TargetDetector::matchGoalSegment(const cv::Mat& goalMask, const cv::Mat& labels) const
 {
-	assert(roi.width == labels.cols);
-	assert(roi.height == labels.rows);
+//	assert(roi.width == labels.cols);
+//	assert(roi.height == labels.rows);
 	using LabelT = uint16_t;
 
 	std::set<LabelT> uniqueLabels = unique(labels);
