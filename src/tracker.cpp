@@ -314,19 +314,57 @@ bool getLowestCommonAncestor(const merging_sequence& tree, const int i, const in
 	return false;
 }
 
+std::list<label_type> getChildren(const merging_sequence& tree, const label_type n)
+{
+	if (n < tree.n_leaves) { return {n}; }
+
+	std::list<label_type> children;
+	for (const label_type& child : tree.children_labels[n-tree.n_leaves])
+	{
+		children.splice(children.end(), getChildren(tree, child));
+	}
+	return children;
+}
+
+void getCutClusters(const merging_sequence& tree, const double threshold, std::map<label_type, std::vector<label_type>>& clusters)
+{
+	assert(tree.parent_labels.size() == tree.start_ths.size());
+	assert(tree.parent_labels.size() == tree.n_regs);
+
+	// For all nodes below the threshold with parents above the threshold
+	for (label_type iter = 0; iter < tree.parent_labels.size(); ++iter)
+	{
+		if (tree.start_ths[iter] <= threshold)
+		{
+			std::cerr << "maybe?: " << iter << " -> " << tree.parent_labels[iter] << " = " << tree.start_ths[tree.parent_labels[iter]] << std::endl;
+			if (tree.start_ths[tree.parent_labels[iter]] > threshold)
+			{
+				std::cerr << "cut: " << iter << std::endl;
+				std::list<label_type> c = getChildren(tree, iter);
+				std::vector<label_type> children; children.reserve(c.size());
+				children.insert(children.end(), c.begin(), c.end());
+				clusters.insert({iter, children});
+			}
+		}
+	}
+}
+
 void addToGraph(VideoSegmentationGraph& G, cv::Mat& ucm, cv::Mat& labels, const int k)
 {
-	if (CV_MAT_DEPTH(ucm.type()) != CV_64F) { throw std::runtime_error("UCM must be of type 'float64'"); }
-	if (CV_MAT_DEPTH(labels.type()) != CV_16U) { throw std::runtime_error("Labels must be of type 'uint16'"); }
+	if (CV_MAT_DEPTH(ucm.type())!=CV_64F) { throw std::runtime_error("UCM must be of type 'float64'"); }
+	if (CV_MAT_DEPTH(labels.type())!=CV_16U) { throw std::runtime_error("Labels must be of type 'uint16'"); }
 	const double EDGE_THRESHOLD = 0.2;
 
-	Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> contour_map(ucm.ptr<double>(), ucm.rows, ucm.cols);
-	Eigen::Map<Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> label_map(labels.ptr<uint16_t>(), labels.rows, labels.cols);
+	Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> contour_map(ucm.ptr<double>(),
+	                                                                                               ucm.rows, ucm.cols);
+	Eigen::Map<Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> label_map(
+		labels.ptr<uint16_t>(), labels.rows, labels.cols);
 //	Eigen::Map<Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>, Eigen::Unaligned, Eigen::Stride<Eigen::Dynamic,2>>
 //		label_map(labels.ptr<uint16_t>()+1, labels.rows/2, labels.cols/2, Eigen::Stride<Eigen::Dynamic,2>(labels.cols, 2));
 
 	std::cerr << label_map.all() << " ; " << cv::countNonZero(labels==0) << std::endl;
-	std::cerr << label_map.rows() << ", " << contour_map.rows() << " ; " << label_map.cols() << ", " << contour_map.cols() << std::endl;
+	std::cerr << label_map.rows() << ", " << contour_map.rows() << " ; " << label_map.cols() << ", "
+	          << contour_map.cols() << std::endl;
 
 //	cv::Mat display_labels = (labels == 0);
 //	display_labels.convertTo(display_labels, CV_8UC1);
@@ -335,57 +373,58 @@ void addToGraph(VideoSegmentationGraph& G, cv::Mat& ucm, cv::Mat& labels, const 
 
 	merging_sequence tree = ucm2hier(contour_map, label_map.cast<label_type>());
 
-	assert(tree.parent_labels.size() == tree.n_regs-tree.n_leaves);
-	assert(tree.children_labels.size() == tree.n_regs-tree.n_leaves);
+	assert(tree.parent_labels.size()==tree.n_regs-tree.n_leaves);
+	assert(tree.children_labels.size()==tree.n_regs-tree.n_leaves);
 
 	// ucm2hier assumes data is prepped for MATLAB, so it is 1-indexed
-	for (label_type& lbl : tree.parent_labels)
-	{
-		--lbl;
-		assert(lbl < tree.n_regs); // top pointer to root?
-		assert(lbl >= tree.n_leaves);
-	}
-	for (size_t iter = 0; iter < tree.children_labels.size(); ++iter)
+//	for (label_type& lbl : tree.parent_labels)
+//	{
+//		--lbl;
+//		assert(lbl < tree.n_regs); // top pointer to root?
+//		assert(lbl >= tree.n_leaves);
+//	}
+	for (size_t iter = 0; iter<tree.children_labels.size(); ++iter)
 	{
 		for (label_type& lbl : tree.children_labels[iter])
 		{
 			--lbl;
-			assert(lbl < tree.n_regs);
-			assert(lbl >= 0);
+			assert(lbl<tree.n_regs);
+			assert(lbl>=0);
 		}
 	}
 
 	// Reconstruct parent pointers for leaf nodes
-	std::vector<label_type> leaf_parents(tree.n_leaves);
+	std::vector<label_type> parents(tree.n_regs);
+	std::iota(parents.begin(), parents.end(), 0);
 	std::set<label_type> all_leaf_children;
-	for (size_t iter = 0; iter < tree.children_labels.size(); ++iter)
+	for (size_t iter = 0; iter<tree.children_labels.size(); ++iter)
 	{
+		assert(tree.parent_labels[iter]-1==iter+tree.n_leaves);
 		for (const label_type lbl : tree.children_labels[iter])
 		{
-			if (lbl < tree.n_leaves)
-			{
-				auto res = all_leaf_children.insert(lbl);
-				assert(res.second);
-				leaf_parents[lbl] = iter + tree.n_leaves;
-			}
-			assert(lbl < tree.n_regs);
+			auto res = all_leaf_children.insert(lbl);
+			assert(res.second);
+			label_type parent = iter+tree.n_leaves;
+			assert(parent>=0);
+			assert(parent<tree.n_regs);
+			parents[lbl] = parent;
 		}
 	}
-	leaf_parents.reserve(tree.n_regs);
-	leaf_parents.insert(leaf_parents.end(), tree.parent_labels.begin(), tree.parent_labels.end());
-	tree.parent_labels = leaf_parents;
+//	leaf_parents.reserve(tree.n_regs);
+//	leaf_parents.insert(leaf_parents.end(), tree.parent_labels.begin(), tree.parent_labels.end());
+	tree.parent_labels = parents;
 
 	// Sanity check that all parents are valid non-leaf nodes
-	for (label_type iter = 0; iter < tree.parent_labels.size(); ++iter)
+	for (label_type iter = 0; iter<tree.parent_labels.size(); ++iter)
 	{
 		const auto& lbl = tree.parent_labels[iter];
-		assert(lbl < tree.n_regs); // top pointer to root?
-		assert(lbl >= tree.n_leaves);
+		assert(lbl<tree.n_regs); // top pointer to root?
+		assert(lbl>=tree.n_leaves || lbl==iter);
 	}
 
 	std::map<std::pair<int, int>, VideoSegmentationGraph::vertex_descriptor> segmentToNode;
 
-	for (int i = 0; i < static_cast<int>(tree.n_leaves); ++i)
+	for (int i = 0; i<static_cast<int>(tree.n_leaves); ++i)
 	{
 		// Add leaf i to graph
 		// NB: labels start from 1, as 0 is background, so tree[0] = labels[1]
@@ -393,18 +432,26 @@ void addToGraph(VideoSegmentationGraph& G, cv::Mat& ucm, cv::Mat& labels, const 
 		segmentToNode.insert({{k, i}, v});
 	}
 
-	for (int i = 0; i < static_cast<int>(tree.n_leaves); ++i)
-	{
-		for (int j = i+1; j < static_cast<int>(tree.n_leaves); ++j)
-		{
-			int ancestor = -1;
-			if (getLowestCommonAncestor(tree, i, j, ancestor, EDGE_THRESHOLD))
-			{
-				double dist = tree.start_ths[ancestor];
+	std::map<label_type, std::vector<label_type>> preclusters;
+	getCutClusters(tree, EDGE_THRESHOLD, preclusters);
 
-				VideoSegmentationGraph::vertex_descriptor s = segmentToNode[{k,i}];
-				VideoSegmentationGraph::vertex_descriptor t = segmentToNode[{k,j}];
-				boost::add_edge(s, t, {1.0/(dist+1e-4)}, G);
+	for (const auto& precluster : preclusters)
+	{
+		for (int i = 0; i<static_cast<int>(precluster.second.size()); ++i)
+		{
+			for (int j = i+1; j<static_cast<int>(precluster.second.size()); ++j)
+			{
+				int ancestor = -1;
+				label_type p = precluster.second[i];
+				label_type q = precluster.second[j];
+				if (getLowestCommonAncestor(tree, p, q, ancestor, EDGE_THRESHOLD))
+				{
+					double dist = tree.start_ths[ancestor];
+
+					VideoSegmentationGraph::vertex_descriptor s = segmentToNode[{k, p}];
+					VideoSegmentationGraph::vertex_descriptor t = segmentToNode[{k, q}];
+					boost::add_edge(s, t, {1.0/(dist+1e-4)}, G);
+				}
 			}
 		}
 	}
@@ -565,21 +612,21 @@ int main(int argc, char* argv[])
 			vertex_component_map mapping = boost::make_shared<mapping_t>();
 			size_t num_components = boost::connected_components(G, boost::associative_property_map<mapping_t>(*mapping));
 
-			std::vector<ComponentGraph> component_graphs;
-
-			for (size_t i = 0; i < num_components; i++)
-				component_graphs.emplace_back(G,
-				                              [mapping,i,&G](VideoSegmentationGraph::edge_descriptor e) {
-					                              return mapping->at(boost::source(e,G))==i
-					                                     || mapping->at(boost::target(e,G))==i;
-				                              },
-				                              [mapping,i](VideoSegmentationGraph::vertex_descriptor v) {
-					                              return mapping->at(v)==i;
-				                              });
-
-			for (const auto& g : component_graphs)
+//			std::vector<ComponentGraph> component_graphs;
+//
+//			for (size_t i = 0; i < num_components; i++)
+//				component_graphs.emplace_back(G,
+//				                              [mapping,i,&G](VideoSegmentationGraph::edge_descriptor e) {
+//					                              return mapping->at(boost::source(e,G))==i
+//					                                     || mapping->at(boost::target(e,G))==i;
+//				                              },
+//				                              [mapping,i](VideoSegmentationGraph::vertex_descriptor v) {
+//					                              return mapping->at(v)==i;
+//				                              });
+//
+//			for (const auto& g : component_graphs)
 			{
-				Eigen::MatrixXd laplacian = getLaplacianNormalized(g);
+				Eigen::MatrixXd laplacian = getLaplacianNormalized(G);
 				const int numCells = laplacian.rows();
 				std::cerr << "Segmenting subgraph with " << numCells << " vertices (out of " << boost::num_vertices(G) << ")." << std::endl;
 				Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver;
