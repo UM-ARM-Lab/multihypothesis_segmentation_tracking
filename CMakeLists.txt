@@ -52,6 +52,7 @@ include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 link_libraries(${OpenCV_LIBS})
 
 include_directories(SYSTEM COB/src/misc)
+include_directories(SYSTEM spectra/include)
 
 # CGAL and its components
 set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE)
@@ -77,7 +78,8 @@ if(CLION)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
   set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
 endif()
-set(CMAKE_BUILD_TYPE RelWithDebInfo)
+#set(CMAKE_BUILD_TYPE RelWithDebInfo)
+set(CMAKE_BUILD_TYPE Debug)
 
 macro(use_strict_compile_flags)
   set(BUILD_FLAGS "-Wshadow -Wall -Wextra -Wpedantic")
@@ -224,6 +226,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/segmentation_utils.cpp
   src/${PROJECT_NAME}/shape_utils.cpp
   src/${PROJECT_NAME}/colormap.cpp
+  src/${PROJECT_NAME}/Ultrametric.cpp
   src/${PROJECT_NAME}/Manipulator.cpp
   src/${PROJECT_NAME}/VictorManipulator.cpp
   src/${PROJECT_NAME}/MotionModel.cpp
@@ -231,6 +234,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/Tracker.cpp
   src/${PROJECT_NAME}/CudaTracker.cpp
   src/${PROJECT_NAME}/TargetDetector.cpp
+  src/${PROJECT_NAME}/graph_matrix_utils.cpp
   src/${PROJECT_NAME}/LocalOctreeServer.cpp
   src/${PROJECT_NAME}/planning/State.cpp
   src/${PROJECT_NAME}/planning/Action.cpp
@@ -284,6 +288,14 @@ target_link_libraries(${PROJECT_NAME}_tracker
   ${catkin_LIBRARIES}
 )
 
+add_executable(${PROJECT_NAME}_test_graph_segmentation src/test_graph_segmentation.cpp)
+set_target_properties(${PROJECT_NAME}_test_graph_segmentation PROPERTIES OUTPUT_NAME test_graph_segmentation PREFIX "")
+add_dependencies(${PROJECT_NAME}_test_graph_segmentation ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_test_graph_segmentation
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+
 
 add_executable(${PROJECT_NAME}_explorer src/explorer.cpp)
 set_target_properties(${PROJECT_NAME}_explorer PROPERTIES OUTPUT_NAME explorer PREFIX "")
@@ -307,10 +319,10 @@ add_custom_target(${PROJECT_NAME}_headers SOURCES ${IncludeFiles})
 
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
-# install(PROGRAMS
-#   scripts/my_python_script
-#   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-# )
+install(PROGRAMS
+  scripts/spectral_graph_clustering.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
 ## Mark executables and/or libraries for installation
 # install(TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_node
