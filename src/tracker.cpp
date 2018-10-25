@@ -219,7 +219,7 @@ std::set<std::pair<uint16_t, uint16_t>> computeNeighbors(const cv::Mat& labels)
 
 void addToGraph(VideoSegmentationGraph& G, cv::Mat& ucm, cv::Mat& full_labels, const int k)
 {
-	const double EDGE_THRESHOLD = 0.125;
+	const double EDGE_THRESHOLD = 0.005;//0.125;
 
 //	cv::Mat display_labels = (small_labels == 0);
 //	display_labels.convertTo(display_labels, CV_8UC1);
@@ -285,7 +285,7 @@ void addToGraph(VideoSegmentationGraph& G, cv::Mat& ucm, cv::Mat& full_labels, c
 
 void joinFrameGraphs(VideoSegmentationGraph& G, const cv::Mat& iLabels, const cv::Mat& jLabels, const int i, const int j, const Tracker::Flow2D& flow)
 {
-	const double weight = 5e4;//1/0.02;
+	const double weight = 1.0/0.3;
 	std::map<std::pair<int, int>, VideoSegmentationGraph::vertex_descriptor> segmentToNode;
 	for (VideoSegmentationGraph::vertex_descriptor vd : make_range(boost::vertices(G)))
 	{
@@ -294,13 +294,113 @@ void joinFrameGraphs(VideoSegmentationGraph& G, const cv::Mat& iLabels, const cv
 	}
 	for (const std::pair<cv::Point2f, cv::Point2f>& flowVec : flow)
 	{
-		int iLabel = iLabels.at<uint16_t>(static_cast<cv::Point>(flowVec.first/2));
-		int jLabel = jLabels.at<uint16_t>(static_cast<cv::Point>(flowVec.second/2));
+		cv::Point2i iPt(flowVec.first.x/2, flowVec.first.y/2);
+		if (iPt.x >= iLabels.cols || iPt.y >= iLabels.rows) { continue; }
+		cv::Point2i jPt(flowVec.second.x/2, flowVec.second.y/2);
+		if (jPt.x >= jLabels.cols || jPt.y >= jLabels.rows) { continue; }
+		int iLabel = iLabels.at<uint16_t>(iPt);
+		int jLabel = jLabels.at<uint16_t>(jPt);
 
-		auto res = boost::add_edge(segmentToNode[{i, iLabel}], segmentToNode[{j, jLabel}], G);
+		if (iLabel == 0 || jLabel == 0)
+		{
+			continue;
+		}
+
+		auto res = boost::add_edge(segmentToNode.at({i, iLabel}), segmentToNode.at({j, jLabel}), G);
 		EdgeProperties& eProps = G[res.first];
 		eProps.affinity += weight;
 	}
+}
+
+#include <pcl_ros/point_cloud.h>
+void visualizeVideoGraph(const VideoSegmentationGraph& G, const std::vector<cv::Mat>& imgs, const std::vector<cv::Mat>& centroids)
+{
+	static ros::NodeHandle nh;
+	static ros::Publisher pcPub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>("video_points", 1, true);
+	static ros::Publisher edgePub = nh.advertise<visualization_msgs::Marker>("video_edges", 1, true);
+
+	const float UV_SCALE = 0.001;
+	const float T_SCALE = 0.3;
+	pcl::PointCloud<pcl::PointXYZRGB> pc;
+	for (size_t k = 0; k < imgs.size(); ++k)
+	{
+		const cv::Mat& img = imgs[k];
+		for (int u = 1; u < img.cols; ++u)
+		{
+			for (int v = 1; v < img.rows; ++v)
+			{
+				auto color = img.at<cv::Vec3b>(v, u);
+				pcl::PointXYZRGB pt(color[2], color[1], color[0]);
+				pt.x = UV_SCALE * u;
+				pt.y = -UV_SCALE * v;
+				pt.z = -T_SCALE * k;
+				pc.points.push_back(pt);
+			}
+		}
+	}
+
+	pc.header.frame_id = "video";
+	pcl_conversions::toPCL(ros::Time::now(), pc.header.stamp);
+	pcPub.publish(pc);
+	ros::spinOnce();
+
+	visualization_msgs::Marker m;
+	m.action = visualization_msgs::Marker::ADD;
+	m.type = visualization_msgs::Marker::LINE_LIST;
+	m.color.a = 1.0f;
+	m.color.r = 1.0f;
+	m.color.g = 1.0f;
+	m.color.b = 1.0f;
+	m.pose.orientation.w = 1;
+	m.frame_locked = true;
+	m.id = 1;
+	m.scale.x = 1.1*UV_SCALE;
+
+	double minAffinity = std::numeric_limits<double>::infinity();
+	double maxAffinity = -std::numeric_limits<double>::infinity();
+
+	for (VideoSegmentationGraph::edge_descriptor ed : make_range(boost::edges(G)))
+	{
+		const EdgeProperties& ep = G[ed];
+		minAffinity = std::min(ep.affinity, minAffinity);
+		maxAffinity = std::max(ep.affinity, maxAffinity);
+	}
+
+	geometry_msgs::Point pt;
+	std_msgs::ColorRGBA color;
+	for (VideoSegmentationGraph::edge_descriptor ed : make_range(boost::edges(G)))
+	{
+		VideoSegmentationGraph::vertex_descriptor u = boost::source(ed, G);
+		VideoSegmentationGraph::vertex_descriptor v = boost::target(ed, G);
+
+		const EdgeProperties& ep = G[ed];
+		const NodeProperties& Gu = G[u];
+		const NodeProperties& Gv = G[v];
+
+		const cv::Mat& Cu = centroids[Gu.k];
+		const cv::Mat& Cv = centroids[Gv.k];
+
+		cv::Point2f cu(Cu.at<double>(Gu.leafID, 0), Cu.at<double>(Gu.leafID, 1));
+		cv::Point2f cv(Cv.at<double>(Gv.leafID, 0), Cv.at<double>(Gv.leafID, 1));
+
+		pt.x = UV_SCALE * cu.x;
+		pt.y = -UV_SCALE * cu.y;
+		pt.z = -T_SCALE * Gu.k;
+		m.points.push_back(pt);
+
+		colormap(igl::viridis_cm, (float)((ep.affinity-minAffinity)/(maxAffinity-minAffinity)), color.r, color.g, color.b);
+		m.colors.push_back(color);
+
+		pt.x = UV_SCALE * cv.x;
+		pt.y = -UV_SCALE * cv.y;
+		pt.z = -T_SCALE * Gv.k;
+		m.points.push_back(pt);
+		m.colors.push_back(color);
+	}
+	m.header.frame_id = pc.header.frame_id;
+	m.header.stamp = ros::Time::now();
+
+	edgePub.publish(m);
 }
 
 
@@ -328,12 +428,13 @@ int main(int argc, char* argv[])
 	cv::namedWindow("labels", CV_WINDOW_NORMAL);
 
 	const int step = 5;
-	tracker = std::make_unique<CudaTracker>(15*step);
+	tracker = std::make_unique<CudaTracker>(10*step);
 	// TODO: Make step size variable based on average flow
 
 	std::vector<cv::Mat> ucms;
 	std::vector<cv::Mat> labels;
 	std::vector<cv::Mat> centroids;
+	std::vector<cv::Mat> displays;
 	std::vector<cv_bridge::CvImagePtr> segmentations;
 	VideoSegmentationGraph G;
 
@@ -405,6 +506,8 @@ int main(int argc, char* argv[])
 				ucm->image.convertTo(tempContours1, CV_8UC1, 255.0/maxVal);
 				cv::applyColorMap(tempContours1, displayContours, cv::COLORMAP_JET); // COLORMAP_HOT
 				cv::imshow("contours", displayContours);
+				displays.push_back(displayContours);
+//				displays.push_back(rgb_cropped);
 				cv::waitKey(1);
 
 				if (segmentationPub->getNumSubscribers() > 0)
@@ -414,23 +517,23 @@ int main(int argc, char* argv[])
 
 				addToGraph(G, ucms.back(), tempLabels, i/step);
 
-				if (i == 0)
-				{
-					int edgeCount = 0;
-					for (VideoSegmentationGraph::edge_descriptor ed : make_range(boost::edges(G)))
-					{
-						VideoSegmentationGraph::vertex_descriptor u = boost::source(ed, G);
-						VideoSegmentationGraph::vertex_descriptor v = boost::target(ed, G);
-
-						cv::Point2f cu(tempCentroids.at<double>(G[u].leafID, 0), tempCentroids.at<double>(G[u].leafID, 1));
-						cv::Point2f cv(tempCentroids.at<double>(G[v].leafID, 0), tempCentroids.at<double>(G[v].leafID, 1));
-						cv::line(displayContours, cu, cv, cv::Scalar(255, 255, 255), 1);
-						++edgeCount;
-					}
-					std::cerr << edgeCount << std::endl;
-					cv::imshow("contours", displayContours);
-					cv::waitKey();
-				}
+//				if (i == 0)
+//				{
+//					int edgeCount = 0;
+//					for (VideoSegmentationGraph::edge_descriptor ed : make_range(boost::edges(G)))
+//					{
+//						VideoSegmentationGraph::vertex_descriptor u = boost::source(ed, G);
+//						VideoSegmentationGraph::vertex_descriptor v = boost::target(ed, G);
+//
+//						cv::Point2f cu(tempCentroids.at<double>(G[u].leafID, 0), tempCentroids.at<double>(G[u].leafID, 1));
+//						cv::Point2f cv(tempCentroids.at<double>(G[v].leafID, 0), tempCentroids.at<double>(G[v].leafID, 1));
+//						cv::line(displayContours, cu, cv, cv::Scalar(255, 255, 255), 1);
+//						++edgeCount;
+//					}
+//					std::cerr << edgeCount << std::endl;
+//					cv::imshow("contours", displayContours);
+////					cv::waitKey();
+//				}
 
 				if (i >= 1)
 				{
@@ -477,6 +580,10 @@ int main(int argc, char* argv[])
 //				int seg = componentLookup[node];
 //
 //			}
+
+			{
+				visualizeVideoGraph(G, displays, centroids);
+			}
 
 			{
 				Eigen::SparseMatrix<double> adj = getAdjacencySparse(G);

@@ -40,7 +40,7 @@ Ultrametric::Ultrametric(cv::Mat& ucm, cv::Mat& labels)
 	std::set<label_type> all_leaf_children;
 	for (label_type iter = 0; iter < merge_tree.children_labels.size(); ++iter)
 	{
-		label_to_index[merge_tree.parent_labels[iter]] = iter + merge_tree.n_leaves - 1;
+		label_to_index[merge_tree.parent_labels[iter]] = iter + merge_tree.n_leaves;
 		for (label_type& lbl : merge_tree.children_labels[iter])
 		{
 			assert(lbl <= merge_tree.n_regs);
@@ -129,6 +129,7 @@ std::map<label_type, std::vector<label_type>> Ultrametric::getCutClusters(const 
 				std::list<label_type> c = getChildren(merge_tree, lbl_pair.first);
 				std::vector<label_type> children; children.reserve(c.size());
 				children.insert(children.end(), c.begin(), c.end());
+				for (const auto& child : children) { assert(label_to_index.at(child) < merge_tree.n_leaves); }
 				clusters.insert({lbl_pair.first, children});
 			}
 		}
