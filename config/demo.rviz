@@ -1,0 +1,1208 @@
+Panels:
+  - Class: rviz/Displays
+    Help Height: 0
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /TF1
+        - /TF1/Frames1
+        - /MarkerArray2/Namespaces1
+        - /MarkerArray3/Namespaces1
+      Splitter Ratio: 0.575581372
+    Tree Height: 891
+  - Class: rviz/Help
+    Name: Help
+  - Class: rviz/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.5
+      Cell Size: 1
+      Class: rviz/Grid
+      Color: 160; 160; 164
+      Enabled: true
+      Line Style:
+        Line Width: 0.0299999993
+        Value: Lines
+      Name: Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 10
+      Reference Frame: <Fixed Frame>
+      Value: true
+    - Class: rviz/TF
+      Enabled: true
+      Frame Timeout: 15
+      Frames:
+        All Enabled: true
+        deposit_location:
+          Value: true
+        discard_location:
+          Value: true
+        kinect2_roof_link:
+          Value: true
+        kinect2_victor_head_ir_optical_frame:
+          Value: true
+        kinect2_victor_head_link:
+          Value: true
+        kinect2_victor_head_rgb_optical_frame:
+          Value: true
+        mocap_FoldingTableSurface_FoldingTableSurface:
+          Value: true
+        mocap_Kinect2BlockRoof_Kinect2BlockRoof:
+          Value: true
+        mocap_Kinect2VictorHead_Kinect2VictorHead:
+          Value: true
+        mocap_ShortChildsTable_ShortChildsTable:
+          Value: true
+        mocap_ValPedestal_ValPedestal:
+          Value: true
+        mocap_VictorTorso_VictorTorso:
+          Value: true
+        mocap_world:
+          Value: true
+        openrave_world_origin:
+          Value: true
+        slide_0:
+          Value: true
+        slide_1:
+          Value: true
+        slide_10:
+          Value: true
+        slide_11:
+          Value: true
+        slide_12:
+          Value: true
+        slide_13:
+          Value: true
+        slide_14:
+          Value: true
+        slide_15:
+          Value: true
+        slide_16:
+          Value: true
+        slide_17:
+          Value: true
+        slide_18:
+          Value: true
+        slide_19:
+          Value: true
+        slide_2:
+          Value: true
+        slide_20:
+          Value: true
+        slide_21:
+          Value: true
+        slide_22:
+          Value: true
+        slide_23:
+          Value: true
+        slide_24:
+          Value: true
+        slide_3:
+          Value: true
+        slide_4:
+          Value: true
+        slide_5:
+          Value: true
+        slide_6:
+          Value: true
+        slide_7:
+          Value: true
+        slide_8:
+          Value: true
+        slide_9:
+          Value: true
+        table_footprint:
+          Value: true
+        table_surface:
+          Value: true
+        victor_base_plate:
+          Value: true
+        victor_base_plate_mount:
+          Value: true
+        victor_left_arm_flange:
+          Value: true
+        victor_left_arm_flange_kuka:
+          Value: true
+        victor_left_arm_link_0:
+          Value: true
+        victor_left_arm_link_1:
+          Value: true
+        victor_left_arm_link_2:
+          Value: true
+        victor_left_arm_link_3:
+          Value: true
+        victor_left_arm_link_4:
+          Value: true
+        victor_left_arm_link_5:
+          Value: true
+        victor_left_arm_link_6:
+          Value: true
+        victor_left_arm_link_7:
+          Value: true
+        victor_left_arm_mount:
+          Value: true
+        victor_left_arm_world_frame_kuka:
+          Value: true
+        victor_left_gripper_fingerA_base:
+          Value: true
+        victor_left_gripper_fingerA_dist:
+          Value: true
+        victor_left_gripper_fingerA_med:
+          Value: true
+        victor_left_gripper_fingerA_prox:
+          Value: true
+        victor_left_gripper_fingerB_base:
+          Value: true
+        victor_left_gripper_fingerB_dist:
+          Value: true
+        victor_left_gripper_fingerB_med:
+          Value: true
+        victor_left_gripper_fingerB_prox:
+          Value: true
+        victor_left_gripper_fingerC_base:
+          Value: true
+        victor_left_gripper_fingerC_dist:
+          Value: true
+        victor_left_gripper_fingerC_med:
+          Value: true
+        victor_left_gripper_fingerC_prox:
+          Value: true
+        victor_left_gripper_mounting_bracket:
+          Value: true
+        victor_left_gripper_palm:
+          Value: true
+        victor_left_gripper_palm_surface:
+          Value: true
+        victor_left_gripper_palm_surface_kuka:
+          Value: true
+        victor_pedestal:
+          Value: true
+        victor_right_arm_flange:
+          Value: true
+        victor_right_arm_flange_kuka:
+          Value: true
+        victor_right_arm_link_0:
+          Value: true
+        victor_right_arm_link_1:
+          Value: true
+        victor_right_arm_link_2:
+          Value: true
+        victor_right_arm_link_3:
+          Value: true
+        victor_right_arm_link_4:
+          Value: true
+        victor_right_arm_link_5:
+          Value: true
+        victor_right_arm_link_6:
+          Value: true
+        victor_right_arm_link_7:
+          Value: true
+        victor_right_arm_mount:
+          Value: true
+        victor_right_arm_world_frame_kuka:
+          Value: true
+        victor_right_gripper_fingerA_base:
+          Value: true
+        victor_right_gripper_fingerA_dist:
+          Value: true
+        victor_right_gripper_fingerA_med:
+          Value: true
+        victor_right_gripper_fingerA_prox:
+          Value: true
+        victor_right_gripper_fingerB_base:
+          Value: true
+        victor_right_gripper_fingerB_dist:
+          Value: true
+        victor_right_gripper_fingerB_med:
+          Value: true
+        victor_right_gripper_fingerB_prox:
+          Value: true
+        victor_right_gripper_fingerC_base:
+          Value: true
+        victor_right_gripper_fingerC_dist:
+          Value: true
+        victor_right_gripper_fingerC_med:
+          Value: true
+        victor_right_gripper_fingerC_prox:
+          Value: true
+        victor_right_gripper_mounting_bracket:
+          Value: true
+        victor_right_gripper_palm:
+          Value: true
+        victor_right_gripper_palm_surface:
+          Value: true
+        victor_right_gripper_palm_surface_kuka:
+          Value: true
+        victor_root:
+          Value: true
+        world_origin:
+          Value: true
+      Marker Scale: 0.200000003
+      Name: TF
+      Show Arrows: false
+      Show Axes: true
+      Show Names: false
+      Tree:
+        mocap_world:
+          mocap_FoldingTableSurface_FoldingTableSurface:
+            table_surface:
+              deposit_location:
+                {}
+              discard_location:
+                {}
+              slide_0:
+                {}
+              slide_1:
+                {}
+              slide_10:
+                {}
+              slide_11:
+                {}
+              slide_12:
+                {}
+              slide_13:
+                {}
+              slide_14:
+                {}
+              slide_15:
+                {}
+              slide_16:
+                {}
+              slide_17:
+                {}
+              slide_18:
+                {}
+              slide_19:
+                {}
+              slide_2:
+                {}
+              slide_20:
+                {}
+              slide_21:
+                {}
+              slide_22:
+                {}
+              slide_23:
+                {}
+              slide_24:
+                {}
+              slide_3:
+                {}
+              slide_4:
+                {}
+              slide_5:
+                {}
+              slide_6:
+                {}
+              slide_7:
+                {}
+              slide_8:
+                {}
+              slide_9:
+                {}
+              table_footprint:
+                {}
+          mocap_Kinect2BlockRoof_Kinect2BlockRoof:
+            kinect2_roof_link:
+              {}
+          mocap_Kinect2VictorHead_Kinect2VictorHead:
+            kinect2_victor_head_link:
+              kinect2_victor_head_rgb_optical_frame:
+                kinect2_victor_head_ir_optical_frame:
+                  {}
+          mocap_ShortChildsTable_ShortChildsTable:
+            {}
+          mocap_ValPedestal_ValPedestal:
+            {}
+          mocap_VictorTorso_VictorTorso:
+            victor_root:
+              victor_pedestal:
+                victor_base_plate_mount:
+                  victor_base_plate:
+                    victor_left_arm_mount:
+                      victor_left_arm_link_0:
+                        victor_left_arm_link_1:
+                          victor_left_arm_link_2:
+                            victor_left_arm_link_3:
+                              victor_left_arm_link_4:
+                                victor_left_arm_link_5:
+                                  victor_left_arm_link_6:
+                                    victor_left_arm_link_7:
+                                      victor_left_arm_flange:
+                                        victor_left_arm_flange_kuka:
+                                          {}
+                                        victor_left_gripper_mounting_bracket:
+                                          victor_left_gripper_palm:
+                                            victor_left_gripper_fingerA_base:
+                                              victor_left_gripper_fingerA_prox:
+                                                victor_left_gripper_fingerA_med:
+                                                  victor_left_gripper_fingerA_dist:
+                                                    {}
+                                            victor_left_gripper_fingerB_base:
+                                              victor_left_gripper_fingerB_prox:
+                                                victor_left_gripper_fingerB_med:
+                                                  victor_left_gripper_fingerB_dist:
+                                                    {}
+                                            victor_left_gripper_fingerC_base:
+                                              victor_left_gripper_fingerC_prox:
+                                                victor_left_gripper_fingerC_med:
+                                                  victor_left_gripper_fingerC_dist:
+                                                    {}
+                                            victor_left_gripper_palm_surface:
+                                              victor_left_gripper_palm_surface_kuka:
+                                                {}
+                      victor_left_arm_world_frame_kuka:
+                        {}
+                    victor_right_arm_mount:
+                      victor_right_arm_link_0:
+                        victor_right_arm_link_1:
+                          victor_right_arm_link_2:
+                            victor_right_arm_link_3:
+                              victor_right_arm_link_4:
+                                victor_right_arm_link_5:
+                                  victor_right_arm_link_6:
+                                    victor_right_arm_link_7:
+                                      victor_right_arm_flange:
+                                        victor_right_arm_flange_kuka:
+                                          {}
+                                        victor_right_gripper_mounting_bracket:
+                                          victor_right_gripper_palm:
+                                            victor_right_gripper_fingerA_base:
+                                              victor_right_gripper_fingerA_prox:
+                                                victor_right_gripper_fingerA_med:
+                                                  victor_right_gripper_fingerA_dist:
+                                                    {}
+                                            victor_right_gripper_fingerB_base:
+                                              victor_right_gripper_fingerB_prox:
+                                                victor_right_gripper_fingerB_med:
+                                                  victor_right_gripper_fingerB_dist:
+                                                    {}
+                                            victor_right_gripper_fingerC_base:
+                                              victor_right_gripper_fingerC_prox:
+                                                victor_right_gripper_fingerC_med:
+                                                  victor_right_gripper_fingerC_dist:
+                                                    {}
+                                            victor_right_gripper_palm_surface:
+                                              victor_right_gripper_palm_surface_kuka:
+                                                {}
+                      victor_right_arm_world_frame_kuka:
+                        {}
+          world_origin:
+            {}
+        openrave_world_origin:
+          {}
+      Update Interval: 0
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /occupied_cells_vis_array
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /occluded_points
+      Name: MarkerArray
+      Namespaces:
+        bounds: true
+        collision: false
+        completed_1: true
+        completed_10: true
+        completed_11: true
+        completed_12: true
+        completed_13: true
+        completed_14: true
+        completed_15: true
+        completed_16: true
+        completed_17: true
+        completed_18: true
+        completed_2: true
+        completed_3: true
+        completed_4: true
+        completed_5: true
+        completed_6: true
+        completed_7: true
+        completed_8: true
+        completed_9: true
+        hidden: true
+        map: true
+        worst: true
+      Queue Size: 100
+      Value: true
+    - Class: moveit_rviz_plugin/Trajectory
+      Color Enabled: false
+      Enabled: true
+      Interrupt Display: true
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+        victor_base_plate:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_base_plate_mount:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_left_arm_flange:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_left_arm_flange_kuka:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_left_arm_link_0:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_1:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_2:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_3:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_4:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_5:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_6:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_7:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_mount:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_world_frame_kuka:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_left_gripper_fingerA_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerA_dist:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerA_med:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerA_prox:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerB_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerB_dist:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerB_med:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerB_prox:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerC_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerC_dist:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerC_med:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerC_prox:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_mounting_bracket:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_palm:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_palm_surface:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_left_gripper_palm_surface_kuka:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_pedestal:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_flange:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_right_arm_flange_kuka:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_right_arm_link_0:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_1:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_2:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_3:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_4:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_5:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_6:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_7:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_mount:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_world_frame_kuka:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_right_gripper_fingerA_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerA_dist:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerA_med:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerA_prox:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerB_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerB_dist:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerB_med:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerB_prox:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerC_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerC_dist:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerC_med:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerC_prox:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_mounting_bracket:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_palm:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_palm_surface:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_right_gripper_palm_surface_kuka:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_root:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+      Loop Animation: false
+      Name: Trajectory
+      Robot Alpha: 0.5
+      Robot Color: 150; 50; 150
+      Robot Description: robot_description
+      Show Robot Collision: false
+      Show Robot Visual: true
+      Show Trail: false
+      State Display Time: 0.02 s
+      Trail Step Size: 3
+      Trajectory Topic: /move_group/display_planned_path
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: RGB8
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 4096
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: PointCloud2
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: true
+      Size (Pixels): 2
+      Size (m): 0.00999999978
+      Style: Points
+      Topic: /kinect2_victor_head/qhd/points
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: false
+      Enabled: true
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+        victor_base_plate:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_base_plate_mount:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_left_arm_flange:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_left_arm_flange_kuka:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_left_arm_link_0:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_1:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_2:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_3:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_4:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_5:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_6:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_link_7:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_mount:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_arm_world_frame_kuka:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_left_gripper_fingerA_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerA_dist:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerA_med:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerA_prox:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerB_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerB_dist:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerB_med:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerB_prox:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerC_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerC_dist:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerC_med:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_fingerC_prox:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_mounting_bracket:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_palm:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_left_gripper_palm_surface:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_left_gripper_palm_surface_kuka:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_pedestal:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_flange:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_right_arm_flange_kuka:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_right_arm_link_0:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_1:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_2:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_3:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_4:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_5:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_6:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_link_7:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_mount:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_arm_world_frame_kuka:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_right_gripper_fingerA_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerA_dist:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerA_med:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerA_prox:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerB_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerB_dist:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerB_med:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerB_prox:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerC_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerC_dist:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerC_med:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_fingerC_prox:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_mounting_bracket:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_palm:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        victor_right_gripper_palm_surface:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_right_gripper_palm_surface_kuka:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        victor_root:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+      Name: RobotModel
+      Robot Description: robot_description
+      TF Prefix: ""
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
+    - Class: rviz/MarkerArray
+      Enabled: false
+      Marker Topic: /roi
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: false
+    - Class: rviz/MarkerArray
+      Enabled: false
+      Marker Topic: /visualization_marker_array
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: false
+    - Class: rviz/Image
+      Enabled: true
+      Image Topic: /segmentation
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: Segmentation
+      Normalize Range: true
+      Queue Size: 2
+      Transport Hint: raw
+      Unreliable: false
+      Value: true
+    - Class: rviz/Camera
+      Enabled: true
+      Image Rendering: background and overlay
+      Image Topic: /kinect2_victor_head/qhd/image_color_rect
+      Name: Live View
+      Overlay Alpha: 0.75
+      Queue Size: 2
+      Transport Hint: compressed
+      Unreliable: false
+      Value: true
+      Visibility:
+        Grid: true
+        MarkerArray: true
+        PointCloud2: true
+        RobotModel: true
+        Segmentation: true
+        TF: false
+        Target: true
+        Trajectory: true
+        Value: true
+      Zoom Factor: 1
+    - Class: rviz/Image
+      Enabled: true
+      Image Topic: target
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: Target
+      Normalize Range: true
+      Queue Size: 2
+      Transport Hint: raw
+      Unreliable: false
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 179; 179; 179
+    Default Light: true
+    Fixed Frame: victor_root
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+  Value: true
+  Views:
+    Current:
+      Class: rviz/XYOrbit
+      Distance: 2.30458975
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.0599999987
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Focal Point:
+        X: -0.377862781
+        Y: 0.247183144
+        Z: -1.78813934e-07
+      Focal Shape Fixed Size: false
+      Focal Shape Size: 0.0500000007
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.00999999978
+      Pitch: 0.894796252
+      Target Frame: table_surface
+      Value: XYOrbit (rviz)
+      Yaw: 2.88398695
+    Saved: ~
+Window Geometry:
+  Camera:
+    collapsed: false
+  Displays:
+    collapsed: true
+  Height: 1056
+  Help:
+    collapsed: false
+  Hide Left Dock: false
+  Hide Right Dock: true
+  Live View:
+    collapsed: false
+  QMainWindow State: 000000ff00000000fd00000002000000000000023a000003dafc020000000cfb0000000800480065006c00700000000342000000bb0000007300fffffffb0000000c00430061006d0065007200610000000171000000160000001600000016fb0000001e004d006f00740069006f006e00200050006c0061006e006e0069006e00670100000374000001890000000000000000fb00000044004d006f00740069006f006e0050006c0061006e006e0069006e00670020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000000000000000fb0000001c004d006f00740069006f006e0050006c0061006e006e0069006e006700000002680000019a0000000000000000fb000000280020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000000000000000fb0000003c005400720061006a006500630074006f007200790020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000004a00fffffffb00000018005300650067006d0065006e0074006100740069006f006e0100000028000001a60000001600fffffffb0000000c00540061007200670065007401000001d4000000c60000001600fffffffb00000012004c0069007600650020005600690065007701000002a0000001620000001600fffffffb0000000a0049006d006100670065010000015a0000014f0000000000000000fb0000000c00430061006d00650072006101000002af000001530000000000000000000000010000016a000003dafc0200000001fc00000028000003da0000000000fffffffaffffffff0100000002fb000000100044006900730070006c0061007900730000000000ffffffff0000016a00fffffffb0000000a0056006900650077007300000005e30000015c0000010f00ffffff000004ff000003da00000001000000020000000100000002fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Segmentation:
+    collapsed: false
+  Target:
+    collapsed: false
+  Trajectory - Trajectory Slider:
+    collapsed: false
+  Views:
+    collapsed: true
+  Width: 1855
+  X: 1985
+  Y: 24
