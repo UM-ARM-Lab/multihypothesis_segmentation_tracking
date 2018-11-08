@@ -28,6 +28,7 @@
 #include "mps_voxels/graph_matrix_utils.h"
 
 #include <mps_msgs/SegmentGraph.h>
+#include <mps_msgs/ClusterRigidMotions.h>
 
 #include <visualization_msgs/MarkerArray.h>
 #include <depth_image_proc/depth_traits.h>
@@ -48,6 +49,10 @@
 std::unique_ptr<Tracker> tracker;
 std::shared_ptr<RGBDSegmenter> segmentationClient;
 std::unique_ptr<image_transport::Publisher> segmentationPub;
+
+double SIFT_MATCH_WEIGHT = 1.0/5.0;
+int NUM_OUTPUT_LABELS = 15;
+int pyrScale = 2;
 
 template <typename T>
 void setIfMissing(ros::NodeHandle& nh, const std::string& param_name, const T& param_val)
@@ -216,6 +221,65 @@ std::set<std::pair<uint16_t, uint16_t>> computeNeighbors(const cv::Mat& labels)
 	return neighbors;
 }
 
+std::map<std::pair<uint16_t, uint16_t>, double> computeUcmDual(const cv::Mat& labels, const cv::Mat& ucm)
+{
+	std::map<std::pair<uint16_t, uint16_t>, double> neighbors;
+	for(int i = 0; i < labels.rows; i++)
+	{
+		for(int j = 0; j < labels.cols; j++)
+		{
+			const uint16_t val = labels.at<uint16_t>(i, j);
+			if (0 == val)
+			{
+				if (0 < i && i < labels.rows-1)
+				{
+					const uint16_t llabel = labels.at<uint16_t>(i-1, j);
+					const uint16_t rlabel = labels.at<uint16_t>(i+1, j);
+					if (llabel != 0 && rlabel != 0 && llabel != rlabel)
+					{
+						std::pair<uint16_t, uint16_t> p(std::min(llabel, rlabel), std::max(llabel, rlabel));
+						double edge_val = ucm.at<double>(i, j);
+						edge_val = edge_val * edge_val;
+
+						auto iter = neighbors.find(p);
+						if (iter == neighbors.end())
+						{
+							neighbors.emplace(p, edge_val);
+						}
+						else
+						{
+							iter->second = std::min(edge_val, iter->second);
+						}
+					}
+				}
+
+				if (0 < j && j < labels.cols-1)
+				{
+					const uint16_t blabel = labels.at<uint16_t>(i, j-1);
+					const uint16_t tlabel = labels.at<uint16_t>(i, j+1);
+					if (blabel != 0 && tlabel != 0 && blabel != tlabel)
+					{
+						std::pair<uint16_t, uint16_t> p(std::min(blabel, tlabel), std::max(blabel, tlabel));
+						double edge_val = ucm.at<double>(i, j);
+						edge_val = edge_val * edge_val;
+
+						auto iter = neighbors.find(p);
+						if (iter == neighbors.end())
+						{
+							neighbors.emplace(p, edge_val);
+						}
+						else
+						{
+							iter->second = std::min(edge_val, iter->second);
+						}
+					}
+				}
+			}
+		}
+	}
+	return neighbors;
+}
+
 
 void addToGraph(VideoSegmentationGraph& G, cv::Mat& ucm, cv::Mat& full_labels, const int k)
 {
@@ -238,36 +302,52 @@ void addToGraph(VideoSegmentationGraph& G, cv::Mat& ucm, cv::Mat& full_labels, c
 		segmentToNode.insert({{k, lbl}, v});
 	}
 
-	std::map<label_type, std::vector<label_type>> preclusters = um.getCutClusters(EDGE_THRESHOLD);
+//	std::map<label_type, std::vector<label_type>> preclusters = um.getCutClusters(EDGE_THRESHOLD);
+//
+//	for (const auto& precluster : preclusters)
+//	{
+//		for (int i = 0; i<static_cast<int>(precluster.second.size()); ++i)
+//		{
+//			for (int j = i+1; j<static_cast<int>(precluster.second.size()); ++j)
+//			{
+//				label_type p = precluster.second[i];
+//				label_type q = precluster.second[j];
+//				double dist = um.distance(p, q, EDGE_THRESHOLD);
+//				if (dist < 0) { continue; }
+//
+//				assert(segmentToNode.find({k, p}) != segmentToNode.end());
+//				assert(segmentToNode.find({k, q}) != segmentToNode.end());
+//
+//				VideoSegmentationGraph::vertex_descriptor s = segmentToNode[{k, p}];
+//				VideoSegmentationGraph::vertex_descriptor t = segmentToNode[{k, q}];
+//				boost::add_edge(s, t, {1.0/(dist+1e-4)}, G);
+//			}
+//		}
+//	}
 
-	for (const auto& precluster : preclusters)
+//	auto neighbor_pairs = computeNeighbors(full_labels);
+//	for (const std::pair<uint16_t, uint16_t> n : neighbor_pairs)
+//	{
+//		label_type p = n.first;
+//		label_type q = n.second;
+//		double dist = um.distance(p, q, 1.0);
+//		if (dist < 0) { throw std::runtime_error("Ultrametric max distance should be <= 1.0"); }
+//
+//		assert(segmentToNode.find({k, p}) != segmentToNode.end());
+//		assert(segmentToNode.find({k, q}) != segmentToNode.end());
+//
+//		VideoSegmentationGraph::vertex_descriptor s = segmentToNode[{k, p}];
+//		VideoSegmentationGraph::vertex_descriptor t = segmentToNode[{k, q}];
+//		boost::add_edge(s, t, {1.0/(dist+1e-4)}, G);
+//	}
+
+	auto neighbor_pairs = computeUcmDual(full_labels, ucm);
+	for (const auto edge : neighbor_pairs)
 	{
-		for (int i = 0; i<static_cast<int>(precluster.second.size()); ++i)
-		{
-			for (int j = i+1; j<static_cast<int>(precluster.second.size()); ++j)
-			{
-				label_type p = precluster.second[i];
-				label_type q = precluster.second[j];
-				double dist = um.distance(p, q, EDGE_THRESHOLD);
-				if (dist < 0) { continue; }
-
-				assert(segmentToNode.find({k, p}) != segmentToNode.end());
-				assert(segmentToNode.find({k, q}) != segmentToNode.end());
-
-				VideoSegmentationGraph::vertex_descriptor s = segmentToNode[{k, p}];
-				VideoSegmentationGraph::vertex_descriptor t = segmentToNode[{k, q}];
-				boost::add_edge(s, t, {1.0/(dist+1e-4)}, G);
-			}
-		}
-	}
-
-	auto neighbor_pairs = computeNeighbors(full_labels);
-	for (const std::pair<uint16_t, uint16_t> n : neighbor_pairs)
-	{
-		label_type p = n.first;
-		label_type q = n.second;
-		double dist = um.distance(p, q, 1.0);
-		if (dist < 0) { throw std::runtime_error("Ultrametric max distance should be <= 1.0"); }
+		label_type p = edge.first.first;
+		label_type q = edge.first.second;
+		double dist = edge.second;
+		if (dist <= 0 || 1.0 < dist) { throw std::runtime_error("Ultrametric max distance should be <= 1.0"); }
 
 		assert(segmentToNode.find({k, p}) != segmentToNode.end());
 		assert(segmentToNode.find({k, q}) != segmentToNode.end());
@@ -285,7 +365,6 @@ void addToGraph(VideoSegmentationGraph& G, cv::Mat& ucm, cv::Mat& full_labels, c
 
 void joinFrameGraphs(VideoSegmentationGraph& G, const cv::Mat& iLabels, const cv::Mat& jLabels, const int i, const int j, const Tracker::Flow2D& flow)
 {
-	const double weight = 1.0/0.3;
 	std::map<std::pair<int, int>, VideoSegmentationGraph::vertex_descriptor> segmentToNode;
 	for (VideoSegmentationGraph::vertex_descriptor vd : make_range(boost::vertices(G)))
 	{
@@ -294,9 +373,9 @@ void joinFrameGraphs(VideoSegmentationGraph& G, const cv::Mat& iLabels, const cv
 	}
 	for (const std::pair<cv::Point2f, cv::Point2f>& flowVec : flow)
 	{
-		cv::Point2i iPt(flowVec.first.x/2, flowVec.first.y/2);
+		cv::Point2i iPt(flowVec.first.x/pyrScale, flowVec.first.y/pyrScale);
 		if (iPt.x >= iLabels.cols || iPt.y >= iLabels.rows) { continue; }
-		cv::Point2i jPt(flowVec.second.x/2, flowVec.second.y/2);
+		cv::Point2i jPt(flowVec.second.x/pyrScale, flowVec.second.y/pyrScale);
 		if (jPt.x >= jLabels.cols || jPt.y >= jLabels.rows) { continue; }
 		int iLabel = iLabels.at<uint16_t>(iPt);
 		int jLabel = jLabels.at<uint16_t>(jPt);
@@ -308,7 +387,49 @@ void joinFrameGraphs(VideoSegmentationGraph& G, const cv::Mat& iLabels, const cv
 
 		auto res = boost::add_edge(segmentToNode.at({i, iLabel}), segmentToNode.at({j, jLabel}), G);
 		EdgeProperties& eProps = G[res.first];
-		eProps.affinity += weight;
+		if (eProps.affinity == 0) { eProps.affinity = 1.0; }
+		eProps.affinity += SIFT_MATCH_WEIGHT;
+	}
+}
+
+void joinMotionCliques(VideoSegmentationGraph& G, const cv::Mat& iLabels, const cv::Mat& jLabels, const int i, const int j, const Tracker::Flow2D& flow)
+{
+	std::map<std::pair<int, int>, VideoSegmentationGraph::vertex_descriptor> segmentToNode;
+	for (VideoSegmentationGraph::vertex_descriptor vd : make_range(boost::vertices(G)))
+	{
+		const NodeProperties& np = G[vd];
+		segmentToNode[{np.k, np.leafID}] = vd;
+	}
+
+	std::set<uint16_t> iSet, jSet;
+
+	for (const std::pair<cv::Point2f, cv::Point2f>& flowVec : flow)
+	{
+		cv::Point2i iPt(flowVec.first.x/pyrScale, flowVec.first.y/pyrScale);
+		if (iPt.x >= iLabels.cols || iPt.y >= iLabels.rows) { continue; }
+		cv::Point2i jPt(flowVec.second.x/pyrScale, flowVec.second.y/pyrScale);
+		if (jPt.x >= jLabels.cols || jPt.y >= jLabels.rows) { continue; }
+		uint16_t iLabel = iLabels.at<uint16_t>(iPt);
+		uint16_t jLabel = jLabels.at<uint16_t>(jPt);
+
+		if (iLabel == 0 || jLabel == 0)
+		{
+			continue;
+		}
+
+		iSet.insert(iLabel);
+		jSet.insert(jLabel);
+	}
+
+	for (const auto iLabel : iSet)
+	{
+		for (const auto jLabel : jSet)
+		{
+			auto res = boost::add_edge(segmentToNode.at({i, iLabel}), segmentToNode.at({j, jLabel}), G);
+			EdgeProperties& eProps = G[res.first];
+			if (eProps.affinity == 0) { eProps.affinity = 1.0; }
+			eProps.affinity += SIFT_MATCH_WEIGHT;
+		}
 	}
 }
 
@@ -412,9 +533,19 @@ int main(int argc, char* argv[])
 	ros::ServiceClient segmentClient = nh.serviceClient<mps_msgs::SegmentGraph>("/segment_graph");
 	if (!segmentClient.waitForExistence(ros::Duration(3)))
 	{
-		ROS_ERROR("Segmentation server not connected.");
+		ROS_ERROR("Graph segmentation server not connected.");
 		return -1;
 	}
+
+	ros::ServiceClient motionClient = nh.serviceClient<mps_msgs::ClusterRigidMotions>("/cluster_flow");
+	if (!motionClient.waitForExistence(ros::Duration(3)))
+	{
+		ROS_ERROR("Flow segmentation server not connected.");
+	}
+
+	pnh.param("num_labels", NUM_OUTPUT_LABELS, NUM_OUTPUT_LABELS);
+	pnh.param("sift_weight", SIFT_MATCH_WEIGHT, SIFT_MATCH_WEIGHT);
+	std::cerr << "Sift weight: " << SIFT_MATCH_WEIGHT << std::endl;
 
 //	image_transport::ImageTransport it(nh);
 //	image_transport::TransportHints hints("compressed", ros::TransportHints(), pnh);
@@ -428,7 +559,8 @@ int main(int argc, char* argv[])
 	cv::namedWindow("labels", CV_WINDOW_NORMAL);
 
 	const int step = 5;
-	tracker = std::make_unique<CudaTracker>(10*step);
+	tracker = std::make_unique<CudaTracker>(3*step);
+
 	// TODO: Make step size variable based on average flow
 
 	std::vector<cv::Mat> ucms;
@@ -443,11 +575,13 @@ int main(int argc, char* argv[])
 		if (tracker->rgb_buffer.size() == tracker->MAX_BUFFER_LEN)
 		{
 			tracker->track(step);
-			for (int i = 0; i < static_cast<int>(tracker->MAX_BUFFER_LEN)-step; i+=step)
+			for (int k = 0; k < static_cast<int>(tracker->MAX_BUFFER_LEN)/step; ++k)
 			{
+				int i = k*step; ///< Index into image buffer
+
 				cv::Rect roi(500, 500,
 				             1000, 500);
-				int pyrScale = 2;
+
 				cv::Mat rgb_cropped(tracker->rgb_buffer[i]->image, roi); cv::pyrDown(rgb_cropped, rgb_cropped);// cv::pyrDown(rgb_cropped, rgb_cropped);
 				cv::Mat depth_cropped(tracker->depth_buffer[i]->image, roi); cv::pyrDown(depth_cropped, depth_cropped);// cv::pyrDown(depth_cropped, depth_cropped);
 				cv_bridge::CvImage cv_rgb_cropped(tracker->rgb_buffer[i]->header, tracker->rgb_buffer[i]->encoding, rgb_cropped);
@@ -504,7 +638,7 @@ int main(int argc, char* argv[])
 				double maxVal;
 				cv::minMaxLoc(ucm->image, nullptr, &maxVal);
 				ucm->image.convertTo(tempContours1, CV_8UC1, 255.0/maxVal);
-				cv::applyColorMap(tempContours1, displayContours, cv::COLORMAP_JET); // COLORMAP_HOT
+				cv::applyColorMap(tempContours1, displayContours, cv::COLORMAP_BONE);//cv::COLORMAP_PARULA);//cv::COLORMAP_JET); // COLORMAP_HOT
 				cv::imshow("contours", displayContours);
 				displays.push_back(displayContours);
 //				displays.push_back(rgb_cropped);
@@ -535,9 +669,66 @@ int main(int argc, char* argv[])
 ////					cv::waitKey();
 //				}
 
-				if (i >= 1)
+				if (k >= 1)
 				{
-					joinFrameGraphs(G, labels[labels.size()-2], labels.back(), i/step-1, i/step, tracker->flows2[i/step]);
+					joinFrameGraphs(G, labels[labels.size()-2], labels.back(), k-1, k, tracker->flows2[k]);
+
+					// Add rigid motion cliques
+					if (motionClient.exists())
+					{
+						mps_msgs::ClusterRigidMotionsRequest req;
+						req.flow_field.reserve(tracker->flows3[k].size());
+						std::vector<size_t> valid_flow_to_all_flow_lookup;
+						for (size_t f = 0; f<tracker->flows3[k].size(); ++f)
+						{
+							const auto& flow = tracker->flows3[k][f];
+							std::cerr << flow.second.norm() << std::endl;
+							if (flow.second.norm()<0.01) { continue; }
+							if (0.1>flow.first.z() || flow.first.z()>2.0) { continue; }
+							mps_msgs::FlowVector flowVector;
+							flowVector.pos.x = flow.first.x();
+							flowVector.pos.y = flow.first.y();
+							flowVector.pos.z = flow.first.z();
+							flowVector.vel.x = flow.second.x();
+							flowVector.vel.y = flow.second.y();
+							flowVector.vel.z = flow.second.z();
+							req.flow_field.push_back(flowVector);
+							valid_flow_to_all_flow_lookup.push_back(f);
+						}
+						std::cerr << tracker->flows3[k].size() << "->" << req.flow_field.size() << std::endl;
+
+						mps_msgs::ClusterRigidMotionsResponse resp;
+
+						bool success = motionClient.call(req, resp);
+						if (success)
+						{
+							assert(resp.labels.size()==req.flow_field.size());
+//						for (const auto l : resp.labels) { std::cerr << l << "\t"; } std::cerr << std::endl;
+
+							std::map<int, std::vector<size_t>> flow_clusters;
+							for (size_t f = 0; f<req.flow_field.size(); ++f)
+							{
+								flow_clusters[resp.labels[f]].push_back(f);
+							}
+
+							for (const auto& cluster : flow_clusters)
+							{
+								if (cluster.second.size()>10)
+								{
+									Tracker::Flow2D flows2;
+									for (size_t iter = 0; iter<cluster.second.size(); ++iter)
+									{
+										// We skipped a bunch of flows, so we need to find our original position in the list
+										size_t f = valid_flow_to_all_flow_lookup[iter];
+										flows2.push_back(tracker->flows2[k][f]);
+									}
+
+//									joinMotionCliques(G, labels[labels.size()-2], labels.back(), k-1, k, flows2);
+								}
+							}
+						}
+
+					}
 				}
 			}
 
@@ -594,12 +785,12 @@ int main(int argc, char* argv[])
 					req.adjacency.col_index.push_back(triplet.col());
 					req.adjacency.value.push_back(triplet.value());
 				}
-				req.num_labels = 75;
-				req.algorithm = "spectral";
+				req.num_labels = NUM_OUTPUT_LABELS;
+				req.algorithm = "dbscan";//"spectral";
 
 				mps_msgs::SegmentGraphResponse resp;
 				segmentClient.call(req, resp);
-				std::cerr << resp << std::endl;
+//				std::cerr << resp << std::endl;
 
 				// Recolor image based on segments
 
@@ -650,13 +841,20 @@ int main(int argc, char* argv[])
 //			}
 
 
-			cv::waitKey();
+			while (ros::ok())
+			{
+				cv::waitKey(10);
+			}
 			tracker->reset();
+			ros::requestShutdown();
 		}
 		cv::waitKey(1);
 		ros::Duration(1.0).sleep();
 		cv::waitKey(1);
 	}
 
+	tracker.reset();
+	segmentationClient.reset();
+	segmentationPub.reset();
 	return 0;
 }

@@ -41,7 +41,7 @@ using Surface_mesh = CGAL::Surface_mesh<Point_3>;
 template <typename PointContainerT, typename PointT>
 std::shared_ptr<shapes::Mesh> convex_hull(const PointContainerT& points)
 {
-	using Scalar = std::remove_reference_t<typename std::remove_const_t<decltype(std::declval<PointT>().x())>>;
+//	using Scalar = std::remove_reference_t<typename std::remove_const_t<decltype(std::declval<PointT>().x())>>;
 
 	if (points.empty())
 	{
@@ -121,16 +121,16 @@ std::shared_ptr<shapes::Mesh> convex_hull(const PointContainerT& points)
 		std::shared_ptr<shapes::Mesh> m = std::make_shared<shapes::Mesh>(poly.size_of_vertices(), poly.size_of_facets());
 		for (auto iter = poly.points_begin(); iter != poly.points_end(); ++iter)
 		{
-			const auto& pt = *iter;
+			const auto& pnt = *iter;
 			// Insert if missing
-			auto lb = vertex_map.lower_bound(pt);
-			if (lb == vertex_map.end() || (vertex_map.key_comp()(pt, lb->first)))
+			auto lb = vertex_map.lower_bound(pnt);
+			if (lb == vertex_map.end() || (vertex_map.key_comp()(pnt, lb->first)))
 			{
 				unsigned idx = vertex_map.size();
-				vertex_map.insert(lb, {pt, idx});
-				m->vertices[3*idx+0] = pt.x();
-				m->vertices[3*idx+1] = pt.y();
-				m->vertices[3*idx+2] = pt.z();
+				vertex_map.insert(lb, {pnt, idx});
+				m->vertices[3*idx+0] = pnt.x();
+				m->vertices[3*idx+1] = pnt.y();
+				m->vertices[3*idx+2] = pnt.z();
 			}
 		}
 
@@ -155,7 +155,7 @@ std::shared_ptr<shapes::Mesh> convex_hull(const PointContainerT& points)
 			if (3 != vertex_count)
 				throw std::runtime_error("Facet contains " + std::to_string(vertex_count) + " vertices.");
 		}
-		assert(idx_count == poly.size_of_facets()*3);
+		assert(idx_count == static_cast<int>(poly.size_of_facets())*3);
 
 		m->computeTriangleNormals();
 		return m;

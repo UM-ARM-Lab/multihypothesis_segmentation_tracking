@@ -1,0 +1,34 @@
+rosservice call /cluster_flow "flow_field:
+- pos:
+    x: 1.0
+    y: 0.0
+    z: 0.0
+  vel:
+    x: 0.0
+    y: 0.00001
+    z: 0.0
+- pos:
+    x: 0.0
+    y: 1.0
+    z: 0.0
+  vel:
+    x: -0.00001
+    y: 0.0
+    z: 0.0
+- pos:
+    x: -1.0
+    y: 0.0
+    z: 0.0
+  vel:
+    x: 0.0
+    y: -0.00001
+    z: 0.0
+- pos:
+    x: 0.0
+    y: -2.0
+    z: 1.0
+  vel:
+    x: 0.00002
+    y: 0.0
+    z: 0.0"
+

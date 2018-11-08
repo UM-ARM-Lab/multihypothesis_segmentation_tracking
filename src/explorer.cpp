@@ -1113,7 +1113,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
 	// Allow some visualization time
-	ros::Duration(3.0+compositeAction->actions.size()).sleep();
+//	ros::Duration(3.0+compositeAction->actions.size()).sleep();
 	if (!ros::ok()) { return; }
 	if (trajectoryClient->isServerConnected())
 	{

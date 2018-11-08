@@ -289,6 +289,7 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 					if (!octree->search(ix, iy, iz))
 					{
 						//This cell is unknown
+						// Snap from (ix,iy,iz) to octree coordinate grid
 						octomap::point3d coord = octree->keyToCoord(octree->coordToKey(ix, iy, iz, d), d);
 
 						octomap::point3d ray = coord-cameraOrigin;

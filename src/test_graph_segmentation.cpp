@@ -152,9 +152,15 @@ int main(int argc, char* argv[])
 		}
 		req.num_labels = 2;
 
-		mps_msgs::SegmentGraphResponse resp;
-		segmentClient.call(req, resp);
-		std::cerr << resp << std::endl;
+		for (const std::string& alg : std::vector<std::string>{"spectral", "dbscan"})
+		{
+			req.algorithm = alg;
+
+			mps_msgs::SegmentGraphResponse resp;
+			segmentClient.call(req, resp);
+			std::cerr << resp << std::endl;
+
+		}
 	}
 
 	return 0;

@@ -514,7 +514,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 	std::iota(push_indices.begin(), push_indices.end(), 0);
 	std::shuffle(push_indices.begin(), push_indices.end(), env->rng);
 
-	std::uniform_int_distribution<int> stepDistr(5, 15);
+	std::uniform_int_distribution<int> stepDistr(15, 25);
 
 	const int INTERPOLATE_STEPS = 25;
 	const int TRANSIT_INTERPOLATE_STEPS = 50;

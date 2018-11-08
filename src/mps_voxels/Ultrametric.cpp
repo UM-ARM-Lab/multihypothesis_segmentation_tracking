@@ -47,6 +47,7 @@ Ultrametric::Ultrametric(cv::Mat& ucm, cv::Mat& labels)
 			// Verify that this leaf has not been given another parent
 			auto res = all_leaf_children.insert(lbl);
 			assert(res.second);
+			EIGEN_UNUSED_VARIABLE(res);
 
 			parent_tree[lbl] = merge_tree.parent_labels[iter];
 		}
@@ -129,7 +130,7 @@ std::map<label_type, std::vector<label_type>> Ultrametric::getCutClusters(const 
 				std::list<label_type> c = getChildren(merge_tree, lbl_pair.first);
 				std::vector<label_type> children; children.reserve(c.size());
 				children.insert(children.end(), c.begin(), c.end());
-				for (const auto& child : children) { assert(label_to_index.at(child) < merge_tree.n_leaves); }
+				for (const auto& child : children) { assert(label_to_index.at(child) < merge_tree.n_leaves); EIGEN_UNUSED_VARIABLE(child); }
 				clusters.insert({lbl_pair.first, children});
 			}
 		}
