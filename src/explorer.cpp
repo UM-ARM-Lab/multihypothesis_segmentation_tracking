@@ -1023,13 +1023,14 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		if (!motion)
 		{
 			ROS_WARN_STREAM("Saw target object, but failed to compute grasp plan.");
+			std::cerr << "Saw target object, but failed to compute grasp plan." << " (" << planningEnvironment->obstructions.size() << " obstructions)" << std::endl;
 		}
 	}
 
 	if (!motion)
 	{
 		#pragma omp parallel for private(planningEnvironment)
-		for (int i = 0; i<30; ++i)
+		for (int i = 0; i<50; ++i)
 		{
 			std::shared_ptr<Motion> motionSlide = planner->sampleSlide(rs);
 			if (motionSlide)

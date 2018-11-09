@@ -140,19 +140,36 @@ PlanningEnvironment::computeCollisionWorld()
 bool
 ObjectSampler::sampleObject(int& id, Pose& pushFrame) const
 {
+	// By default, search through all shadow points
 	octomap::point3d_collection* shadowPoints = &env->occludedPts;
-//	if (!env->obstructions.empty() && ((rand()/RAND_MAX) < 0.8))
-//	{
-//		std::uniform_int_distribution<size_t> distr(0, env->obstructions.size()-1);
-//		std::set<int>::const_iterator it(env->obstructions.begin());
-//
-//		size_t idx = distr(env->rng);
-//
-//		std::advance(it, idx);
-//		id = *it;
-//
-//		shadowPoints = &(env->objectToShadow[id]);
-//	}
+
+	if (!env->obstructions.empty())
+	{
+		std::cerr << "Target is obstructed!" << std::endl;
+		for (const auto i : env->obstructions)
+		{
+			std::cerr << i << "\t";
+		}
+		std::cerr << std::endl;
+	}
+
+	// If the target object grasp is obstructed somehow
+	if (!env->obstructions.empty())// && ((rand()/RAND_MAX) < 0.9))
+	{
+		// Select one obstructing object with uniform probability
+		std::uniform_int_distribution<size_t> distr(0, env->obstructions.size()-1);
+		std::set<int>::const_iterator it(env->obstructions.begin());
+
+		size_t idx = distr(env->rng);
+
+		std::advance(it, idx);
+		id = *it;
+
+		// Set that object's shadow to use for remainder of algorithm
+		shadowPoints = &(env->objectToShadow[id]);
+		std::cerr << shadowPoints->size() << " Shadow points in cell " << id << std::endl;
+		if (shadowPoints->empty()) { throw std::runtime_error("No points shadowed by shape?!"); }
+	}
 
 	const int N = static_cast<int>(shadowPoints->size());
 	std::vector<unsigned int> indices(N);
@@ -192,6 +209,11 @@ ObjectSampler::sampleObject(int& id, Pose& pushFrame) const
 
 			tf::poseEigenToTF(pushFrame, t);
 			env->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->worldFrame, "push_frame"));
+		}
+
+		if (!env->obstructions.empty())
+		{
+			return true;
 		}
 
 		const auto& iter = env->surfaceCoordToObject.find(collision);
@@ -514,7 +536,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 	std::iota(push_indices.begin(), push_indices.end(), 0);
 	std::shuffle(push_indices.begin(), push_indices.end(), env->rng);
 
-	std::uniform_int_distribution<int> stepDistr(15, 25);
+	std::uniform_int_distribution<int> stepDistr(8, 12);
 
 	const int INTERPOLATE_STEPS = 25;
 	const int TRANSIT_INTERPOLATE_STEPS = 50;
@@ -951,39 +973,33 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 						collision_detection::AllowedCollisionMatrix acm = gripperEnvironmentACM(manipulator);
 						planningScene->checkCollision(collision_request, collision_result, collisionState, acm);
 
-						octomap::point3d cameraOrigin((float) env->worldTcamera.translation().x(), (float) env->worldTcamera.translation().y(),
+						octomap::point3d cameraOrigin((float) env->worldTcamera.translation().x(),
+							                          (float) env->worldTcamera.translation().y(),
 						                              (float) env->worldTcamera.translation().z());
-						std::cerr << collision_result.contacts.size() << std::endl;
 						for (auto& cts : collision_result.contacts)
 						{
 							std::cerr << cts.second.size() << std::endl;
+
+							// For each contact point, cast ray from camera to point; see if it hits completed shape
 							for (auto& c : cts.second)
 							{
 								Eigen::Vector3d p = env->worldTrobot * c.pos;
 								std::cerr << p.transpose() << std::endl;
 
 								octomap::point3d collision = octomap::point3d((float)p.x(), (float)p.y(), (float)p.z());
-								collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision));
-								const auto& iter = env->coordToObject.find(collision);
-								if (iter != env->coordToObject.end())
+//								collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision));
+
+								std::cerr << "raycasting" << std::endl;
+								octomath::Vector3 ray = collision-cameraOrigin;
+								for (size_t seg = 0; seg < env->completedSegments.size(); ++seg)
 								{
-									auto res = collisionObjects.insert(iter->second);
-									if (res.second) { std::cerr << iter->second << std::endl; }
-								}
-								else
-								{
-									std::cerr << "raycasting" << std::endl;
-									octomath::Vector3 ray = collision-cameraOrigin;
-									bool hit = env->sceneOctree->castRay(cameraOrigin, ray, collision, true);
+									const auto& segmentOctree = env->completedSegments[seg];
+
+									bool hit = segmentOctree->castRay(cameraOrigin, ray, collision, true);
 									if (hit)
 									{
-										collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision));
-										const auto& i = env->coordToObject.find(collision);
-										if (i != env->coordToObject.end())
-										{
-											auto res = collisionObjects.insert(i->second);
-											if (res.second) { std::cerr << i->second << std::endl; }
-										}
+										collisionObjects.insert(static_cast<int>(seg));
+										std::cerr << "hit " << seg << std::endl;
 									}
 								}
 							}

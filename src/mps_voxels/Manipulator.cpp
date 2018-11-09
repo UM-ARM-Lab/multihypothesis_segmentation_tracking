@@ -36,7 +36,8 @@ double Manipulator::transitionCost(const std::vector<double>& q1, const double t
 	double cost = 0;
 	for (size_t j = 0; j < q1.size(); ++j)
 	{
-		cost += pow(fabs(q1[j] - q2[j]), 2) * JOINT_WEIGHTS[j];
+//		cost += pow(fabs(q1[j] - q2[j]), 2) * JOINT_WEIGHTS[j];
+		cost += fabs(q1[j] - q2[j]) * JOINT_WEIGHTS[j];
 	}
 	return cost/(t2-t1);
 }
