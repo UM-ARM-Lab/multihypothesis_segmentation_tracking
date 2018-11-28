@@ -52,7 +52,6 @@ include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 link_libraries(${OpenCV_LIBS})
 
 include_directories(SYSTEM COB/src/misc)
-include_directories(SYSTEM spectra/include)
 
 # CGAL and its components
 set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE)
@@ -321,6 +320,7 @@ add_custom_target(${PROJECT_NAME}_headers SOURCES ${IncludeFiles})
 ## in contrast to setup.py, you can choose the destination
 install(PROGRAMS
   scripts/spectral_graph_clustering.py
+  scripts/matlab_action_wrapper.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
