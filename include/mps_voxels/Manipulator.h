@@ -56,6 +56,9 @@ public:
 
 protected:
 	mutable std::vector<double> qHome;
+	std::vector<double> qMin;
+	std::vector<double> qMax;
+	std::vector<double> qMid;
 };
 
 #endif // MPS_MANIPULATOR_H

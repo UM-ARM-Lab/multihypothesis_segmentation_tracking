@@ -13,7 +13,21 @@ Manipulator::Manipulator(robot_model::RobotModelPtr _pModel,
                          std::string _palmName)
 	: pModel(std::move(_pModel)), arm(_arm), gripper(_gripper), palmName(std::move(_palmName))
 {
+	assert(arm->getVariableCount() == arm->getActiveJointModels().size());
+	qMin.resize(arm->getVariableCount());
+	qMax.resize(arm->getVariableCount());
+	qMid.resize(arm->getVariableCount());
+	const std::vector<const moveit::core::JointModel::Bounds*>& bounds = arm->getActiveJointModelsBounds();
 
+	for (size_t j = 0; j < bounds.size(); ++j)
+	{
+		assert(bounds[j]->size() == 1);
+		const auto& b = bounds[j]->front();
+
+		qMin[j] = b.min_position_;
+		qMax[j] = b.max_position_;
+		qMid[j] = (qMin[j] + qMax[j])/2.0;
+	}
 }
 
 double Manipulator::stateCost(const std::vector<double>& q1) const
@@ -22,9 +36,13 @@ double Manipulator::stateCost(const std::vector<double>& q1) const
 	double cost = 0;
 	for (size_t j = 0; j < q1.size(); ++j)
 	{
-		cost += (fabs(q1[j]) + fabs(q1[j] - qHome[j])) * JOINT_WEIGHTS[j];
+		double midpointDistanceNormalized = (q1[j]-qMid[j])/(qMax[j]-qMin[j]);
+		cost += midpointDistanceNormalized*midpointDistanceNormalized;
+
+//		double homeDistance = fabs(q1[j] - qHome[j]);
+//		cost += homeDistance*homeDistance;
 	}
-	return cost;
+	return cost/2.0;
 }
 
 double Manipulator::transitionCost(const std::vector<double>& q1, const double t1, const std::vector<double>& q2, const double t2) const
