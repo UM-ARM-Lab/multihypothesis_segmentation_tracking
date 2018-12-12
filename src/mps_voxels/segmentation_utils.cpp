@@ -6,12 +6,10 @@
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
 
-#include <mps_msgs/SegmentRGBD.h>
-
 RGBDSegmenter::RGBDSegmenter(ros::NodeHandle& nh)
+	: segmentClient(nh, "/segment_rgbd", true)
 {
-	segmentClient = nh.serviceClient<mps_msgs::SegmentRGBD>("/segment_rgbd");
-	if (!segmentClient.waitForExistence(ros::Duration(3)))
+	if (!segmentClient.waitForServer(ros::Duration(3)))
 	{
 		ROS_WARN("Segmentation server not connected.");
 	}
@@ -22,21 +20,23 @@ cv_bridge::CvImagePtr
 RGBDSegmenter::segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& depth,
                        const sensor_msgs::CameraInfo& cam, cv_bridge::CvImagePtr* contours) const
 {
-	mps_msgs::SegmentRGBDRequest request;
-	mps_msgs::SegmentRGBDResponse response;
+	mps_msgs::SegmentRGBDGoal request;
+	mps_msgs::SegmentRGBDResultConstPtr response;
 
 	rgb.toImageMsg(request.rgb);
 	depth.toImageMsg(request.depth);
 	request.camera_info = cam;
 
-	if (segmentClient.exists())
+	if (segmentClient.isServerConnected())
 	{
-		if (segmentClient.call(request, response))
+		auto success = segmentClient.sendGoalAndWait(request);
+		if (success.isDone())
 		{
-			if (!response.segmentation.data.empty())
+			response = segmentClient.getResult();
+			if (!response->segmentation.data.empty())
 			{
-				if (contours) {*contours = cv_bridge::toCvCopy(response.contours, "64FC1");}
-				return cv_bridge::toCvCopy(response.segmentation, "mono16");
+				if (contours) {*contours = cv_bridge::toCvCopy(response->contours, "64FC1");}
+				return cv_bridge::toCvCopy(response->segmentation, "mono16");
 			}
 		}
 	}
@@ -45,9 +45,10 @@ RGBDSegmenter::segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& 
 }
 
 
-std::vector<pcl::PointCloud<PointT>::Ptr> segment(
+std::vector<pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	const pcl::PointCloud<PointT>::Ptr& cloud, const cv::Mat& labels,
-	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi, std::map<uint16_t, int>* labelToIndexLookup)
+	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi,
+	std::map<uint16_t, int>* labelToIndexLookup)
 {
 	assert(roi.width == labels.cols);
 	assert(roi.height == labels.rows);

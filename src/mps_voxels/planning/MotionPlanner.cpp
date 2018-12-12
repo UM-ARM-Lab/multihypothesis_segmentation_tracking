@@ -21,7 +21,7 @@
 
 #define _unused(x) ((void)(x))
 
-const std::string PlanningEnvironment::CLUTTER_NAME = "clutter";
+const std::string Scene::CLUTTER_NAME = "clutter";
 
 
 std::priority_queue<MotionPlanner::RankedPose, std::vector<MotionPlanner::RankedPose>, ComparePoses> getGraspPoses(const octomap::OcTree* tree)
@@ -105,7 +105,7 @@ std::priority_queue<MotionPlanner::RankedPose, std::vector<MotionPlanner::Ranked
 }
 
 collision_detection::WorldPtr
-PlanningEnvironment::computeCollisionWorld()
+Scene::computeCollisionWorld()
 {
 	auto world = std::make_shared<collision_detection::World>();
 
@@ -536,7 +536,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 	std::iota(push_indices.begin(), push_indices.end(), 0);
 	std::shuffle(push_indices.begin(), push_indices.end(), env->rng);
 
-	std::uniform_int_distribution<int> stepDistr(8, 12);
+	std::uniform_int_distribution<int> stepDistr(5, 15);
 
 	const int INTERPOLATE_STEPS = 25;
 	const int TRANSIT_INTERPOLATE_STEPS = 50;

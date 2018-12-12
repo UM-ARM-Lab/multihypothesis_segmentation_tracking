@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from scipy import sparse
-from sklearn.cluster import SpectralClustering, DBSCAN
+from sklearn.cluster import SpectralClustering, DBSCAN, AffinityPropagation
 from mps_msgs.srv import *
 import numpy as np
 import rospy
@@ -24,6 +24,11 @@ def handle_segment_graph(req):
         adj = sparse.coo_matrix((distances, (req.adjacency.row_index, req.adjacency.col_index)))
         sc = DBSCAN(metric='precomputed', n_jobs=-1, eps=1e-7)
         labels = sc.fit_predict(adj)
+    elif 'affinity' == req.algorithm:
+        adj = sparse.coo_matrix((req.adjacency.value, (req.adjacency.row_index, req.adjacency.col_index)))
+        sc = AffinityPropagation(affinity='precomputed', verbose=True)
+        labels = sc.fit_predict(adj.todense())
+
     return SegmentGraphResponse(len(np.unique(labels)), labels)
 
 

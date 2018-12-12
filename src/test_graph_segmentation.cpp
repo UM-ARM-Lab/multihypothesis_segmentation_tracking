@@ -38,16 +38,16 @@ make_edge_writer(WeightMap w) {
 	return edge_writer<WeightMap>(w);
 }
 
-std::string node_name(const NodeProperties& np) {return "f" + std::to_string(np.k) + "c" + std::to_string(np.leafID);}
+std::string node_name(const NodeProperties& np) {return "f" + std::to_string(np.t.toSec()) + "c" + std::to_string(np.leafID);}
 
 void print(std::ostream& out, const VideoSegmentationGraph& G)
 {
 	out << "graph G {\n";
 
-	std::map<int, std::vector<VideoSegmentationGraph::vertex_descriptor>> frames;
+	std::map<ros::Time, std::vector<VideoSegmentationGraph::vertex_descriptor>> frames;
 	for (VideoSegmentationGraph::vertex_descriptor vd : make_range(boost::vertices(G)))
 	{
-		frames[G[vd].k].push_back(vd);
+		frames[G[vd].t].push_back(vd);
 	}
 
 	for (const auto& frame : frames)
@@ -90,23 +90,23 @@ int main(int argc, char* argv[])
 
 	VideoSegmentationGraph G;
 
-	std::map<std::pair<int, int>, VideoSegmentationGraph::vertex_descriptor> segmentToNode;
-	std::vector<NodeProperties> nps{NodeProperties({0, 0}), NodeProperties({0, 1}), NodeProperties({0, 2}), NodeProperties({1, 0}), NodeProperties({1, 1})};
+	std::map<std::pair<ros::Time, int>, VideoSegmentationGraph::vertex_descriptor> segmentToNode;
+	std::vector<NodeProperties> nps{NodeProperties({ros::Time(0), 0}), NodeProperties({ros::Time(0), 1}), NodeProperties({ros::Time(0), 2}), NodeProperties({ros::Time(1), 0}), NodeProperties({ros::Time(1), 1})};
 	for (const auto& np : nps)
 	{
 		// Add leaf i to graph
 		// NB: labels start from 1, as 0 is background, so tree[0] = labels[1]
 		VideoSegmentationGraph::vertex_descriptor v = boost::add_vertex(np, G);
-		segmentToNode.insert({{np.k, np.leafID}, v});
+		segmentToNode.insert({{np.t, np.leafID}, v});
 	}
 
-	boost::add_edge(segmentToNode[{0, 0}], segmentToNode[{0, 1}], {1.0/1.0}, G);
-	boost::add_edge(segmentToNode[{0, 0}], segmentToNode[{0, 2}], {1.0/10.0}, G);
-	boost::add_edge(segmentToNode[{0, 1}], segmentToNode[{0, 2}], {1.0/10.0}, G);
-	boost::add_edge(segmentToNode[{1, 0}], segmentToNode[{1, 1}], {1.0/15.0}, G);
-	boost::add_edge(segmentToNode[{0, 2}], segmentToNode[{1, 1}], {1.0/2.0}, G);
-	boost::add_edge(segmentToNode[{0, 0}], segmentToNode[{1, 0}], {1.0/2.0}, G);
-	boost::add_edge(segmentToNode[{0, 1}], segmentToNode[{1, 0}], {1.0/2.0}, G);
+	boost::add_edge(segmentToNode[{ros::Time(0), 0}], segmentToNode[{ros::Time(0), 1}], {1.0/1.0}, G);
+	boost::add_edge(segmentToNode[{ros::Time(0), 0}], segmentToNode[{ros::Time(0), 2}], {1.0/10.0}, G);
+	boost::add_edge(segmentToNode[{ros::Time(0), 1}], segmentToNode[{ros::Time(0), 2}], {1.0/10.0}, G);
+	boost::add_edge(segmentToNode[{ros::Time(1), 0}], segmentToNode[{ros::Time(1), 1}], {1.0/15.0}, G);
+	boost::add_edge(segmentToNode[{ros::Time(0), 2}], segmentToNode[{ros::Time(1), 1}], {1.0/2.0}, G);
+	boost::add_edge(segmentToNode[{ros::Time(0), 0}], segmentToNode[{ros::Time(1), 0}], {1.0/2.0}, G);
+	boost::add_edge(segmentToNode[{ros::Time(0), 1}], segmentToNode[{ros::Time(1), 0}], {1.0/2.0}, G);
 
 	print(std::cerr, G);//, boost::make_label_writer(boost::get(&NodeProperties::leafID, G)), make_edge_writer(boost::get(&EdgeProperties::affinity, G)));
 

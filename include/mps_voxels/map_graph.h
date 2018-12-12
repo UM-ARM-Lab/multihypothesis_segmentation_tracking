@@ -39,15 +39,16 @@
 #define MAP_GRAPH_H
 
 #include <boost/graph/adjacency_list.hpp>
+#include <ros/time.h>
 
 struct NodeProperties
 {
-	int k; ///< Time index in video
+	ros::Time t; ///< Time index in video
 	int leafID; ///< Segment index in frame-wise UCM
 	int component; ///< Assigned Component
 
-	NodeProperties() : k(-1), leafID(-1), component(-1) {}
-	NodeProperties(const std::pair<int, int>& p) : k(p.first), leafID(p.second), component(-1) {}
+	NodeProperties() : t(0.0), leafID(-1), component(-1) {}
+	NodeProperties(const std::pair<ros::Time, int>& p) : t(p.first), leafID(p.second), component(-1) {}
 };
 
 struct EdgeProperties

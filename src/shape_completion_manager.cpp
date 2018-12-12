@@ -105,6 +105,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 			assert(worldPt.cwiseMin(minExtent.head<3>()) == minExtent.head<3>());
 
 			om::OcTreeNode* node = subtree->setNodeValue(worldPt.x(), worldPt.y(), worldPt.z(), std::numeric_limits<float>::infinity(), false);
+			CV_UNUSED(node);
 //			assert(node);
 //			assert(node->getOccupancy() > 0.5);
 //			assert(octree->search(worldPt.x(), worldPt.y(), worldPt.z())->getOccupancy() > 0.5); // May fail if server is behind

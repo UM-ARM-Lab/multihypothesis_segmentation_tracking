@@ -33,16 +33,20 @@ class ActionForwarder(object):
         self.server.start()
 
     def execute_cb(self, goal):
-        print('Sending Goal: ', goal)
+        print('Sending Goal')
         if self.sub.get_num_connections() == 0:
             print('Response topic not active. Aborting.')
-            self.server.set_aborted()
+            self.server.set_aborted(result=None, text='Response topic not active. Aborting.')
             return
 
         self.got_response = False
         self.pub.publish(goal)
-        while not self.got_response:
+        start_time = rospy.Time.now()
+        while not self.got_response and not rospy.is_shutdown():
             time.sleep(0.1)
+            if rospy.Time.now() - start_time > rospy.Duration(20):
+                print('Failure.')
+                self.server.set_aborted(result=None, text='Response timed out.')
         print('Success!')
         self.server.set_succeeded(self.response)
 

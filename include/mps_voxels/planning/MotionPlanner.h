@@ -5,65 +5,17 @@
 #ifndef MPS_MOTIONPLANNER_H
 #define MPS_MOTIONPLANNER_H
 
+#include "mps_voxels/Scene.h"
 #include "mps_voxels/planning/Motion.h"
-#include "mps_voxels/Manipulator.h"
-#include "mps_voxels/vector_less_than.h"
 
-#include <moveit/collision_detection/world.h>
-//#include <moveit/collision_detection/collision_world.h>
-
-#include <octomap/OcTree.h>
-#include <tf/transform_broadcaster.h>
-
-#include <Eigen/StdVector>
 #include <moveit/planning_scene/planning_scene.h>
-
-class PlanningEnvironment
-{
-public:
-	using Pose = Eigen::Affine3d;
-
-	bool visualize = true;
-	std::shared_ptr<tf::TransformBroadcaster> broadcaster;
-
-	std::default_random_engine rng;
-
-	Pose worldTrobot;
-	Pose worldTcamera;
-	std::string worldFrame;
-	std::string cameraFrame;
-	Eigen::Vector3d minExtent, maxExtent;
-
-	std::vector<std::shared_ptr<Manipulator>> manipulators;
-	std::map<std::string, std::shared_ptr<Manipulator>> jointToManipulator;
-
-	std::vector<std::pair<std::shared_ptr<shapes::Shape>, Pose>> staticObstacles;
-
-	octomap::OcTree* sceneOctree;
-	std::map<int, octomap::point3d_collection> objectToShadow;
-	std::map<octomap::point3d, int, vector_less_than<3, octomap::point3d>> coordToObject;
-	std::map<octomap::point3d, int, vector_less_than<3, octomap::point3d>> surfaceCoordToObject;
-	std::vector<std::shared_ptr<octomap::OcTree>> completedSegments;
-	std::vector<std::shared_ptr<shapes::Mesh>> approximateSegments;
-	octomap::point3d_collection occludedPts;
-
-	std::set<int> obstructions;
-
-	static const std::string CLUTTER_NAME;
-	collision_detection::WorldConstPtr collisionWorld;
-	collision_detection::WorldPtr computeCollisionWorld();
-
-
-	enum { NeedsToAlign = (sizeof(Pose)%16)==0 };
-	EIGEN_MAKE_ALIGNED_OPERATOR_NEW_IF(NeedsToAlign)
-};
 
 class ObjectSampler
 {
 public:
-	using Pose = typename PlanningEnvironment::Pose;
+	using Pose = typename Scene::Pose;
 
-	PlanningEnvironment* env;
+	Scene* env;
 
 	bool sampleObject(int& id, Pose& pushFrame) const;
 };
@@ -71,11 +23,11 @@ public:
 class MotionPlanner
 {
 public:
-	using Pose = typename PlanningEnvironment::Pose;
+	using Pose = typename Scene::Pose;
 	using PoseSequence = std::vector<Pose, Eigen::aligned_allocator<Pose>>;
 	using RankedPose = std::pair<double, MotionPlanner::Pose>;
 
-	PlanningEnvironment* env;
+	Scene* env;
 
 	ObjectSampler objectSampler;
 

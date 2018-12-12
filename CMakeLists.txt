@@ -31,6 +31,17 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 ## System dependencies are found with CMake's conventions
+
+# CGAL and its components
+# NB: CGAL likes to clobber global variables, e.g. Boost_LIBRARIES, so make sure you include it first
+set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE CACHE BOOL "Disable CGAL complaints about performance flags.")
+set(CGAL_DONT_OVERRIDE_CMAKE_FLAGS TRUE CACHE BOOL "Force CGAL to maintain CMAKE flags")
+find_package(CGAL 4.12 REQUIRED COMPONENTS
+  Polygon_mesh_processing
+  QP_solver
+)
+include( ${CGAL_USE_FILE} )
+
 # find_package(Boost REQUIRED COMPONENTS system)
 
 find_package(CUDA REQUIRED)
@@ -52,15 +63,6 @@ include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 link_libraries(${OpenCV_LIBS})
 
 include_directories(SYSTEM COB/src/misc)
-
-# CGAL and its components
-set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE)
-find_package(CGAL 4.12 REQUIRED COMPONENTS
-  Polygon_mesh_processing
-  QP_solver
-)
-include( ${CGAL_USE_FILE} )
-set(CGAL_DONT_OVERRIDE_CMAKE_FLAGS TRUE CACHE BOOL "Force CGAL to maintain CMAKE flags")
 
 option(ASAN "Adds flags for AddressSanitizer." OFF)
 if(ASAN)
@@ -235,6 +237,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/TargetDetector.cpp
   src/${PROJECT_NAME}/graph_matrix_utils.cpp
   src/${PROJECT_NAME}/LocalOctreeServer.cpp
+  src/${PROJECT_NAME}/Scene.cpp
   src/${PROJECT_NAME}/planning/State.cpp
   src/${PROJECT_NAME}/planning/Action.cpp
   src/${PROJECT_NAME}/planning/MotionPlanner.cpp

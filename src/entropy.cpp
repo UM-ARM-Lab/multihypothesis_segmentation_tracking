@@ -66,7 +66,7 @@ template <typename Container, typename T>
 ClusterProperties<Container, T> kMeans(const Container& pts, const int k, const int niters = 100)//, double angularWeight = 0.1)
 {
 	assert(pts.size() > 1);
-	ClusterProperties<Container, T> props{pts};
+	ClusterProperties<Container, T> props{pts, {}, {}, {}};
 //	std::vector<T> centers;
 
 	// Seed centers
@@ -143,7 +143,7 @@ ClusterProperties<Container, T> kMeans(const Container& pts, const int k, const 
 				cluster[i] = pts[props.clusters[c][i]];
 			}
 
-			if (props.clusters[c].size() > 0)
+			if (!props.clusters[c].empty())
 			{
 				props.centers[c] = average(cluster);
 			}
@@ -220,7 +220,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 
 	// Recolor cloud by exemplars (cluster centers)
 	pcl::PointCloud<PointT>::Ptr cluster_cloud(new pcl::PointCloud<PointT>());
-	for (int idx = 0; idx < filter_cloud.size(); ++idx)
+	for (size_t idx = 0; idx < filter_cloud.size(); ++idx)
 	{
 		PointT pt = filter_cloud[idx];
 		pt.rgba = clusters.centers[clusters.assignments[idx]].rgba;
@@ -239,7 +239,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 	std::map<om::OcTreeNode*, std::map<int, int>> cellMembers;
 	std::map<om::OcTreeNode*, int> cellCounts;
 
-	for (int idx = 0; idx < filter_cloud.size(); ++idx)
+	for (size_t idx = 0; idx < filter_cloud.size(); ++idx)
 	{
 		const PointT& pt = filter_cloud[idx];
 

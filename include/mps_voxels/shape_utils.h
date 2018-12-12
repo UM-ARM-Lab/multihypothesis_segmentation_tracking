@@ -7,6 +7,7 @@
 
 //#include <geometric_shapes/bodies.h>
 #include <geometric_shapes/shapes.h>
+#include <octomap/octomap_types.h>
 
 template <typename PointContainerT, typename PointT = typename PointContainerT::value_type>
 std::shared_ptr<shapes::Mesh> convex_hull(const PointContainerT& points);
@@ -23,5 +24,7 @@ std::shared_ptr<shapes::Mesh> prism(const PointContainerT& points);
  */
 template <typename PointContainerT, typename PointT = typename PointContainerT::value_type>
 std::shared_ptr<shapes::Mesh> ZAMBB(const PointContainerT& points);
+
+std::shared_ptr<shapes::Mesh> approximateShape(const octomap::OcTree* tree);
 
 #endif // MPS_SHAPE_UTILS_H
