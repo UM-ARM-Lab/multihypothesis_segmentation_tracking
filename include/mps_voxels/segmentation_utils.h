@@ -16,6 +16,22 @@
 #include <actionlib/client/simple_action_client.h>
 #include <ros/ros.h>
 
+
+struct SegmentationInfo
+{
+	ros::Time t;
+	cv::Rect roi; ///< ROI in the parent image
+	cv::Mat rgb;
+	cv::Mat depth;
+	cv::Mat ucm2; // NB: The UCM is 2x the resolution of the original image, so it goes between the pixels of the original
+	cv::Mat labels2; ///< Labels corresponding to the UCM
+	cv::Mat centroids2;
+	cv::Mat stats2;
+	cv::Mat display_contours;
+	cv::Mat labels;
+	cv_bridge::CvImagePtr objectness_segmentation;
+};
+
 class RGBDSegmenter
 {
 public:
@@ -28,9 +44,29 @@ public:
 	mutable
 	SegmentationClient segmentClient;
 
-	cv_bridge::CvImagePtr segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& depth,
-	                              const sensor_msgs::CameraInfo& cam, cv_bridge::CvImagePtr* contours = nullptr) const;
+	virtual
+	std::shared_ptr<SegmentationInfo> segment(
+		const cv_bridge::CvImage& rgb,
+		const cv_bridge::CvImage& depth,
+		const sensor_msgs::CameraInfo& cam) const;
 
+};
+
+class CachingRGBDSegmenter : public RGBDSegmenter
+{
+public:
+	using SegmentationCache = std::map<ros::Time, std::shared_ptr<SegmentationInfo> >;
+
+	mutable
+	SegmentationCache cache;
+
+	explicit
+	CachingRGBDSegmenter(ros::NodeHandle& nh);
+
+	std::shared_ptr<SegmentationInfo> segment(
+		const cv_bridge::CvImage& rgb,
+		const cv_bridge::CvImage& depth,
+		const sensor_msgs::CameraInfo& cam) const override;
 };
 
 std::vector<pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(

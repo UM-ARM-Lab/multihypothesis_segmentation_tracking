@@ -249,3 +249,69 @@ void Tracker::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		stopCapture();
 	}
 }
+
+bool estimateRigidTransform(const Tracker::Flow3D& flow, Eigen::Isometry3d& bTa)
+{
+	const int RANSAC_ITERS = 20;
+	const double MATCH_DISTANCE = 0.01;
+	const int VOTE_THRESH = RANSAC_ITERS/3;
+
+	const size_t N = flow.size();
+	std::vector<unsigned int> votes(N, 0);
+	std::vector<unsigned int> indices(N);
+	std::vector<unsigned int> inliers;
+	inliers.reserve(N);
+
+	// RANSAC
+	for (int iter = 0; iter < RANSAC_ITERS; ++iter)
+	{
+		std::iota(indices.begin(), indices.end(), 0);
+		std::random_shuffle(indices.begin(), indices.end());
+
+		Eigen::Matrix3d A, B;
+		for (int s = 0; s < 3; ++s)
+		{
+			A.col(s) = flow[indices[s]].first;
+			B.col(s) = flow[indices[s]].second;
+		}
+		Eigen::Matrix4d putativeM = Eigen::umeyama(A, B, false);
+		Eigen::Affine3d putativeT;
+		putativeT.linear() = putativeM.topLeftCorner<3, 3>();
+		putativeT.translation() = putativeM.topRightCorner<3, 1>();
+
+		for (size_t i = 0; i < N; ++i)
+		{
+			if (((putativeT*flow[i].first)-flow[i].second).norm() <= MATCH_DISTANCE)
+			{
+				++votes[i];
+			}
+		}
+	}
+
+	for (unsigned int i = 0; i < N; ++i)
+	{
+		if (votes[i] >= VOTE_THRESH)
+		{
+			inliers.push_back(i);
+		}
+	}
+
+	if (inliers.size() < 4)
+	{
+		return false;
+	}
+
+	Eigen::Matrix3Xd A(3, inliers.size()), B(3, inliers.size());
+	for (size_t s = 0; s < inliers.size(); ++s)
+	{
+		A.col(s) = flow[inliers[s]].first;
+		B.col(s) = flow[inliers[s]].second;
+	}
+
+
+	Eigen::Matrix4d putativeM = Eigen::umeyama(A, B, false);
+	bTa.linear() = putativeM.topLeftCorner<3, 3>();
+	bTa.translation() = putativeM.topRightCorner<3, 1>();
+
+	return true;
+}

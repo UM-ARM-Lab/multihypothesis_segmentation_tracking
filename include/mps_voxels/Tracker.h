@@ -172,4 +172,10 @@ public:
 	~CaptureGuard() { if (tracker) { tracker->stopCapture(); } }
 };
 
+/// \brief Estimates the rigid transformation
+/// \param flow Points 'a' match to 'b'
+/// \param bTa Transform that carries a to b
+/// \return successful
+bool estimateRigidTransform(const Tracker::Flow3D& flow, Eigen::Isometry3d& bTa);
+
 #endif // MPS_VOXELS_TRACKER_H

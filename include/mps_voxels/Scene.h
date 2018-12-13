@@ -8,6 +8,7 @@
 #include "mps_voxels/PointT.h"
 #include "mps_voxels/Manipulator.h"
 #include "mps_voxels/MotionModel.h"
+#include "segmentation_utils.h"
 #include "mps_voxels/vector_less_than.h"
 
 #include <moveit/collision_detection/world.h>
@@ -46,24 +47,25 @@ public:
 
 	std::default_random_engine rng;
 
+	cv_bridge::CvImagePtr cv_rgb_ptr;
+	cv_bridge::CvImagePtr cv_depth_ptr;
+	image_geometry::PinholeCameraModel cameraModel;
+
 	Pose worldTrobot;
 	Pose worldTcamera;
 	std::string worldFrame;
 	std::string cameraFrame;
 	Eigen::Vector4f minExtent, maxExtent;
-	image_geometry::PinholeCameraModel cameraModel;
-
-	cv_bridge::CvImagePtr cv_rgb_ptr;
-	cv_bridge::CvImagePtr cv_depth_ptr;
-	cv_bridge::CvImagePtr cv_seg_ptr;
 
 	pcl::PointCloud<PointT>::Ptr cloud;
 	pcl::PointCloud<PointT>::Ptr cropped_cloud;
 	pcl::PointCloud<PointT>::Ptr pile_cloud;
 
 	cv::Rect roi;
-	cv::Mat rgb_cropped;
-	cv::Mat depth_cropped;
+	cv_bridge::CvImage cv_rgb_cropped;
+	cv_bridge::CvImage cv_depth_cropped;
+	sensor_msgs::CameraInfo cam_msg_cropped;
+	std::shared_ptr<SegmentationInfo> segInfo;
 	std::vector<pcl::PointCloud<PointT>::Ptr> segments;
 	std::map<uint16_t, int> labelToIndexLookup;
 
@@ -86,15 +88,21 @@ public:
 	std::shared_ptr<VoxelCompleter> completionClient;
 	std::shared_ptr<RGBDSegmenter> segmentationClient;
 
+	bool loadManipulators(robot_model::RobotModelPtr& pModel);
+
+	bool convertImages(const sensor_msgs::ImageConstPtr& rgb_msg,
+	                   const sensor_msgs::ImageConstPtr& depth_msg,
+	                   const sensor_msgs::CameraInfo& cam_msg);
+
+	bool loadAndFilterScene();
+
+	bool performSegmentation();
+
+	bool completeShapes();
+
 
 	enum { NeedsToAlign = (sizeof(Pose)%16)==0 };
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW_IF(NeedsToAlign)
-
-	bool loadManipulators(robot_model::RobotModelPtr& pModel);
-
-	bool loadAndFilterScene(const sensor_msgs::ImageConstPtr& rgb_msg,
-	                        const sensor_msgs::ImageConstPtr& depth_msg,
-	                        const sensor_msgs::CameraInfoConstPtr& cam_msg);
 };
 
 #endif // MPS_SCENE_H

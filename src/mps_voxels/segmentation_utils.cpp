@@ -16,9 +16,9 @@ RGBDSegmenter::RGBDSegmenter(ros::NodeHandle& nh)
 
 }
 
-cv_bridge::CvImagePtr
+std::shared_ptr<SegmentationInfo>
 RGBDSegmenter::segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& depth,
-                       const sensor_msgs::CameraInfo& cam, cv_bridge::CvImagePtr* contours) const
+                       const sensor_msgs::CameraInfo& cam) const
 {
 	mps_msgs::SegmentRGBDGoal request;
 	mps_msgs::SegmentRGBDResultConstPtr response;
@@ -27,22 +27,74 @@ RGBDSegmenter::segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& 
 	depth.toImageMsg(request.depth);
 	request.camera_info = cam;
 
-	if (segmentClient.isServerConnected())
+	if (!segmentClient.isServerConnected())
 	{
-		auto success = segmentClient.sendGoalAndWait(request);
-		if (success.isDone())
+		return std::shared_ptr<SegmentationInfo>();
+	}
+
+	auto success = segmentClient.sendGoalAndWait(request);
+	if (!success.isDone())
+	{
+		return std::shared_ptr<SegmentationInfo>();
+	}
+
+	response = segmentClient.getResult();
+	if (response->segmentation.data.empty())
+	{
+		return std::shared_ptr<SegmentationInfo>();
+	}
+
+	std::shared_ptr<SegmentationInfo> si = std::make_shared<SegmentationInfo>();
+	si->t = cam.header.stamp;
+	si->rgb = rgb.image;
+	si->depth = depth.image;
+	si->roi.width = cam.roi.width;
+	si->roi.height = cam.roi.height;
+	si->roi.x = cam.roi.x_offset;
+	si->roi.y = cam.roi.y_offset;
+
+	si->objectness_segmentation = cv_bridge::toCvCopy(response->segmentation, "mono16");
+	// NB: ucm2 comes back at twice the resolution of the original image
+	si->ucm2 = cv_bridge::toCvCopy(response->contours, "64FC1")->image;
+
+	cv::connectedComponentsWithStats(si->ucm2 == 0, si->labels2, si->stats2, si->centroids2, 8, CV_16U);
+	si->labels = cv::Mat(si->rgb.size(), CV_16U);
+	for (int u = 1; u < si->labels2.cols; u+=2)
+	{
+		for (int v = 1; v < si->labels2.rows; v+=2)
 		{
-			response = segmentClient.getResult();
-			if (!response->segmentation.data.empty())
-			{
-				if (contours) {*contours = cv_bridge::toCvCopy(response->contours, "64FC1");}
-				return cv_bridge::toCvCopy(response->segmentation, "mono16");
-			}
+			si->labels.at<uint16_t>(v/2, u/2) = si->labels2.at<uint16_t>(v, u);
 		}
 	}
 
-	return cv_bridge::CvImagePtr(nullptr);
+	cv::Mat tempContours1;
+	double maxVal;
+	cv::minMaxLoc(si->ucm2, nullptr, &maxVal);
+	si->ucm2.convertTo(tempContours1, CV_8UC1, 255.0/maxVal);
+	cv::applyColorMap(tempContours1, si->display_contours, cv::COLORMAP_BONE);//cv::COLORMAP_PARULA);//cv::COLORMAP_JET); // COLORMAP_HOT
+
+	return si;
 }
+
+std::shared_ptr<SegmentationInfo>
+CachingRGBDSegmenter::segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& depth,
+                              const sensor_msgs::CameraInfo& cam) const
+{
+	const ros::Time& t = cam.header.stamp;
+	auto si_iter = cache.find(t);
+	if (si_iter != cache.end())
+	{
+		return si_iter->second;
+	}
+
+	std::shared_ptr<SegmentationInfo> si = RGBDSegmenter::segment(rgb, depth, cam);
+
+	cache.insert({t, si});
+
+	return si;
+}
+
+CachingRGBDSegmenter::CachingRGBDSegmenter(ros::NodeHandle& nh) : RGBDSegmenter(nh) {}
 
 
 std::vector<pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(

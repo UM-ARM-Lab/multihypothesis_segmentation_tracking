@@ -362,7 +362,13 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	planningEnvironment->minExtent = minExtent;//.head<3>().cast<double>();
 	planningEnvironment->maxExtent = maxExtent;//.head<3>().cast<double>();
 
-	bool getScene = planningEnvironment->loadAndFilterScene(rgb_msg, depth_msg, cam_msg);
+	bool convertImages = planningEnvironment->convertImages(rgb_msg, depth_msg, *cam_msg);
+	if (!convertImages)
+	{
+		return;
+	}
+
+	bool getScene = planningEnvironment->loadAndFilterScene();
 	if (!getScene)
 	{
 		return;
@@ -409,16 +415,11 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
+	bool getSegmentation = planningEnvironment->performSegmentation();
+	if (!getSegmentation)
 	{
-		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(octree, globalFrame);
-		for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
-		{
-			m.ns = "map";
-		}
-		octreePub.publish(occupiedNodesVis);
+		return;
 	}
-	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-
 
 	int goalSegmentID = -1;
 	{
@@ -427,22 +428,22 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		/////////////////////////////////////////////////////////////////
 		// Search for target object
 		/////////////////////////////////////////////////////////////////
-		cv::Mat targetMask = targetDetector->getMask(planningEnvironment->rgb_cropped);
+		cv::Mat targetMask = targetDetector->getMask(planningEnvironment->cv_rgb_cropped.image);
 		imshow("Target Mask", targetMask);
 		waitKey(10);
 
-		imshow("rgb", planningEnvironment->rgb_cropped);
+		imshow("rgb", planningEnvironment->cv_rgb_cropped.image);
 		waitKey(10);
 		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-		if (!planningEnvironment->cv_seg_ptr)
+		if (!planningEnvironment->segInfo)
 		{
 			ROS_ERROR_STREAM("Segmentation failed.");
 			return;
 		}
 		double alpha = 0.75;
-		cv::Mat labelColorsMap = colorByLabel(planningEnvironment->cv_seg_ptr->image);
-		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*planningEnvironment->rgb_cropped;
+		cv::Mat labelColorsMap = colorByLabel(planningEnvironment->segInfo->objectness_segmentation->image);
+		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*planningEnvironment->cv_rgb_cropped.image;
 		imshow("segmentation", labelColorsMap);
 		waitKey(10);
 
@@ -453,7 +454,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 
 		int matchID = -1;
-		matchID = targetDetector->matchGoalSegment(targetMask, planningEnvironment->cv_seg_ptr->image);
+		matchID = targetDetector->matchGoalSegment(targetMask, planningEnvironment->segInfo->objectness_segmentation->image);
 		if (matchID >= 0)
 		{
 			goalSegmentID = planningEnvironment->labelToIndexLookup.at((unsigned)matchID);
@@ -468,6 +469,22 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 	}
 
+	bool getCompletion = planningEnvironment->completeShapes();
+	if (!getCompletion)
+	{
+		return;
+	}
+
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+	{
+		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(octree, globalFrame);
+		for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
+		{
+			m.ns = "map";
+		}
+		octreePub.publish(occupiedNodesVis);
+	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	for (const auto& subtree : planningEnvironment->completedSegments)
@@ -759,15 +776,6 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	waitKey(10);
 
-}
-
-template <typename T>
-void setIfMissing(ros::NodeHandle& nh, const std::string& param_name, const T& param_val)
-{
-	if (!nh.hasParam(param_name))
-	{
-		nh.setParam(param_name, param_val);
-	}
 }
 
 

@@ -79,44 +79,10 @@ bool Scene::loadManipulators(robot_model::RobotModelPtr& pModel)
 	return true;
 }
 
-bool Scene::loadAndFilterScene(const sensor_msgs::ImageConstPtr& rgb_msg,
-                               const sensor_msgs::ImageConstPtr& depth_msg,
-                               const sensor_msgs::CameraInfoConstPtr& cam_msg)
+bool Scene::convertImages(const sensor_msgs::ImageConstPtr& rgb_msg,
+                          const sensor_msgs::ImageConstPtr& depth_msg,
+                          const sensor_msgs::CameraInfo& cam_msg)
 {
-	if (!ros::ok()) { return false; }
-	if (!listener->waitForTransform(mapServer->getWorldFrame(), cam_msg->header.frame_id, ros::Time(0), ros::Duration(5.0)))
-	{
-		ROS_WARN_STREAM("Failed to look up transform between '" << mapServer->getWorldFrame() << "' and '" << cam_msg->header.frame_id << "'.");
-		return false;
-	}
-
-	setBBox(minExtent, maxExtent, mapServer->getOctree());
-
-	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-
-	mapServer->getOctree()->clear();
-
-	cameraModel.fromCameraInfo(cam_msg);
-
-	// Get Octree
-	octomap::OcTree* octree = mapServer->getOctree();
-	worldFrame = mapServer->getWorldFrame();
-	cameraFrame = cam_msg->header.frame_id;
-	sceneOctree = octree;
-
-	if (!octree)
-	{
-		ROS_ERROR("Octree generation failed.");
-		return false;
-	}
-
-	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-	tf::StampedTransform cameraFrameInTableCoordinates;
-	listener->lookupTransform(cameraModel.tfFrame(), worldFrame, ros::Time(0), cameraFrameInTableCoordinates);
-	Eigen::Affine3d cameraTtable;
-	tf::transformTFToEigen(cameraFrameInTableCoordinates, cameraTtable);
-	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
-
 	try
 	{
 		cv_rgb_ptr = cv_bridge::toCvCopy(rgb_msg, sensor_msgs::image_encodings::BGR8);
@@ -136,6 +102,43 @@ bool Scene::loadAndFilterScene(const sensor_msgs::ImageConstPtr& rgb_msg,
 		ROS_ERROR("cv_bridge exception: %s", e.what());
 		return false;
 	}
+
+	cameraModel.fromCameraInfo(cam_msg);
+
+	return true;
+}
+
+bool Scene::loadAndFilterScene()
+{
+	if (!ros::ok()) { return false; }
+	if (!listener->waitForTransform(mapServer->getWorldFrame(), cameraModel.tfFrame(), ros::Time(0), ros::Duration(5.0)))
+	{
+		ROS_WARN_STREAM("Failed to look up transform between '" << mapServer->getWorldFrame() << "' and '" << cameraModel.tfFrame() << "'.");
+		return false;
+	}
+
+	setBBox(minExtent, maxExtent, mapServer->getOctree());
+
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+	mapServer->getOctree()->clear();
+
+	// Get Octree
+	octomap::OcTree* octree = mapServer->getOctree();
+	worldFrame = mapServer->getWorldFrame();
+	cameraFrame = cameraModel.tfFrame();
+	sceneOctree = octree;
+
+	if (!octree)
+	{
+		ROS_ERROR("Octree generation failed.");
+		return false;
+	}
+
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+	tf::StampedTransform cameraFrameInTableCoordinates;
+	listener->lookupTransform(cameraFrame, worldFrame, ros::Time(0), cameraFrameInTableCoordinates);
+	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
 
 	cloud = imagesToCloud(cv_rgb_ptr->image, cv_depth_ptr->image, cameraModel);
 
@@ -329,24 +332,37 @@ bool Scene::loadAndFilterScene(const sensor_msgs::ImageConstPtr& rgb_msg,
 		roi = cv::boundingRect(pile_points);
 		const int buffer = 25;
 		if (buffer < roi.x) { roi.x -= buffer; roi.width += buffer; }
-		if (roi.x+roi.width < static_cast<int>(cam_msg->width)-buffer) { roi.width += buffer; }
+		if (roi.x+roi.width < static_cast<int>(cameraModel.cameraInfo().width)-buffer) { roi.width += buffer; }
 		if (buffer < roi.y) { roi.y -= buffer; roi.height += buffer; }
-		if (roi.y+roi.height < static_cast<int>(cam_msg->height)-buffer) { roi.height += buffer; }
-		rgb_cropped = cv::Mat(cv_rgb_ptr->image, roi);
-		depth_cropped = cv::Mat(cv_depth_ptr->image, roi);
-		cv_bridge::CvImage cv_rgb_cropped(cv_rgb_ptr->header, cv_rgb_ptr->encoding, rgb_cropped);
-		cv_bridge::CvImage cv_depth_cropped(cv_depth_ptr->header, cv_depth_ptr->encoding, depth_cropped);
-		sensor_msgs::CameraInfo cam_msg_cropped = *cam_msg;
-		cam_msg_cropped.width = roi.width;
-		cam_msg_cropped.height = roi.height;
-		cam_msg_cropped.K[2] -= roi.x;
-		cam_msg_cropped.K[5] -= roi.y;
-		for (auto& d : cam_msg_cropped.D) { d = 0.0; }
-		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+		if (roi.y+roi.height < static_cast<int>(cameraModel.cameraInfo().height)-buffer) { roi.height += buffer; }
 
-		cv_seg_ptr = segmentationClient->segment(cv_rgb_cropped, cv_depth_cropped, cam_msg_cropped);
-		segments = segmentCloudsFromImage(pile_cloud, cv_seg_ptr->image, cameraModel, roi, &labelToIndexLookup);
+		cv::Mat rgb_cropped(cv_rgb_ptr->image, roi);
+		cv::Mat depth_cropped(cv_depth_ptr->image, roi);
+		cv_rgb_cropped = cv_bridge::CvImage(cv_rgb_ptr->header, cv_rgb_ptr->encoding, rgb_cropped);
+		cv_depth_cropped = cv_bridge::CvImage(cv_depth_ptr->header, cv_depth_ptr->encoding, depth_cropped);
+		cam_msg_cropped = cameraModel.cameraInfo();
+		cam_msg_cropped.roi.width = roi.width;
+		cam_msg_cropped.roi.height = roi.height;
+		cam_msg_cropped.roi.x_offset = roi.x;
+		cam_msg_cropped.roi.y_offset = roi.y;
+		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	}
+
+	return true;
+}
+
+
+bool Scene::performSegmentation()
+{
+	segInfo = segmentationClient->segment(cv_rgb_cropped, cv_depth_cropped, cam_msg_cropped);
+
+	if (!segInfo)
+	{
+		ROS_WARN_STREAM("Segmentation Failed!");
+		return false;
+	}
+
+	segments = segmentCloudsFromImage(pile_cloud, segInfo->objectness_segmentation->image, cameraModel, roi, &labelToIndexLookup);
 
 	if (segments.empty())
 	{
@@ -354,6 +370,11 @@ bool Scene::loadAndFilterScene(const sensor_msgs::ImageConstPtr& rgb_msg,
 		return false;
 	}
 
+	return true;
+}
+
+bool Scene::completeShapes()
+{
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	approximateSegments.clear();
 	completedSegments.clear();
@@ -370,7 +391,7 @@ bool Scene::loadAndFilterScene(const sensor_msgs::ImageConstPtr& rgb_msg,
 		min -= inflation * Eigen::Vector3f::Ones();
 		max += inflation * Eigen::Vector3f::Ones();
 
-		std::shared_ptr<octomap::OcTree> subtree(octree->create());
+		std::shared_ptr<octomap::OcTree> subtree(sceneOctree->create());
 		subtree->setProbMiss(0.05);
 		subtree->setProbHit(0.95);
 		setBBox(minExtent, maxExtent, subtree.get());
@@ -390,7 +411,7 @@ bool Scene::loadAndFilterScene(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 		if (completionClient->completionClient.exists())
 		{
-			completionClient->completeShape(min, max, worldTcamera.cast<float>(), octree, subtree.get(), false);
+			completionClient->completeShape(min, max, worldTcamera.cast<float>(), sceneOctree, subtree.get(), false);
 		}
 		setBBox(Eigen::Vector3f(-2,-2,-2), Eigen::Vector3f(2,2,2), subtree.get());
 		completedSegments.push_back(subtree);
@@ -428,7 +449,7 @@ bool Scene::loadAndFilterScene(const sensor_msgs::ImageConstPtr& rgb_msg,
 		minExtent.head<3>() = min; maxExtent.head<3>() = max;
 	}
 
-	std::tie(occludedPts, occlusionTree) = getOcclusionsInFOV(octree, cameraModel, cameraTtable, minExtent.head<3>(), maxExtent.head<3>());
+	std::tie(occludedPts, occlusionTree) = getOcclusionsInFOV(sceneOctree, cameraModel, worldTcamera.inverse(Eigen::Isometry), minExtent.head<3>(), maxExtent.head<3>());
 //	planningEnvironment->occluded_pts = occluded_pts;
 
 	if (occludedPts.empty())
@@ -497,7 +518,7 @@ bool Scene::loadAndFilterScene(const sensor_msgs::ImageConstPtr& rgb_msg,
 			if (assignments[i] >= 0)
 			{
 				occlusionTree->deleteNode(occludedPts[i]);
-				octree->deleteNode(occludedPts[i]);
+				sceneOctree->deleteNode(occludedPts[i]);
 			}
 		}
 		occlusionTree->updateInnerOccupancy();

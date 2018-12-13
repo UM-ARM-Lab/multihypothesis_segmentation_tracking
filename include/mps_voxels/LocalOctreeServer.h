@@ -10,6 +10,16 @@
 #include <octomap/OcTree.h>
 #include <ros/node_handle.h>
 
+
+template <typename T>
+void setIfMissing(ros::NodeHandle& nh, const std::string& param_name, const T& param_val)
+{
+	if (!nh.hasParam(param_name))
+	{
+		nh.setParam(param_name, param_val);
+	}
+}
+
 template <typename Point>
 void setBBox(const Point& min, const Point& max, octomap::OcTree* ot)
 {
