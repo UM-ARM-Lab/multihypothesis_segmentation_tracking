@@ -6,7 +6,7 @@
 #define PROJECT_GRAPH_MATRIX_UTILS_HPP
 
 #include "mps_voxels/graph_matrix_utils.h"
-#include "mps_voxels/map_graph.h"
+#include "mps_voxels/video_graph.h"
 
 template <typename Graph>
 Eigen::MatrixXd getLaplacian(const Graph& graph)

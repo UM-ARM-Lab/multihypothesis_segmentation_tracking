@@ -14,14 +14,15 @@
 #include <opencv2/highgui.hpp>
 
 CudaTracker::CudaTracker(const size_t _buffer,
+                         std::shared_ptr<tf::TransformListener> _listener,
                          SubscriptionOptions _options,
                          TrackingOptions _track_options)
-                         : Tracker(_buffer, std::move(_options), std::move(_track_options))
+                         : Tracker(_buffer, std::move(_listener), std::move(_options), std::move(_track_options))
 {
 
 }
 
-void CudaTracker::track(const size_t step)
+void CudaTracker::track(const std::vector<ros::Time>& steps)
 {
 	if (rgb_buffer.empty() || depth_buffer.empty())
 	{
@@ -38,12 +39,15 @@ void CudaTracker::track(const size_t step)
 	cv::Mat display;
 	cv::Mat gray1, gray2, tempGray;
 
-	double fps = MAX_BUFFER_LEN/(rgb_buffer.back()->header.stamp - rgb_buffer.front()->header.stamp).toSec();
-	cv::VideoWriter video("source.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps, rgb_buffer.front()->image.size(), true);
-	cv::VideoWriter tracking("tracking.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps, rgb_buffer.front()->image.size(), true);
+	const ros::Time& tFirst = steps.front();
+	const ros::Time& tLast = steps.back();
 
-	const unsigned int w = rgb_buffer.front()->image.cols;
-	const unsigned int h = rgb_buffer.front()->image.rows;
+	double fps = steps.size()/(tLast - tFirst).toSec();
+	cv::VideoWriter video("source.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, rgb_buffer[tFirst]->image.size(), true);
+	cv::VideoWriter tracking("tracking.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, rgb_buffer[tFirst]->image.size(), true);
+
+	const unsigned int w = rgb_buffer[tFirst]->image.cols;
+	const unsigned int h = rgb_buffer[tFirst]->image.rows;
 
 	const float initBlur = 1.0f;
 	const float thresh = 2.5f;
@@ -61,19 +65,22 @@ void CudaTracker::track(const size_t step)
 	cudaSift::Image img1, img2;
 
 	// Convert to 32-bit grayscale and compute SIFT
-	cv::cvtColor(rgb_buffer.front()->image, tempGray, cv::COLOR_BGR2GRAY);
+	cv::cvtColor(rgb_buffer.begin()->second->image, tempGray, cv::COLOR_BGR2GRAY);
 	tempGray.convertTo(gray1, CV_32FC1);
 	img1.Allocate(w, h, cudaSift::iAlignUp(w, 128), false, nullptr, (float*)gray1.data);
 	img1.stream = 0;
 	img1.Download();
 	cudaSift::ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false);
 
-	for (int i = 1; i < static_cast<int>(rgb_buffer.size()) && ros::ok(); i += step)
+	for (int i = 1; i < static_cast<int>(steps.size()) && ros::ok(); ++i)
 	{
-		rgb_buffer[i-1]->image.copyTo(display);
+		const ros::Time& tPrev = steps[i-1];
+		const ros::Time& tCurr = steps[i];
+
+		rgb_buffer[tPrev]->image.copyTo(display);
 
 		// Convert to 32-bit grayscale and compute SIFT
-		cv::cvtColor(rgb_buffer[i]->image, tempGray, cv::COLOR_BGR2GRAY);
+		cv::cvtColor(rgb_buffer[tCurr]->image, tempGray, cv::COLOR_BGR2GRAY);
 		tempGray.convertTo(gray2, CV_32FC1);
 		img2.Allocate(w, h, cudaSift::iAlignUp(w, 128), false, nullptr, (float*)gray2.data);
 		img2.stream = 0;
@@ -105,8 +112,8 @@ void CudaTracker::track(const size_t step)
 				}
 
 				// Get depths and validity
-				uint16_t dVal1 = depth_buffer[i-1]->image.at<uint16_t>(pt1);
-				uint16_t dVal2 = depth_buffer[i]->image.at<uint16_t>(pt2);
+				uint16_t dVal1 = depth_buffer[tPrev]->image.at<uint16_t>(pt1);
+				uint16_t dVal2 = depth_buffer[tCurr]->image.at<uint16_t>(pt2);
 				if (!(DepthTraits::valid(dVal1) && DepthTraits::valid(dVal2))) { continue; }
 
 				// Get 3D motion vector
@@ -132,10 +139,10 @@ void CudaTracker::track(const size_t step)
 		ma.markers.push_back(visualizeFlow(flow3));
 		vizPub.publish(ma);
 
-		flows2.push_back(flow2);
-		flows3.push_back(flow3);
+		flows2[{tPrev, tCurr}] = flow2;
+		flows3[{tPrev, tCurr}] = flow3;
 
-		video.write(rgb_buffer[i-1]->image);
+		video.write(rgb_buffer[tPrev]->image);
 		tracking.write(display);
 //		cv::imshow("prev", display);
 //		cv::waitKey(1);
@@ -150,7 +157,7 @@ void CudaTracker::track(const size_t step)
 	cudaSift::FreeSiftData(siftData1);
 	cudaSift::FreeSiftData(siftData2);
 
-	video.write(rgb_buffer.back()->image);
+	video.write(rgb_buffer[tLast]->image);
 	video.release();
 	tracking.release();
 }

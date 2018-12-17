@@ -25,16 +25,17 @@ void drawKeypoint(cv::Mat& display, const cv::KeyPoint& kp, const cv::Scalar& co
 	}
 }
 
-Tracker::Tracker(const size_t _buffer, SubscriptionOptions _options, TrackingOptions _track_options)
+Tracker::Tracker(const size_t _buffer, std::shared_ptr<tf::TransformListener> _listener, SubscriptionOptions _options, TrackingOptions _track_options)
 	: MAX_BUFFER_LEN(_buffer), options(std::move(_options)), track_options(std::move(_track_options)),
+	  listener(std::move(_listener)),
 	  callback_queue(),
 	  spinner(1, &callback_queue)
 {
 	options.nh.setCallbackQueue(&callback_queue);
 	options.pnh.setCallbackQueue(&callback_queue);
 
-	rgb_buffer.reserve(MAX_BUFFER_LEN);
-	depth_buffer.reserve(MAX_BUFFER_LEN);
+//	rgb_buffer.reserve(MAX_BUFFER_LEN);
+//	depth_buffer.reserve(MAX_BUFFER_LEN);
 
 //	cv::namedWindow("Tracking", cv::WINDOW_GUI_NORMAL);
 
@@ -82,9 +83,9 @@ cv::Mat& Tracker::getMask()
 	//// Set up Mask
 	////////////////////////////////////////
 
-	if (!listener->waitForTransform(rgb_buffer.back()->header.frame_id, "table_surface", ros::Time(0), ros::Duration(5.0)))
+	if (!listener->waitForTransform(cameraModel.tfFrame(), "table_surface", ros::Time(0), ros::Duration(5.0)))
 	{
-		ROS_WARN_STREAM("Tracking failed: Failed to look up transform between '" << rgb_buffer.back()->header.frame_id << "' and '" << "table_surface" << "'.");
+		ROS_WARN_STREAM("Tracking failed: Failed to look up transform between '" << cameraModel.tfFrame() << "' and '" << "table_surface" << "'.");
 		mask = cv::Mat::ones(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_8UC1);
 	}
 	else
@@ -98,7 +99,7 @@ cv::Mat& Tracker::getMask()
 	return mask;
 }
 
-void Tracker::track(const size_t step)
+void Tracker::track(const std::vector<ros::Time>& steps)
 {
 	if (rgb_buffer.empty() || depth_buffer.empty())
 	{
@@ -119,20 +120,26 @@ void Tracker::track(const size_t step)
 	std::vector<cv::KeyPoint> kpts1, kpts2;
 	cv::UMat gray1, gray2, desc1, desc2;
 
-	double fps = MAX_BUFFER_LEN/(rgb_buffer.back()->header.stamp - rgb_buffer.front()->header.stamp).toSec();
-	cv::VideoWriter video("source.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, rgb_buffer.front()->image.size(), true);
-	cv::VideoWriter tracking("tracking.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, rgb_buffer.front()->image.size(), true);
+	const ros::Time& tFirst = steps.front();
+	const ros::Time& tLast = steps.back();
+
+	double fps = steps.size()/(tLast - tFirst).toSec();
+	cv::VideoWriter video("source.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, rgb_buffer[tFirst]->image.size(), true);
+	cv::VideoWriter tracking("tracking.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, rgb_buffer[tFirst]->image.size(), true);
 
 //	auto detector = cv::AKAZE::create();
 //	auto detector = cv::KAZE::create();
 	auto detector = cv::xfeatures2d::SIFT::create();
 
-	cv::cvtColor(rgb_buffer.front()->image, gray1, cv::COLOR_BGR2GRAY);
+	cv::cvtColor(rgb_buffer[tFirst]->image, gray1, cv::COLOR_BGR2GRAY);
 	detector->detectAndCompute(gray1, mask, kpts1, desc1);
-	for (int i = 1; i < static_cast<int>(rgb_buffer.size()) && ros::ok(); i+=step)
+	for (int i = 1; i < static_cast<int>(steps.size()) && ros::ok(); ++i)
 	{
-		rgb_buffer[i-1]->image.copyTo(display);
-		cv::cvtColor(rgb_buffer[i]->image, gray2, cv::COLOR_BGR2GRAY);
+		const ros::Time& tPrev = steps[i-1];
+		const ros::Time& tCurr = steps[i];
+
+		rgb_buffer[tPrev]->image.copyTo(display);
+		cv::cvtColor(rgb_buffer[tCurr]->image, gray2, cv::COLOR_BGR2GRAY);
 
 		double detectorStartTime = (double)cv::getTickCount();
 		detector->detectAndCompute(gray2, mask, kpts2, desc2);
@@ -168,8 +175,8 @@ void Tracker::track(const size_t step)
 				drawKeypoint(display, kp2, cv::Scalar(0, 255, 0));
 				cv::arrowedLine(display, kp1.pt, kp2.pt, cv::Scalar(0, 0, 255));
 
-				uint16_t dVal1 = depth_buffer[i-1]->image.at<uint16_t>(kp1.pt);
-				uint16_t dVal2 = depth_buffer[i]->image.at<uint16_t>(kp2.pt);
+				uint16_t dVal1 = depth_buffer[tPrev]->image.at<uint16_t>(kp1.pt);
+				uint16_t dVal2 = depth_buffer[tCurr]->image.at<uint16_t>(kp2.pt);
 				if (!(DepthTraits::valid(dVal1) && DepthTraits::valid(dVal2))) { continue; }
 
 				float depth1 = DepthTraits::toMeters(dVal1); // if (depth1 > maxZ || depth1 < minZ) { continue; }
@@ -188,10 +195,10 @@ void Tracker::track(const size_t step)
 		ma.markers.push_back(visualizeFlow(flow3));
 		vizPub.publish(ma);
 
-		flows2.push_back(flow2);
-		flows3.push_back(flow3);
+		flows2[{tPrev, tCurr}] = flow2;
+		flows3[{tPrev, tCurr}] = flow3;
 
-		video.write(rgb_buffer[i-1]->image);
+		video.write(rgb_buffer[tPrev]->image);
 		tracking.write(display);
 		cv::imshow("Tracking", display);
 		cv::waitKey(1);
@@ -201,7 +208,7 @@ void Tracker::track(const size_t step)
 		std::swap(desc1, desc2);
 	}
 
-	video.write(rgb_buffer.back()->image);
+	video.write(rgb_buffer[tLast]->image);
 	tracking.release();
 }
 
@@ -235,13 +242,13 @@ void Tracker::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	if (rgb_buffer.size() < MAX_BUFFER_LEN)
 	{
-		rgb_buffer.push_back(cv_rgb_ptr);
-		std::cerr << rgb_buffer.size() << ": " << rgb_buffer.back()->header.stamp - rgb_buffer.front()->header.stamp << std::endl;
+		rgb_buffer.insert({cv_rgb_ptr->header.stamp, cv_rgb_ptr});
+		std::cerr << rgb_buffer.size() << ": " << rgb_buffer.rbegin()->first - rgb_buffer.begin()->first << std::endl;
 	}
 
 	if (depth_buffer.size() < MAX_BUFFER_LEN)
 	{
-		depth_buffer.push_back(cv_depth_ptr);
+		depth_buffer.insert({cv_depth_ptr->header.stamp, cv_depth_ptr});
 	}
 
 	if (rgb_buffer.size() == MAX_BUFFER_LEN)
@@ -252,19 +259,20 @@ void Tracker::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 bool estimateRigidTransform(const Tracker::Flow3D& flow, Eigen::Isometry3d& bTa)
 {
-	const int RANSAC_ITERS = 20;
+	const int RANSAC_ITERS = 100;
 	const double MATCH_DISTANCE = 0.01;
-	const int VOTE_THRESH = RANSAC_ITERS/3;
+	const int VOTE_THRESH = RANSAC_ITERS/10;
 
 	const size_t N = flow.size();
 	std::vector<unsigned int> votes(N, 0);
-	std::vector<unsigned int> indices(N);
 	std::vector<unsigned int> inliers;
 	inliers.reserve(N);
 
 	// RANSAC
+	#pragma omp parallel for
 	for (int iter = 0; iter < RANSAC_ITERS; ++iter)
 	{
+		std::vector<unsigned int> indices(N);
 		std::iota(indices.begin(), indices.end(), 0);
 		std::random_shuffle(indices.begin(), indices.end());
 
@@ -283,7 +291,10 @@ bool estimateRigidTransform(const Tracker::Flow3D& flow, Eigen::Isometry3d& bTa)
 		{
 			if (((putativeT*flow[i].first)-flow[i].second).norm() <= MATCH_DISTANCE)
 			{
-				++votes[i];
+				#pragma omp critical
+				{
+					++votes[i];
+				}
 			}
 		}
 	}
@@ -308,9 +319,17 @@ bool estimateRigidTransform(const Tracker::Flow3D& flow, Eigen::Isometry3d& bTa)
 		B.col(s) = flow[inliers[s]].second;
 	}
 
+//	Eigen::Matrix3Xd A(3, flow.size()), B(3, flow.size());
+//	for (size_t s = 0; s < flow.size(); ++s)
+//	{
+//		A.col(s) = flow[s].first;
+//		B.col(s) = flow[s].second;
+//	}
+
 
 	Eigen::Matrix4d putativeM = Eigen::umeyama(A, B, false);
-	bTa.linear() = putativeM.topLeftCorner<3, 3>();
+	bTa = Eigen::Isometry3d::Identity();
+	bTa.rotate(putativeM.topLeftCorner<3, 3>());
 	bTa.translation() = putativeM.topRightCorner<3, 1>();
 
 	return true;

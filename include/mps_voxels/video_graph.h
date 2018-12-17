@@ -41,6 +41,9 @@
 #include <boost/graph/adjacency_list.hpp>
 #include <ros/time.h>
 
+
+using SegmentIndex = std::pair<ros::Time, int>;
+
 struct NodeProperties
 {
 	ros::Time t; ///< Time index in video
@@ -54,6 +57,7 @@ struct NodeProperties
 struct EdgeProperties
 {
 	double affinity = 0.0;
+	double distance() const { return 1.0/affinity; }
 };
 
 // Helper types for using for_each
@@ -77,6 +81,8 @@ iterator_pair<Iterator> make_range ( std::pair<Iterator, Iterator> p )
 }
 
 using VideoSegmentationGraph = boost::adjacency_list<boost::setS, boost::vecS, boost::undirectedS, NodeProperties, EdgeProperties>;
+using SegmentLookup = std::map<SegmentIndex, VideoSegmentationGraph::vertex_descriptor>;
 
+std::deque<SegmentIndex> getObjectPath(const VideoSegmentationGraph& G, const SegmentLookup& segmentToNode, const SegmentIndex& from, const SegmentIndex& to);
 
 #endif // MAP_GRAPH_H

@@ -11,10 +11,11 @@ class CudaTracker : public Tracker
 {
 public:
 	CudaTracker(const size_t _buffer = 500,
+	            std::shared_ptr<tf::TransformListener> _listener = std::make_shared<tf::TransformListener>(),
 	            SubscriptionOptions _options = SubscriptionOptions(),
 	            TrackingOptions _track_options = TrackingOptions());
 
-	void track(const size_t step = 1) override;
+	void track(const std::vector<ros::Time>& steps) override;
 };
 
 #endif // MPS_VOXELS_CUDATRACKER_H

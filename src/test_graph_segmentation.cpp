@@ -9,7 +9,7 @@
 //#include <Spectra/SymEigsSolver.h>
 //#include <Spectra/MatOp/SparseSymMatProd.h>
 
-#include "mps_voxels/map_graph.h"
+#include "mps_voxels/video_graph.h"
 #include "mps_voxels/graph_matrix_utils.h"
 #include <mps_msgs/SegmentGraph.h>
 

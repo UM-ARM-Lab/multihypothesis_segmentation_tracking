@@ -118,6 +118,48 @@ pcl::PointCloud<PointT>::Ptr filterPlane(
 	return non_table_cloud;
 }
 
+pcl::PointCloud<PointT>::Ptr filterSmallClusters(
+	pcl::PointCloud<PointT>::Ptr& cloud,
+	const int clusterThreshold,
+	const int clusterDistance)
+{
+	// TODO: Doesn't work...
+	pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
+	tree->setInputCloud(cloud);
+
+	std::vector<pcl::PointIndices> largeClusters;
+	pcl::EuclideanClusterExtraction<PointT> ec;
+	ec.setClusterTolerance (clusterDistance);
+	ec.setMinClusterSize (clusterThreshold);
+	ec.setMaxClusterSize (cloud->size());
+	ec.setSearchMethod (tree);
+	ec.setInputCloud (cloud);
+	ec.extract (largeClusters);
+
+	unsigned removeN = 0;
+	for (const pcl::PointIndices& cluster : largeClusters)
+	{
+		removeN += cluster.indices.size();
+	}
+
+	pcl::PointIndices toKeep;
+	toKeep.indices.reserve(removeN);
+	for (const pcl::PointIndices& cluster : largeClusters)
+	{
+		toKeep.indices.insert(toKeep.indices.end(), cluster.indices.begin(), cluster.indices.end());
+	}
+
+	pcl::ExtractIndices<PointT> cluster_extractor;
+	cluster_extractor.setInputCloud(cloud);
+	cluster_extractor.setIndices(pcl::PointIndices::ConstPtr(&toKeep, boost::null_deleter()));
+	cluster_extractor.setNegative(false);
+
+	pcl::PointCloud<PointT>::Ptr cloud_filtered (new pcl::PointCloud<PointT>);
+	cluster_extractor.filter(*cloud_filtered);
+
+	return cloud_filtered;
+}
+
 std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	pcl::PointCloud<PointT>::Ptr& cloud)
 {

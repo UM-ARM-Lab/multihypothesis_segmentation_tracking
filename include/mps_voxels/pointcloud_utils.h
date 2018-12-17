@@ -29,6 +29,11 @@ pcl::PointCloud<PointT>::Ptr filterPlane(
 	pcl::PointCloud<PointT>::Ptr& cloud,
 	const double distanceThreshold = 0.01);
 
+pcl::PointCloud<PointT>::Ptr filterSmallClusters(
+	pcl::PointCloud<PointT>::Ptr& cloud,
+	const int clusterThreshold = 100,
+	const int clusterDistance = 0.01);
+
 std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	pcl::PointCloud<PointT>::Ptr& cloud);
 

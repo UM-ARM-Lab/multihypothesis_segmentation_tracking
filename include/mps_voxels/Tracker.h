@@ -120,8 +120,8 @@ public:
 
 	const size_t MAX_BUFFER_LEN;//1000;
 
-	std::vector<cv_bridge::CvImagePtr> rgb_buffer;
-	std::vector<cv_bridge::CvImagePtr> depth_buffer;
+	std::map<ros::Time, cv_bridge::CvImagePtr> rgb_buffer;
+	std::map<ros::Time, cv_bridge::CvImagePtr> depth_buffer;
 	image_geometry::PinholeCameraModel cameraModel;
 
 	std::unique_ptr<image_transport::ImageTransport> it;
@@ -131,8 +131,10 @@ public:
 	std::unique_ptr<message_filters::Synchronizer<SyncPolicy>> sync;
 
 	cv::Mat mask;
-	std::vector<Flow3D> flows3;
-	std::vector<Flow2D> flows2;
+//	std::vector<Flow3D> flows3;
+//	std::vector<Flow2D> flows2;
+	std::map<std::pair<ros::Time, ros::Time>, Flow3D> flows3;
+	std::map<std::pair<ros::Time, ros::Time>, Flow2D> flows2;
 
 	SubscriptionOptions options;
 	TrackingOptions track_options;
@@ -145,8 +147,9 @@ public:
 
 	explicit
 	Tracker(const size_t _buffer = 500,
-		SubscriptionOptions _options = SubscriptionOptions(),
-		TrackingOptions _track_options = TrackingOptions());
+	        std::shared_ptr<tf::TransformListener> _listener = std::make_shared<tf::TransformListener>(),
+	        SubscriptionOptions _options = SubscriptionOptions(),
+	        TrackingOptions _track_options = TrackingOptions());
 
 	void startCapture();
 
@@ -157,7 +160,7 @@ public:
 	cv::Mat& getMask();
 
 	virtual
-	void track(const size_t step = 1);
+	void track(const std::vector<ros::Time>& steps);
 
 	void imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	             const sensor_msgs::ImageConstPtr& depth_msg,

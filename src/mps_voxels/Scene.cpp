@@ -303,7 +303,11 @@ bool Scene::loadAndFilterScene()
 	/// Generate an ROI from the cropped, filtered cloud
 	/////////////////////////////////////////////////////////////////
 	pile_cloud = filterPlane(cropped_cloud, 0.02);
-	pile_cloud = filterOutliers(pile_cloud, 1000);
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+//	pile_cloud = filterSmallClusters(pile_cloud, 1000, 0.005); // sqrt(cloud->size())/50
+//	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+	pile_cloud = filterOutliers(pile_cloud, 100);
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	if (pile_cloud->empty())
 	{
 		ROS_ERROR_STREAM("No points in pile cloud.");

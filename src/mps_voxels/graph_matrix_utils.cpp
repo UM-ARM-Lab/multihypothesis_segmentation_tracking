@@ -3,7 +3,7 @@
 //
 
 #include "mps_voxels/graph_matrix_utils_impl.hpp"
-#include "mps_voxels/map_graph.h"
+#include "mps_voxels/video_graph.h"
 
 template
 Eigen::MatrixXd getLaplacian<VideoSegmentationGraph>(const VideoSegmentationGraph& graph);

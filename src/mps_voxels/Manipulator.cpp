@@ -230,7 +230,7 @@ bool Manipulator::cartesianPath(const PoseSequence& worldGoalPoses, const Eigen:
 	return true;
 }
 
-bool Manipulator::grasp(const robot_state::RobotState& currentState, moveit_msgs::Grasp& grasp) const
+bool Manipulator::grasp(const robot_state::RobotState& /*currentState*/, moveit_msgs::Grasp& grasp) const
 {
 	grasp.grasp_posture.joint_names = gripper->getActiveJointModelNames();
 	grasp.grasp_posture.points.resize(1);

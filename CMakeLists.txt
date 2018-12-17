@@ -238,6 +238,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/graph_matrix_utils.cpp
   src/${PROJECT_NAME}/LocalOctreeServer.cpp
   src/${PROJECT_NAME}/Scene.cpp
+  src/${PROJECT_NAME}/video_graph.cpp
   src/${PROJECT_NAME}/planning/State.cpp
   src/${PROJECT_NAME}/planning/Action.cpp
   src/${PROJECT_NAME}/planning/MotionPlanner.cpp
