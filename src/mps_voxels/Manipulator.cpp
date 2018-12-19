@@ -3,6 +3,7 @@
 //
 
 #include "mps_voxels/Manipulator.h"
+#include "mps_voxels/assert.h"
 #include "mps_voxels/Viterbi.hpp"
 
 #include <moveit/planning_scene/planning_scene.h>
@@ -13,7 +14,7 @@ Manipulator::Manipulator(robot_model::RobotModelPtr _pModel,
                          std::string _palmName)
 	: pModel(std::move(_pModel)), arm(_arm), gripper(_gripper), palmName(std::move(_palmName))
 {
-	assert(arm->getVariableCount() == arm->getActiveJointModels().size());
+	MPS_ASSERT(arm->getVariableCount() == arm->getActiveJointModels().size());
 	qMin.resize(arm->getVariableCount());
 	qMax.resize(arm->getVariableCount());
 	qMid.resize(arm->getVariableCount());
@@ -21,7 +22,7 @@ Manipulator::Manipulator(robot_model::RobotModelPtr _pModel,
 
 	for (size_t j = 0; j < bounds.size(); ++j)
 	{
-		assert(bounds[j]->size() == 1);
+		MPS_ASSERT(bounds[j]->size() == 1);
 		const auto& b = bounds[j]->front();
 
 		qMin[j] = b.min_position_;
@@ -48,9 +49,9 @@ double Manipulator::stateCost(const std::vector<double>& q1) const
 double Manipulator::transitionCost(const std::vector<double>& q1, const double t1, const std::vector<double>& q2, const double t2) const
 {
 	const std::vector<double> JOINT_WEIGHTS(q1.size(), 5.0);
-	assert(JOINT_WEIGHTS.size() == q1.size());
-	assert(JOINT_WEIGHTS.size() == q2.size());
-	assert(t2 > t1);
+	MPS_ASSERT(JOINT_WEIGHTS.size() == q1.size());
+	MPS_ASSERT(JOINT_WEIGHTS.size() == q2.size());
+	MPS_ASSERT(t2 > t1);
 	double cost = 0;
 	for (size_t j = 0; j < q1.size(); ++j)
 	{
@@ -130,7 +131,7 @@ std::vector<std::vector<double>> Manipulator::IK(const Eigen::Affine3d& worldGoa
 {
 	std::vector<std::vector<double>> solutions;
 	const kinematics::KinematicsBaseConstPtr& solver = arm->getSolverInstance();
-	assert(solver.get());
+	MPS_ASSERT(solver.get());
 
 	// NB: The (possibly dirty) frames in RobotState are not marked mutable, hence the const casting.
 	Eigen::Affine3d solverbaseTrobot = Eigen::Affine3d::Identity();

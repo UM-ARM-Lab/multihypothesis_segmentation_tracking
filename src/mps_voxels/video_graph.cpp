@@ -3,6 +3,7 @@
 //
 
 #include "mps_voxels/video_graph.h"
+#include "mps_voxels/assert.h"
 
 #include <boost/graph/astar_search.hpp>
 #include <boost/graph/dijkstra_shortest_paths.hpp>
@@ -33,12 +34,15 @@ struct found_goal {}; // exception for termination
 
 // visitor that terminates when we find the goal
 template <class Vertex>
-class astar_goal_visitor : public boost::default_astar_visitor
+class goal_visitor : public boost::default_dijkstra_visitor
 {
 public:
-	astar_goal_visitor(Vertex goal) : m_goal(goal) {}
+	explicit
+	goal_visitor(Vertex goal) : m_goal(goal) {}
+
 	template <class Graph>
-	void examine_vertex(Vertex u, Graph&) {
+	void examine_vertex(Vertex u, Graph&)
+	{
 		if(u == m_goal)
 			throw found_goal();
 	}
@@ -60,6 +64,9 @@ std::deque<SegmentIndex> getObjectPath(const VideoSegmentationGraph& G, const Se
 
 	VideoSegmentationGraph::vertex_descriptor start = segmentToNode.at(from);
 	VideoSegmentationGraph::vertex_descriptor goal = segmentToNode.at(to);
+
+	MPS_ASSERT(start < boost::num_vertices(G));
+	MPS_ASSERT(goal < boost::num_vertices(G));
 
 //	try
 //	{
@@ -84,7 +91,7 @@ std::deque<SegmentIndex> getObjectPath(const VideoSegmentationGraph& G, const Se
 	{
 		boost::dijkstra_shortest_paths(G, start,
 		                               boost::weight_map(wmap).predecessor_map(pmap).distance_map(dmap).
-			                               visitor(astar_goal_visitor<VideoSegmentationGraph::vertex_descriptor>(goal)));
+			                               visitor(goal_visitor<VideoSegmentationGraph::vertex_descriptor>(goal)));
 	}
 	catch (found_goal fg)
 	{

@@ -16,6 +16,7 @@
 //#include <message_filters/subscriber.h>
 //#include <message_filters/time_synchronizer.h>
 
+#include "mps_voxels/assert.h"
 #include "mps_voxels/CudaTracker.h"
 #include "mps_voxels/Scene.h"
 #include "mps_voxels/image_utils.h"
@@ -247,7 +248,7 @@ std::set<std::pair<uint16_t, uint16_t>> computeNeighbors(const cv::Mat& labels)
 
 std::map<std::pair<uint16_t, uint16_t>, double> computeUcmDual(const cv::Mat& labels, const cv::Mat& ucm)
 {
-	assert(labels.size == ucm.size);
+	MPS_ASSERT(labels.size == ucm.size);
 	std::map<std::pair<uint16_t, uint16_t>, double> neighbors;
 	for(int i = 0; i < labels.rows; i++)
 	{
@@ -335,8 +336,8 @@ void addToGraph(VideoSegmentationGraph& G, const cv::Mat& ucm, const cv::Mat& fu
 		double dist = edge.second;
 		if (dist <= 0 || 1.0 < dist) { throw std::runtime_error("Ultrametric max distance should be <= 1.0"); }
 
-		assert(segmentToNode.find({k, p}) != segmentToNode.end());
-		assert(segmentToNode.find({k, q}) != segmentToNode.end());
+		MPS_ASSERT(segmentToNode.find({k, p}) != segmentToNode.end());
+		MPS_ASSERT(segmentToNode.find({k, q}) != segmentToNode.end());
 
 		VideoSegmentationGraph::vertex_descriptor s = segmentToNode[{k, p}];
 		VideoSegmentationGraph::vertex_descriptor t = segmentToNode[{k, q}];
@@ -345,7 +346,7 @@ void addToGraph(VideoSegmentationGraph& G, const cv::Mat& ucm, const cv::Mat& fu
 
 	for (VideoSegmentationGraph::vertex_descriptor vd : make_range(boost::vertices(G)))
 	{
-		assert(boost::out_degree(vd, G) > 0);
+		MPS_ASSERT(boost::out_degree(vd, G) > 0);
 	}
 }
 
@@ -662,12 +663,12 @@ void visualizeObjectBundles(const VideoSegmentationGraph& G, std::map<ros::Time,
 	edgePub.publish(m);
 
 	ros::spinOnce();
-	sleep(1);
+	usleep(100000);
 }
 
 void getUcmObjectMappings(const SegmentationInfo& si, std::map<uint16_t, uint16_t>& ucmLabelsToObjectLabel, std::map<uint16_t, std::set<uint16_t> >& objectLabelToUcmLabels)
 {
-	assert(si.labels.size() == si.objectness_segmentation->image.size());
+	MPS_ASSERT(si.labels.size() == si.objectness_segmentation->image.size());
 	const auto objectLabelIDs = unique(si.objectness_segmentation->image);
 
 	for (const uint16_t objID : objectLabelIDs)
@@ -741,6 +742,14 @@ VideoSegmentationGraph compressGraph(const VideoSegmentationGraph& G1, std::map<
 	{
 		throw std::logic_error("Graph is disconnected.");
 	}
+	else if (num_components == 0)
+	{
+		throw std::logic_error("Graph is empty.");
+	}
+	else
+	{
+		std::cerr << "Compressed graph is connected." << std::endl;
+	}
 
 	return G2;
 }
@@ -762,7 +771,7 @@ int main(int argc, char* argv[])
 		= std::make_shared<robot_model_loader::RobotModelLoader>();
 	robot_model::RobotModelPtr pModel = mpLoader->getModel();
 
-	assert(!pModel->getJointModelGroupNames().empty());
+	MPS_ASSERT(!pModel->getJointModelGroupNames().empty());
 
 	ros::ServiceClient segmentClient = nh.serviceClient<mps_msgs::SegmentGraph>("/segment_graph");
 	if (!segmentClient.waitForExistence(ros::Duration(3)))
@@ -809,7 +818,8 @@ int main(int argc, char* argv[])
 	cv::namedWindow("labels", CV_WINDOW_NORMAL);
 
 	const int step = 3;
-	tracker = std::make_unique<CudaTracker>(5*step, listener);
+//	tracker = std::make_unique<CudaTracker>(5*step, listener);
+	tracker = std::make_unique<Tracker>(5*step, listener);
 
 	// TODO: Make step size variable based on average flow
 
@@ -917,7 +927,7 @@ int main(int argc, char* argv[])
 						mps_msgs::ClusterRigidMotionsResultConstPtr resp = motionClient.getResult();
 						if (resp)
 						{
-							assert(resp->labels.size()==req.flow_field.size());
+							MPS_ASSERT(resp->labels.size()==req.flow_field.size());
 //						for (const auto l : resp->labels) { std::cerr << l << "\t"; } std::cerr << std::endl;
 
 							std::map<int, std::vector<size_t>> flow_clusters;
@@ -964,8 +974,8 @@ int main(int argc, char* argv[])
 			VideoSegmentationGraph objectG = compressGraph(G, ucmLabelsToObjectLabelWithTime);
 
 
-			assert(segmentations.find(segmentations.rbegin()->first) != segmentations.end());
-			assert(segmentations.rbegin()->first == segmentations.rbegin()->second->t);
+			MPS_ASSERT(segmentations.find(segmentations.rbegin()->first) != segmentations.end());
+			MPS_ASSERT(segmentations.rbegin()->first == segmentations.rbegin()->second->t);
 			mps_msgs::MatchFrameSegmentsGoal g;
 			g.frames.emplace_back(toSegmentationMsg(*segmentations.begin()->second));
 			g.frames.emplace_back(toSegmentationMsg(*segmentations.rbegin()->second));
@@ -1004,7 +1014,7 @@ int main(int argc, char* argv[])
 						const int v = b.values[j];
 //						segmentToBundle.insert({{t, k}, v});
 						cv::Mat active(video.at(t), si->roi);
-						assert(active.size == segmentations.at(t)->labels.size);
+						MPS_ASSERT(active.size == segmentations.at(t)->labels.size);
 						active.setTo(bundle_colors.at(v), si->objectness_segmentation->image == k);
 
 						cv::imshow("source", si->rgb);
@@ -1017,7 +1027,7 @@ int main(int argc, char* argv[])
 				for (const auto& pair : video)
 				{
 					cv::imshow("video", pair.second);
-					cv::waitKey(0);
+					cv::waitKey(1);
 				}
 
 				cv::VideoWriter tracking("bundled_pair.avi", CV_FOURCC('M', 'J', 'P', 'G'), 1, nativeSize, true);
@@ -1039,10 +1049,10 @@ int main(int argc, char* argv[])
 
 				// Map from a segment ID to a vertex ID in the graph
 				SegmentLookup objectSegmentToNode;
-				for (VideoSegmentationGraph::vertex_descriptor vd : make_range(boost::vertices(G)))
+				for (VideoSegmentationGraph::vertex_descriptor vd : make_range(boost::vertices(objectG)))//objectG
 				{
 					const NodeProperties& np = objectG[vd];
-					objectSegmentToNode[{np.t, np.leafID}] = vd;
+					auto r = objectSegmentToNode.insert({{np.t, np.leafID}, vd}); MPS_ASSERT(r.second);
 				}
 
 				std::map<SegmentIndex, int> segmentToBundle;

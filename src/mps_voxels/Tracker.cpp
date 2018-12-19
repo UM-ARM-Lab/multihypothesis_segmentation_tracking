@@ -83,7 +83,7 @@ cv::Mat& Tracker::getMask()
 	//// Set up Mask
 	////////////////////////////////////////
 
-	if (!listener->waitForTransform(cameraModel.tfFrame(), "table_surface", ros::Time(0), ros::Duration(5.0)))
+	if (!listener->waitForTransform(cameraModel.tfFrame(), "table_surface", ros::Time(0), ros::Duration(1.0)))
 	{
 		ROS_WARN_STREAM("Tracking failed: Failed to look up transform between '" << cameraModel.tfFrame() << "' and '" << "table_surface" << "'.");
 		mask = cv::Mat::ones(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_8UC1);
@@ -280,7 +280,7 @@ bool estimateRigidTransform(const Tracker::Flow3D& flow, Eigen::Isometry3d& bTa)
 		for (int s = 0; s < 3; ++s)
 		{
 			A.col(s) = flow[indices[s]].first;
-			B.col(s) = flow[indices[s]].second;
+			B.col(s) = flow[indices[s]].first+flow[indices[s]].second;
 		}
 		Eigen::Matrix4d putativeM = Eigen::umeyama(A, B, false);
 		Eigen::Affine3d putativeT;
@@ -289,7 +289,7 @@ bool estimateRigidTransform(const Tracker::Flow3D& flow, Eigen::Isometry3d& bTa)
 
 		for (size_t i = 0; i < N; ++i)
 		{
-			if (((putativeT*flow[i].first)-flow[i].second).norm() <= MATCH_DISTANCE)
+			if (((putativeT*flow[i].first)-(flow[i].first-flow[i].second)).norm() <= MATCH_DISTANCE)
 			{
 				#pragma omp critical
 				{
@@ -316,7 +316,7 @@ bool estimateRigidTransform(const Tracker::Flow3D& flow, Eigen::Isometry3d& bTa)
 	for (size_t s = 0; s < inliers.size(); ++s)
 	{
 		A.col(s) = flow[inliers[s]].first;
-		B.col(s) = flow[inliers[s]].second;
+		B.col(s) = flow[inliers[s]].first+flow[inliers[s]].second;
 	}
 
 //	Eigen::Matrix3Xd A(3, flow.size()), B(3, flow.size());

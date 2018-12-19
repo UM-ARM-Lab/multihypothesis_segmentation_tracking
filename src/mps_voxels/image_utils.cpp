@@ -44,6 +44,9 @@ std::set<uint16_t> unique(const cv::Mat& input)
 	}
 
 	std::set<uint16_t> out;
+
+	#pragma omp declare reduction (merge : std::set<uint16_t> : omp_out.insert(omp_in.begin(), omp_in.end()))
+	#pragma omp parallel for reduction(merge: out)
 	for (int y = 0; y < input.rows; ++y)
 	{
 		const uint16_t* row_ptr = input.ptr<uint16_t>(y);
