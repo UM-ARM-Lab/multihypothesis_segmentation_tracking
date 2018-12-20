@@ -5,6 +5,7 @@
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
+#include "mps_voxels/assert.h"
 
 RGBDSegmenter::RGBDSegmenter(ros::NodeHandle& nh)
 	: segmentClient(nh, "/segment_rgbd", true)
@@ -97,10 +98,10 @@ CachingRGBDSegmenter::segment(const cv_bridge::CvImage& rgb, const cv_bridge::Cv
 CachingRGBDSegmenter::CachingRGBDSegmenter(ros::NodeHandle& nh) : RGBDSegmenter(nh) {}
 
 
-std::vector<pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
+std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	const pcl::PointCloud<PointT>::Ptr& cloud, const cv::Mat& labels,
 	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi,
-	std::map<uint16_t, int>* labelToIndexLookup)
+	std::map<uint16_t, ObjectIndex>* labelToIndexLookup)
 {
 	assert(roi.width == labels.cols);
 	assert(roi.height == labels.rows);
@@ -163,16 +164,16 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 		}
 	}
 
-	std::vector<pcl::PointCloud<PointT>::Ptr> retVal;
-	retVal.reserve(segment_clouds.size());
+	std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> retVal;
 	for (auto& pair : segment_clouds)
 	{
 		if (pair.second->size() >= threshold)
 		{
-			retVal.push_back(pair.second);
+			ObjectIndex objID{-(static_cast<long>(retVal.size()))}; // retVal.size()-1
+			retVal.insert({objID, pair.second});
 			if (labelToIndexLookup)
 			{
-				(*labelToIndexLookup)[pair.first] = retVal.size()-1;
+				auto res = (*labelToIndexLookup).insert({pair.first, objID}); MPS_ASSERT(res.second);
 			}
 		}
 	}

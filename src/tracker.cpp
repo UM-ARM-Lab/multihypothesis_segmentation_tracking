@@ -25,6 +25,7 @@
 #include "mps_voxels/Ultrametric.h"
 #include "mps_voxels/graph_matrix_utils.h"
 #include "mps_voxels/LocalOctreeServer.h"
+#include "mps_voxels/OctreeMotionModel.h"
 
 #include <mps_msgs/SegmentGraph.h>
 #include <mps_msgs/ClusterRigidMotionsAction.h>
@@ -158,29 +159,29 @@ template <typename T> int sgn(T val) {
 	return (T(0) < val) - (val < T(0));
 }
 
-void cutGraph(VideoSegmentationGraph& graph, const std::vector<size_t>& cuts, const Eigen::MatrixXd& eigenvectors)
-{
-	std::set<VideoSegmentationGraph::edge_descriptor> cutEdges;
-	for (VideoSegmentationGraph::edge_descriptor ed : make_range(boost::edges(graph)))
-	{
-		VideoSegmentationGraph::vertex_descriptor u = boost::source(ed, graph);
-		VideoSegmentationGraph::vertex_descriptor v = boost::target(ed, graph);
-
-		for (const size_t c : cuts)
-		{
-			if (sgn(eigenvectors.col(c)[u]) != sgn(eigenvectors.col(c)[v]))
-			{
-				cutEdges.insert(ed);
-				break;
-			}
-		}
-	}
-
-	for (VideoSegmentationGraph::edge_descriptor ed : cutEdges)
-	{
-		boost::remove_edge(ed, graph);
-	}
-}
+//void cutGraph(VideoSegmentationGraph& graph, const std::vector<size_t>& cuts, const Eigen::MatrixXd& eigenvectors)
+//{
+//	std::set<VideoSegmentationGraph::edge_descriptor> cutEdges;
+//	for (VideoSegmentationGraph::edge_descriptor ed : make_range(boost::edges(graph)))
+//	{
+//		VideoSegmentationGraph::vertex_descriptor u = boost::source(ed, graph);
+//		VideoSegmentationGraph::vertex_descriptor v = boost::target(ed, graph);
+//
+//		for (const size_t c : cuts)
+//		{
+//			if (sgn(eigenvectors.col(c)[u]) != sgn(eigenvectors.col(c)[v]))
+//			{
+//				cutEdges.insert(ed);
+//				break;
+//			}
+//		}
+//	}
+//
+//	for (VideoSegmentationGraph::edge_descriptor ed : cutEdges)
+//	{
+//		boost::remove_edge(ed, graph);
+//	}
+//}
 
 std::vector<cv::Point2i> getNeighbors(const int row, const int col, const cv::Mat& img)
 {
@@ -307,24 +308,15 @@ std::map<std::pair<uint16_t, uint16_t>, double> computeUcmDual(const cv::Mat& la
 }
 
 
-void addToGraph(VideoSegmentationGraph& G, const cv::Mat& ucm, const cv::Mat& full_labels, const ros::Time k)
+void addToGraph(VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, const cv::Mat& ucm, const cv::Mat& full_labels, const ros::Time k)
 {
-//	const double EDGE_THRESHOLD = 0.005;//0.125;
-
-//	cv::Mat display_labels = (small_labels == 0);
-//	display_labels.convertTo(display_labels, CV_8UC1);
-//	cv::imshow("small_labels", display_labels);
-//	cv::waitKey();
-
-//	Ultrametric um(ucm, full_labels);
-
 	// Frame index, label value
-	SegmentLookup segmentToNode;
+	SegmentLookup<SEGMENT_TYPE::UCM> segmentToNode;
 
 	for (const auto lbl : unique(full_labels))
 	{
 		if (0 == lbl) { continue; }
-		VideoSegmentationGraph::vertex_descriptor v = boost::add_vertex(NodeProperties({k, lbl}), G);
+		VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor v = boost::add_vertex(NodeProperties<SEGMENT_TYPE::UCM>({k, lbl}), G);
 		segmentToNode.insert({{k, lbl}, v});
 	}
 
@@ -339,23 +331,23 @@ void addToGraph(VideoSegmentationGraph& G, const cv::Mat& ucm, const cv::Mat& fu
 		MPS_ASSERT(segmentToNode.find({k, p}) != segmentToNode.end());
 		MPS_ASSERT(segmentToNode.find({k, q}) != segmentToNode.end());
 
-		VideoSegmentationGraph::vertex_descriptor s = segmentToNode[{k, p}];
-		VideoSegmentationGraph::vertex_descriptor t = segmentToNode[{k, q}];
+		VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor s = segmentToNode[{k, p}];
+		VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor t = segmentToNode[{k, q}];
 		boost::add_edge(s, t, {1.0/(dist+1e-4)}, G);
 	}
 
-	for (VideoSegmentationGraph::vertex_descriptor vd : make_range(boost::vertices(G)))
+	for (VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor vd : make_range(boost::vertices(G)))
 	{
 		MPS_ASSERT(boost::out_degree(vd, G) > 0);
 	}
 }
 
-void joinFrameGraphs(VideoSegmentationGraph& G, const SegmentationInfo& iInfo, const SegmentationInfo& jInfo, const Tracker::Flow2D& flow)
+void joinFrameGraphs(VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, const SegmentationInfo& iInfo, const SegmentationInfo& jInfo, const Tracker::Flow2D& flow)
 {
-	SegmentLookup segmentToNode;
-	for (VideoSegmentationGraph::vertex_descriptor vd : make_range(boost::vertices(G)))
+	SegmentLookup<SEGMENT_TYPE::UCM> segmentToNode;
+	for (VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor vd : make_range(boost::vertices(G)))
 	{
-		const NodeProperties& np = G[vd];
+		const NodeProperties<SEGMENT_TYPE::UCM>& np = G[vd];
 		segmentToNode[{np.t, np.leafID}] = vd;
 	}
 
@@ -400,12 +392,12 @@ void joinFrameGraphs(VideoSegmentationGraph& G, const SegmentationInfo& iInfo, c
 	}
 }
 
-void joinMotionCliques(VideoSegmentationGraph& G, const SegmentationInfo& iInfo, const SegmentationInfo& jInfo, const Tracker::Flow2D& flow)
+void joinMotionCliques(VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, const SegmentationInfo& iInfo, const SegmentationInfo& jInfo, const Tracker::Flow2D& flow)
 {
-	SegmentLookup segmentToNode;
-	for (VideoSegmentationGraph::vertex_descriptor vd : make_range(boost::vertices(G)))
+	SegmentLookup<SEGMENT_TYPE::UCM> segmentToNode;
+	for (VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor vd : make_range(boost::vertices(G)))
 	{
-		const NodeProperties& np = G[vd];
+		const NodeProperties<SEGMENT_TYPE::UCM>& np = G[vd];
 		segmentToNode[{np.t, np.leafID}] = vd;
 	}
 
@@ -456,8 +448,11 @@ void joinMotionCliques(VideoSegmentationGraph& G, const SegmentationInfo& iInfo,
 }
 
 #include <pcl_ros/point_cloud.h>
-void visualizeVideoGraph(const VideoSegmentationGraph& G, std::map<ros::Time, std::shared_ptr<SegmentationInfo>> segmentations)//const std::vector<cv::Mat>& imgs, const std::vector<cv::Mat>& centroids)
+void visualizeVideoGraph(const VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, std::map<ros::Time, std::shared_ptr<SegmentationInfo>> segmentations)//const std::vector<cv::Mat>& imgs, const std::vector<cv::Mat>& centroids)
 {
+	using Vertex = VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor;
+	using Edge = VideoSegmentationGraph<SEGMENT_TYPE::UCM>::edge_descriptor;
+
 	static ros::NodeHandle nh;
 	static ros::Publisher pcPub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>("video_points", 1, true);
 	static ros::Publisher edgePub = nh.advertise<visualization_msgs::Marker>("video_edges", 1, true);
@@ -505,7 +500,7 @@ void visualizeVideoGraph(const VideoSegmentationGraph& G, std::map<ros::Time, st
 	double minAffinity = std::numeric_limits<double>::infinity();
 	double maxAffinity = -std::numeric_limits<double>::infinity();
 
-	for (VideoSegmentationGraph::edge_descriptor ed : make_range(boost::edges(G)))
+	for (Edge ed : make_range(boost::edges(G)))
 	{
 		const EdgeProperties& ep = G[ed];
 		minAffinity = std::min(ep.affinity, minAffinity);
@@ -514,14 +509,14 @@ void visualizeVideoGraph(const VideoSegmentationGraph& G, std::map<ros::Time, st
 
 	geometry_msgs::Point pt;
 	std_msgs::ColorRGBA color;
-	for (VideoSegmentationGraph::edge_descriptor ed : make_range(boost::edges(G)))
+	for (Edge ed : make_range(boost::edges(G)))
 	{
-		VideoSegmentationGraph::vertex_descriptor u = boost::source(ed, G);
-		VideoSegmentationGraph::vertex_descriptor v = boost::target(ed, G);
+		Vertex u = boost::source(ed, G);
+		Vertex v = boost::target(ed, G);
 
 		const EdgeProperties& ep = G[ed];
-		const NodeProperties& Gu = G[u];
-		const NodeProperties& Gv = G[v];
+		const NodeProperties<SEGMENT_TYPE::UCM>& Gu = G[u];
+		const NodeProperties<SEGMENT_TYPE::UCM>& Gv = G[v];
 
 		const std::shared_ptr<SegmentationInfo>& Su = segmentations.at(Gu.t);
 		const std::shared_ptr<SegmentationInfo>& Sv = segmentations.at(Gv.t);
@@ -552,8 +547,11 @@ void visualizeVideoGraph(const VideoSegmentationGraph& G, std::map<ros::Time, st
 	edgePub.publish(m);
 }
 
-void visualizeObjectBundles(const VideoSegmentationGraph& G, std::map<ros::Time, std::shared_ptr<SegmentationInfo>> segmentations, std::map<SegmentIndex, int> segmentToBundle, std::map<int, cv::Scalar> bundleColors)//const std::vector<cv::Mat>& imgs, const std::vector<cv::Mat>& centroids)
+void visualizeObjectBundles(const VideoSegmentationGraph<SEGMENT_TYPE::BODY>& G, std::map<ros::Time, std::shared_ptr<SegmentationInfo>> segmentations, std::map<SegmentIndex<SEGMENT_TYPE::BODY>, int> segmentToBundle, std::map<int, cv::Scalar> bundleColors)//const std::vector<cv::Mat>& imgs, const std::vector<cv::Mat>& centroids)
 {
+	using Vertex = VideoSegmentationGraph<SEGMENT_TYPE::BODY>::vertex_descriptor;
+	using Edge = VideoSegmentationGraph<SEGMENT_TYPE::BODY>::edge_descriptor;
+
 	static ros::NodeHandle nh;
 	static ros::Publisher pcPub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>("video_color", 1, true);
 	static ros::Publisher edgePub = nh.advertise<visualization_msgs::Marker>("video_edge_colors", 1, true);
@@ -572,7 +570,7 @@ void visualizeObjectBundles(const VideoSegmentationGraph& G, std::map<ros::Time,
 			for (int v = 1; v < img.rows; ++v)
 			{
 				int label = img.at<uint16_t>(v, u);
-				std::map<SegmentIndex, int>::const_iterator iter = segmentToBundle.find({pair.first, label});
+				std::map<SegmentIndex<SEGMENT_TYPE::BODY>, int>::const_iterator iter = segmentToBundle.find({pair.first, label});
 				if (iter == segmentToBundle.end())
 				{
 //					std::cerr << "??" << std::endl;
@@ -612,7 +610,7 @@ void visualizeObjectBundles(const VideoSegmentationGraph& G, std::map<ros::Time,
 	double minAffinity = std::numeric_limits<double>::infinity();
 	double maxAffinity = -std::numeric_limits<double>::infinity();
 
-	for (VideoSegmentationGraph::edge_descriptor ed : make_range(boost::edges(G)))
+	for (Edge ed : make_range(boost::edges(G)))
 	{
 		const EdgeProperties& ep = G[ed];
 		minAffinity = std::min(ep.affinity, minAffinity);
@@ -621,15 +619,15 @@ void visualizeObjectBundles(const VideoSegmentationGraph& G, std::map<ros::Time,
 
 	geometry_msgs::Point pt;
 	std_msgs::ColorRGBA color;
-	for (VideoSegmentationGraph::edge_descriptor ed : make_range(boost::edges(G)))
+	for (Edge ed : make_range(boost::edges(G)))
 	{
-		VideoSegmentationGraph::vertex_descriptor u = boost::source(ed, G);
-		VideoSegmentationGraph::vertex_descriptor v = boost::target(ed, G);
+		Vertex u = boost::source(ed, G);
+		Vertex v = boost::target(ed, G);
 		if (u == v) {throw std::logic_error("Graph has self-loops.");}
 
 		const EdgeProperties& ep = G[ed];
-		const NodeProperties& Gu = G[u];
-		const NodeProperties& Gv = G[v];
+		const NodeProperties<SEGMENT_TYPE::BODY>& Gu = G[u];
+		const NodeProperties<SEGMENT_TYPE::BODY>& Gv = G[v];
 
 		const std::shared_ptr<SegmentationInfo>& Su = segmentations.at(Gu.t);
 		const std::shared_ptr<SegmentationInfo>& Sv = segmentations.at(Gv.t);
@@ -687,11 +685,12 @@ void getUcmObjectMappings(const SegmentationInfo& si, std::map<uint16_t, uint16_
 	}
 }
 
-VideoSegmentationGraph compressGraph(const VideoSegmentationGraph& G1, std::map<ros::Time, std::map<uint16_t, uint16_t>>& ucmLabelsToObjectLabel)
+VideoSegmentationGraph<SEGMENT_TYPE::BODY> compressGraph(const VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G1, std::map<ros::Time, std::map<uint16_t, uint16_t>>& ucmLabelsToObjectLabel)
 {
-	VideoSegmentationGraph G2;
 
-	SegmentLookup  segmentToNodeG2;
+	VideoSegmentationGraph<SEGMENT_TYPE::BODY> G2;
+
+	SegmentLookup<SEGMENT_TYPE::BODY>  segmentToNodeG2;
 
 	for (const auto& p : ucmLabelsToObjectLabel)
 	{
@@ -700,19 +699,19 @@ VideoSegmentationGraph compressGraph(const VideoSegmentationGraph& G1, std::map<
 		{
 			if (0 == p2.first) { continue; }
 			if (segmentToNodeG2.find({t, p2.second}) != segmentToNodeG2.end()) { continue; }
-			VideoSegmentationGraph::vertex_descriptor v = boost::add_vertex(NodeProperties({t, p2.second}), G2);
+			VideoSegmentationGraph<SEGMENT_TYPE::BODY>::vertex_descriptor v = boost::add_vertex(NodeProperties<SEGMENT_TYPE::BODY>({t, p2.second}), G2);
 			segmentToNodeG2.insert({{t, p2.second}, v});
 		}
 	}
 
-	for (VideoSegmentationGraph::edge_descriptor ed : make_range(boost::edges(G1)))
+	for (VideoSegmentationGraph<SEGMENT_TYPE::UCM>::edge_descriptor ed : make_range(boost::edges(G1)))
 	{
-		VideoSegmentationGraph::vertex_descriptor u1 = boost::source(ed, G1);
-		VideoSegmentationGraph::vertex_descriptor v1 = boost::target(ed, G1);
+		VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor u1 = boost::source(ed, G1);
+		VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor v1 = boost::target(ed, G1);
 
 		const EdgeProperties& ep = G1[ed];
-		const NodeProperties& Gu = G1[u1];
-		const NodeProperties& Gv = G1[v1];
+		const NodeProperties<SEGMENT_TYPE::UCM>& Gu = G1[u1];
+		const NodeProperties<SEGMENT_TYPE::UCM>& Gv = G1[v1];
 
 		const ros::Time& i = Gu.t;
 		const ros::Time& j = Gv.t;
@@ -721,8 +720,8 @@ VideoSegmentationGraph compressGraph(const VideoSegmentationGraph& G1, std::map<
 		int jNewLabel = ucmLabelsToObjectLabel.at(j).at(Gv.leafID);
 
 
-		VideoSegmentationGraph::vertex_descriptor u2 = segmentToNodeG2.at({i, iNewLabel});
-		VideoSegmentationGraph::vertex_descriptor v2 = segmentToNodeG2.at({j, jNewLabel});
+		VideoSegmentationGraph<SEGMENT_TYPE::BODY>::vertex_descriptor u2 = segmentToNodeG2.at({i, iNewLabel});
+		VideoSegmentationGraph<SEGMENT_TYPE::BODY>::vertex_descriptor v2 = segmentToNodeG2.at({j, jNewLabel});
 		if (u2==v2)
 		{
 			continue;
@@ -733,7 +732,7 @@ VideoSegmentationGraph compressGraph(const VideoSegmentationGraph& G1, std::map<
 		eProps.affinity = std::max(eProps.affinity, ep.affinity);
 	}
 
-	typedef std::map<VideoSegmentationGraph::vertex_descriptor, unsigned long> mapping_t;
+	typedef std::map<VideoSegmentationGraph<SEGMENT_TYPE::BODY>::vertex_descriptor, unsigned long> mapping_t;
 	typedef boost::shared_ptr<mapping_t> vertex_component_map;
 
 	vertex_component_map mapping = boost::make_shared<mapping_t>();
@@ -752,6 +751,34 @@ VideoSegmentationGraph compressGraph(const VideoSegmentationGraph& G1, std::map<
 	}
 
 	return G2;
+}
+
+#include "mps_voxels/octree_utils.h"
+#include <tf_conversions/tf_eigen.h>
+//#include <rosgraph_msgs/Clock.h>
+void visualize(const OctreeMotionModel& omm, tf::TransformBroadcaster* tb, const std::string& globalFrame, const std::string& frame)
+{
+	static ros::NodeHandle nh;
+	static ros::Publisher pub = nh.advertise<visualization_msgs::MarkerArray>("object_memory", 1, true);
+//	static ros::Publisher clockPub = nh.advertise<rosgraph_msgs::Clock>("/clock", 1, false);
+//	static int clock_count = 0;
+
+	ros::Time fakeNow = ros::Time::now();// + ros::Duration(++clock_count);
+//	rosgraph_msgs::Clock clk;
+//	clk.clock = fakeNow;
+//	clockPub.publish(clk);
+
+	tf::Transform T;
+	tf::poseEigenToTF(omm.localTglobal.inverse(Eigen::Isometry), T);
+	tb->sendTransform(tf::StampedTransform(T, fakeNow, globalFrame, frame));
+
+	visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(omm.octree.get(), frame);
+	for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
+	{
+		m.ns = frame;
+		m.header.stamp = fakeNow;
+	}
+	pub.publish(occupiedNodesVis);
 }
 
 int main(int argc, char* argv[])
@@ -773,6 +800,16 @@ int main(int argc, char* argv[])
 
 	MPS_ASSERT(!pModel->getJointModelGroupNames().empty());
 
+	std::map<std::string, std::shared_ptr<MotionModel>> selfModels;
+	if (!loadLinkMotionModels(pModel.get(), selfModels))
+	{
+		ROS_ERROR("Model loading failed.");
+	}
+	selfModels.erase("victor_base_plate"); // HACK: camera always collides
+	selfModels.erase("victor_pedestal");
+	selfModels.erase("victor_left_arm_mount");
+	selfModels.erase("victor_right_arm_mount");
+
 	ros::ServiceClient segmentClient = nh.serviceClient<mps_msgs::SegmentGraph>("/segment_graph");
 	if (!segmentClient.waitForExistence(ros::Duration(3)))
 	{
@@ -792,24 +829,17 @@ int main(int argc, char* argv[])
 		ROS_ERROR("Frame match server not connected.");
 	}
 
-	std::unique_ptr<Scene> scene = std::make_unique<Scene>();
 
-	if (!loadLinkMotionModels(pModel.get(), scene->motionModels))
-	{
-		ROS_ERROR("Model loading failed.");
-	}
-	scene->motionModels.erase("victor_base_plate"); // HACK: camera always collides
-	scene->motionModels.erase("victor_pedestal");
-	scene->motionModels.erase("victor_left_arm_mount");
-	scene->motionModels.erase("victor_right_arm_mount");
+	std::shared_ptr<Scenario> scenario = std::make_shared<Scenario>();
+	scenario->mapServer = std::make_shared<LocalOctreeServer>(pnh);
+	scenario->listener = listener;
+	scenario->broadcaster = std::make_shared<tf::TransformBroadcaster>();
+	scenario->segmentationClient = std::make_shared<CachingRGBDSegmenter>(nh);
+	scenario->robotModel = pModel;
+//	scenario->loadManipulators(pModel);
 
-//	scene->loadManipulators(pModel);
-
-	scene->mapServer = std::make_shared<LocalOctreeServer>(pnh);
-	scene->visualize = true;
-	scene->listener = listener;
-	scene->broadcaster = std::make_shared<tf::TransformBroadcaster>();
-	scene->segmentationClient = std::make_shared<CachingRGBDSegmenter>(nh);
+//	std::unique_ptr<Scene> scene = std::make_unique<Scene>();
+	std::map<ros::Time, std::shared_ptr<Scene>> scenes;
 
 	segmentationPub = std::make_unique<image_transport::Publisher>(it.advertise("segmentation", 1));
 
@@ -821,9 +851,13 @@ int main(int argc, char* argv[])
 //	tracker = std::make_unique<CudaTracker>(5*step, listener);
 	tracker = std::make_unique<Tracker>(5*step, listener);
 
+	OctreeMotionModel omm;
+	omm.localTglobal = MotionModel::Pose::Identity();
+	omm.octree = std::make_shared<octomap::OcTree>(scenario->mapServer->m_res);
+
 	// TODO: Make step size variable based on average flow
 
-	CachingRGBDSegmenter::SegmentationCache& segmentations = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scene->segmentationClient)->cache;
+	CachingRGBDSegmenter::SegmentationCache& segmentations = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient)->cache;
 
 	while (ros::ok())
 	{
@@ -838,7 +872,7 @@ int main(int argc, char* argv[])
 
 			cv::Size nativeSize = tracker->rgb_buffer.begin()->second->image.size();
 
-			VideoSegmentationGraph G;
+			VideoSegmentationGraph<SEGMENT_TYPE::UCM> G;
 
 			std::vector<ros::Time> steps;
 			for (auto iter = tracker->rgb_buffer.begin(); iter != tracker->rgb_buffer.end(); std::advance(iter, step))
@@ -852,11 +886,17 @@ int main(int argc, char* argv[])
 			{
 				const ros::Time& tCurr = steps[i];
 
+				std::shared_ptr<Scene> scene = std::make_shared<Scene>();
+				scenes.insert({tCurr, scene});
+
+				scene->scenario = scenario;
+				scene->selfModels = selfModels;
+
+				scene->visualize = true;
+
 				// NB: We do this every loop because we shrink the box during the crop/filter process
-				Eigen::Vector4f maxExtent(0.4f, 0.6f, 0.5f, 1);
-				Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.020f, 1);
-				scene->minExtent = minExtent;//.head<3>().cast<double>();
-				scene->maxExtent = maxExtent;//.head<3>().cast<double>();
+				scene->minExtent = Eigen::Vector4f(-0.4f, -0.6f, -0.020f, 1);
+				scene->maxExtent = Eigen::Vector4f(0.4f, 0.6f, 0.5f, 1);
 				scene->cv_rgb_ptr = tracker->rgb_buffer[tCurr];
 				scene->cv_depth_ptr = tracker->depth_buffer[tCurr];
 				sensor_msgs::CameraInfo cam_info = tracker->cameraModel.cameraInfo();
@@ -971,7 +1011,7 @@ int main(int argc, char* argv[])
 				ucmLabelsToObjectLabelWithTime.insert({t, ucmLabelsToObjectLabel});
 			}
 
-			VideoSegmentationGraph objectG = compressGraph(G, ucmLabelsToObjectLabelWithTime);
+			VideoSegmentationGraph<SEGMENT_TYPE::BODY> objectG = compressGraph(G, ucmLabelsToObjectLabelWithTime);
 
 
 			MPS_ASSERT(segmentations.find(segmentations.rbegin()->first) != segmentations.end());
@@ -1038,7 +1078,7 @@ int main(int argc, char* argv[])
 
 			{
 				// Maps from bundle ID (id) to all segments contained in that "object". Reverse lookup of segments_to_bundles
-				std::map<int, std::set<SegmentIndex> > bundleMembership;
+				std::map<int, std::set<SegmentIndex<SEGMENT_TYPE::BODY>> > bundleMembership;
 				for (size_t t = 0; t < result->stamps.size(); ++t)
 				{
 					for (size_t i = 0; i < result->segments_to_bundles[t].keys.size(); ++i)
@@ -1048,21 +1088,21 @@ int main(int argc, char* argv[])
 				}
 
 				// Map from a segment ID to a vertex ID in the graph
-				SegmentLookup objectSegmentToNode;
-				for (VideoSegmentationGraph::vertex_descriptor vd : make_range(boost::vertices(objectG)))//objectG
+				SegmentLookup<SEGMENT_TYPE::BODY> objectSegmentToNode;
+				for (VideoSegmentationGraph<SEGMENT_TYPE::BODY>::vertex_descriptor vd : make_range(boost::vertices(objectG)))//objectG
 				{
-					const NodeProperties& np = objectG[vd];
+					const NodeProperties<SEGMENT_TYPE::BODY>& np = objectG[vd];
 					auto r = objectSegmentToNode.insert({{np.t, np.leafID}, vd}); MPS_ASSERT(r.second);
 				}
 
-				std::map<SegmentIndex, int> segmentToBundle;
+				std::map<SegmentIndex<SEGMENT_TYPE::BODY>, int> segmentToBundle;
 				visualizeObjectBundles(objectG, segmentations, segmentToBundle, bundle_colors);
 
 				// Eventually the matcher should handle this part...
 				// Connect from start frame to final frame
 				for (auto& bundle : bundleMembership)
 				{
-					std::deque<SegmentIndex> path = getObjectPath(objectG, objectSegmentToNode, *bundle.second.begin(), *bundle.second.rbegin());
+					std::deque<SegmentIndex<SEGMENT_TYPE::BODY>> path = getObjectPath(objectG, objectSegmentToNode, *bundle.second.begin(), *bundle.second.rbegin());
 					for (const auto& seg : path)
 					{
 						bundle.second.insert(seg);
@@ -1134,6 +1174,26 @@ int main(int argc, char* argv[])
 						{
 							std::cerr << "Got one: " << std::endl;
 							std::cerr << bTa.matrix() << std::endl;
+
+							const auto& scene1 = scenes.at(si1->t);
+							const auto& scene2 = scenes.at(si2->t);
+
+							for (const auto& seg : bundle.second)
+							{
+								if (seg.first == si1->t)
+								{
+									ObjectIndex obj = scene1->labelToIndexLookup[seg.second];
+									omm.observe(scene1->segments[obj], scene1->worldTcamera);
+								}
+							}
+							visualize(omm, scenario->broadcaster.get(), scene1->worldFrame, "1");
+							sleep(2);
+							omm.localTglobal.translation().x() += 0.1;
+							visualize(omm, scenario->broadcaster.get(), scene1->worldFrame, "1");
+
+
+
+
 						}
 						else
 						{
@@ -1152,6 +1212,24 @@ int main(int argc, char* argv[])
 					}
 				}
 				visualizeObjectBundles(objectG, segmentations, segmentToBundle, bundle_colors);
+
+
+				for (int i = 0; i < static_cast<int>(steps.size()) && ros::ok(); ++i)
+				{
+//					const ros::Time& tCurr = steps[i];
+//					const ros::Time& tPrev = steps[i-1];
+//
+//					const std::shared_ptr<Scene>& sceneCurr = scenes.at(tCurr);
+//					const std::shared_ptr<Scene>& scenePrev = scenes.at(tPrev);
+
+
+
+//					omm.observe(scene->segments.front(), scene->worldTcamera);
+//					visualize(omm, scenario->broadcaster.get(), scene->worldFrame, "1");
+//					sleep(2);
+//					omm.localTglobal.translation().x() += 0.1;
+//					visualize(omm, scenario->broadcaster.get(), scene->worldFrame, "1");
+				}
 			}
 
 //			std::vector<ComponentGraph> component_graphs;
@@ -1190,7 +1268,7 @@ int main(int argc, char* argv[])
 				visualizeVideoGraph(G, segmentations);
 			}
 
-			typedef std::map<VideoSegmentationGraph::vertex_descriptor, unsigned long> mapping_t;
+			typedef std::map<VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor, unsigned long> mapping_t;
 			typedef boost::shared_ptr<mapping_t> vertex_component_map;
 //			typedef boost::filtered_graph<VideoSegmentationGraph, boost::function<bool(VideoSegmentationGraph::edge_descriptor)>, boost::function<bool(VideoSegmentationGraph::vertex_descriptor)> > ComponentGraph;
 
@@ -1230,9 +1308,9 @@ int main(int argc, char* argv[])
 					video.insert({t, cv::Mat::zeros(nativeSize, CV_8UC3)});
 				}
 
-				for (VideoSegmentationGraph::vertex_descriptor vd : make_range(boost::vertices(G)))
+				for (VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor vd : make_range(boost::vertices(G)))
 				{
-					const NodeProperties& np = G[vd];
+					const NodeProperties<SEGMENT_TYPE::UCM>& np = G[vd];
 					cv::Mat(video.at(np.t), segmentations.at(np.t)->roi).setTo(bundle_colors[resp.labels[vd]], segmentations.at(np.t)->labels==np.leafID);
 				}
 

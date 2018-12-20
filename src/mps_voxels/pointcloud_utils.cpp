@@ -3,6 +3,7 @@
 //
 
 #include "mps_voxels/pointcloud_utils.h"
+#include "mps_voxels/assert.h"
 
 // Cropping
 #include <pcl/filters/crop_box.h>
@@ -55,6 +56,8 @@ pcl::PointCloud<PointT>::Ptr cropInCameraFrame(
 	const Eigen::Vector4f& maxExtent,
 	const Eigen::Affine3d& worldTcamera)
 {
+	for (int i = 0; i < 3; ++i) { MPS_ASSERT(minExtent[i] < maxExtent[i]); }
+
 	pcl::PointCloud<PointT>::Ptr cropped_cloud(new pcl::PointCloud<PointT>());
 	pcl::CropBox<PointT> boxFilter;
 	boxFilter.setMin(minExtent);

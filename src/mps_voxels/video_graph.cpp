@@ -5,30 +5,9 @@
 #include "mps_voxels/video_graph.h"
 #include "mps_voxels/assert.h"
 
-#include <boost/graph/astar_search.hpp>
 #include <boost/graph/dijkstra_shortest_paths.hpp>
 #include <boost/property_map/transform_value_property_map.hpp>
 
-
-template <class Graph, class CostType>
-class distance_heuristic : public boost::astar_heuristic<Graph, CostType>
-{
-public:
-	typedef typename boost::graph_traits<Graph>::vertex_descriptor Vertex;
-	distance_heuristic(const VideoSegmentationGraph& G_, Vertex goal_)
-		: G(G_), m_goal(goal_) {}
-
-	CostType operator()(Vertex u)
-	{
-		const NodeProperties& currentNode = G[u];
-		const NodeProperties& goalNode = G[m_goal];
-
-		return (currentNode.t-goalNode.t).toSec();
-	}
-private:
-	const VideoSegmentationGraph& G;
-	Vertex m_goal;
-};
 
 struct found_goal {}; // exception for termination
 
@@ -51,10 +30,12 @@ private:
 };
 
 
-std::deque<SegmentIndex> getObjectPath(const VideoSegmentationGraph& G, const SegmentLookup& segmentToNode, const SegmentIndex& from, const SegmentIndex& to)
+template <SEGMENT_TYPE T>
+std::deque<SegmentIndex<T>> getObjectPath(const VideoSegmentationGraph<T>& G, const SegmentLookup<T>& segmentToNode, const SegmentIndex<T>& from, const SegmentIndex<T>& to)
 {
+	using Vertex = typename VideoSegmentationGraph<T>::vertex_descriptor;
 	// Setup storage for intermediate values in A*
-	std::vector<VideoSegmentationGraph::vertex_descriptor> predecessor(boost::num_vertices(G));
+	std::vector<Vertex> predecessor(boost::num_vertices(G));
 	std::vector<double> distance(boost::num_vertices(G));
 
 	// Tell boost about the distance function and temporary storage
@@ -62,8 +43,8 @@ std::deque<SegmentIndex> getObjectPath(const VideoSegmentationGraph& G, const Se
 	auto pmap = boost::make_iterator_property_map(predecessor.begin(), boost::get(boost::vertex_index, G));
 	auto dmap = boost::make_iterator_property_map(distance.begin(), boost::get(boost::vertex_index, G));
 
-	VideoSegmentationGraph::vertex_descriptor start = segmentToNode.at(from);
-	VideoSegmentationGraph::vertex_descriptor goal = segmentToNode.at(to);
+	Vertex start = segmentToNode.at(from);
+	Vertex goal = segmentToNode.at(to);
 
 	MPS_ASSERT(start < boost::num_vertices(G));
 	MPS_ASSERT(goal < boost::num_vertices(G));
@@ -91,14 +72,14 @@ std::deque<SegmentIndex> getObjectPath(const VideoSegmentationGraph& G, const Se
 	{
 		boost::dijkstra_shortest_paths(G, start,
 		                               boost::weight_map(wmap).predecessor_map(pmap).distance_map(dmap).
-			                               visitor(goal_visitor<VideoSegmentationGraph::vertex_descriptor>(goal)));
+			                               visitor(goal_visitor<Vertex>(goal)));
 	}
 	catch (found_goal fg)
 	{
-		std::deque<SegmentIndex> res;
-		for(VideoSegmentationGraph::vertex_descriptor v = goal;; v = predecessor[v])
+		std::deque<SegmentIndex<T>> res;
+		for(Vertex v = goal;; v = predecessor[v])
 		{
-			const NodeProperties& np = G[v];
+			const NodeProperties<T>& np = G[v];
 			res.push_front({np.t, np.leafID});
 			if(predecessor[v] == v)
 				break;
@@ -109,3 +90,9 @@ std::deque<SegmentIndex> getObjectPath(const VideoSegmentationGraph& G, const Se
 	throw std::logic_error("Failed to find path.");
 	return {};
 }
+
+template
+std::deque<SegmentIndex<SEGMENT_TYPE::UCM>> getObjectPath(const VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, const SegmentLookup<SEGMENT_TYPE::UCM>& segmentToNode, const SegmentIndex<SEGMENT_TYPE::UCM>& from, const SegmentIndex<SEGMENT_TYPE::UCM>& to);
+
+template
+std::deque<SegmentIndex<SEGMENT_TYPE::BODY>> getObjectPath(const VideoSegmentationGraph<SEGMENT_TYPE::BODY>& G, const SegmentLookup<SEGMENT_TYPE::BODY>& segmentToNode, const SegmentIndex<SEGMENT_TYPE::BODY>& from, const SegmentIndex<SEGMENT_TYPE::BODY>& to);

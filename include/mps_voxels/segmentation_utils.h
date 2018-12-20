@@ -7,6 +7,7 @@
 
 #include "mps_voxels/ROI.h"
 #include "mps_voxels/PointT.h"
+#include "mps_voxels/ObjectIndex.h"
 
 #include <mps_msgs/SegmentRGBDAction.h>
 
@@ -69,9 +70,9 @@ public:
 		const sensor_msgs::CameraInfo& cam) const override;
 };
 
-std::vector<pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
+std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	const pcl::PointCloud<PointT>::Ptr& cloud, const cv::Mat& labels,
 	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi,
-	std::map<uint16_t, int>* labelToIndexLookup = nullptr);
+	std::map<uint16_t, ObjectIndex>* labelToIndexLookup = nullptr);
 
 #endif // MPS_VOXELS_SEGMENTATION_UTILS_H

@@ -231,6 +231,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/Manipulator.cpp
   src/${PROJECT_NAME}/VictorManipulator.cpp
   src/${PROJECT_NAME}/MotionModel.cpp
+  src/${PROJECT_NAME}/OctreeMotionModel.cpp
   src/${PROJECT_NAME}/ROI.cpp
   src/${PROJECT_NAME}/Tracker.cpp
   src/${PROJECT_NAME}/CudaTracker.cpp

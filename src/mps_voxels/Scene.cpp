@@ -21,8 +21,9 @@
 #include <pcl_ros/transforms.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/filters/voxel_grid.h>
 
-bool Scene::loadManipulators(robot_model::RobotModelPtr& pModel)
+bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 {
 	ros::NodeHandle nh;
 
@@ -111,21 +112,21 @@ bool Scene::convertImages(const sensor_msgs::ImageConstPtr& rgb_msg,
 bool Scene::loadAndFilterScene()
 {
 	if (!ros::ok()) { return false; }
-	if (!listener->waitForTransform(mapServer->getWorldFrame(), cameraModel.tfFrame(), ros::Time(0), ros::Duration(5.0)))
+	if (!scenario->listener->waitForTransform(scenario->mapServer->getWorldFrame(), cameraModel.tfFrame(), ros::Time(0), ros::Duration(5.0)))
 	{
-		ROS_WARN_STREAM("Failed to look up transform between '" << mapServer->getWorldFrame() << "' and '" << cameraModel.tfFrame() << "'.");
+		ROS_WARN_STREAM("Failed to look up transform between '" << scenario->mapServer->getWorldFrame() << "' and '" << cameraModel.tfFrame() << "'.");
 		return false;
 	}
 
-	setBBox(minExtent, maxExtent, mapServer->getOctree());
+	setBBox(minExtent, maxExtent, scenario->mapServer->getOctree());
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	mapServer->getOctree()->clear();
+	scenario->mapServer->getOctree()->clear();
 
 	// Get Octree
-	octomap::OcTree* octree = mapServer->getOctree();
-	worldFrame = mapServer->getWorldFrame();
+	octomap::OcTree* octree = scenario->mapServer->getOctree();
+	worldFrame = scenario->mapServer->getWorldFrame();
 	cameraFrame = cameraModel.tfFrame();
 	sceneOctree = octree;
 
@@ -137,7 +138,7 @@ bool Scene::loadAndFilterScene()
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	tf::StampedTransform cameraFrameInTableCoordinates;
-	listener->lookupTransform(cameraFrame, worldFrame, ros::Time(0), cameraFrameInTableCoordinates);
+	scenario->listener->lookupTransform(cameraFrame, worldFrame, ros::Time(0), cameraFrameInTableCoordinates);
 	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
 
 	cloud = imagesToCloud(cv_rgb_ptr->image, cv_depth_ptr->image, cameraModel);
@@ -156,8 +157,14 @@ bool Scene::loadAndFilterScene()
 	cropped_cloud = filterInCameraFrame(cropped_cloud);
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	mapServer->insertCloud(cropped_cloud, worldTcamera);
+	scenario->mapServer->insertCloud(cropped_cloud, worldTcamera);
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+	pcl::VoxelGrid<PointT> voxelFilter;
+	voxelFilter.setInputCloud(cropped_cloud);
+	double resolution = octree->getResolution();
+	voxelFilter.setLeafSize(resolution/2.0, resolution/2.0, resolution/2.0);
+	voxelFilter.filter(*cropped_cloud);
 
 
 	/////////////////////////////////////////////////////////////////
@@ -165,17 +172,17 @@ bool Scene::loadAndFilterScene()
 	/////////////////////////////////////////////////////////////////
 
 	// Update from robot state + TF
-	for (const auto& model : motionModels)
+	for (const auto& model : selfModels)
 	{
-		if (listener->waitForTransform(model.first, mapServer->getWorldFrame(), ros::Time(0), ros::Duration(5.0)))
+		if (scenario->listener->waitForTransform(model.first, scenario->mapServer->getWorldFrame(), ros::Time(0), ros::Duration(5.0)))
 		{
 			tf::StampedTransform stf;
-			listener->lookupTransform(model.first, mapServer->getWorldFrame(), ros::Time(0), stf);
+			scenario->listener->lookupTransform(model.first, scenario->mapServer->getWorldFrame(), ros::Time(0), stf);
 			tf::transformTFToEigen(stf, model.second->localTglobal);
 		}
-		else if (std::find(robotModel->getLinkModelNames().begin(), robotModel->getLinkModelNames().end(), model.first) != robotModel->getLinkModelNames().end())
+		else if (std::find(scenario->robotModel->getLinkModelNames().begin(), scenario->robotModel->getLinkModelNames().end(), model.first) != scenario->robotModel->getLinkModelNames().end())
 		{
-			ROS_ERROR_STREAM("Unable to compute transform from '" << mapServer->getWorldFrame() << "' to '" << model.first << "'.");
+			ROS_ERROR_STREAM("Unable to compute transform from '" << scenario->mapServer->getWorldFrame() << "' to '" << model.first << "'.");
 			return false;
 		}
 
@@ -199,7 +206,7 @@ bool Scene::loadAndFilterScene()
 			Eigen::Vector3d pt = (worldTcamera.cast<float>()*cropped_cloud->points[i].getVector3fMap()).cast<double>();
 			int m = 0;
 			double maxL = std::numeric_limits<double>::lowest();
-			for (const auto& model : motionModels)
+			for (const auto& model : selfModels)
 			{
 				double L = model.second->membershipLikelihood(pt, sensor);
 				if (L > 0.0 && L > maxL)
@@ -247,7 +254,7 @@ bool Scene::loadAndFilterScene()
 			Eigen::Vector3d pt(it.getX(), it.getY(), it.getZ());
 //			double size = octree->getNodeSize(it.getDepth());
 			int m = 0;
-			for (const auto& model : motionModels)
+			for (const auto& model : selfModels)
 			{
 //				Eigen::Vector3d p = model.second->localTglobal.inverse() * model.second->boundingSphere.center;
 //				pt -= ((p - pt).normalized() * size);
@@ -358,7 +365,7 @@ bool Scene::loadAndFilterScene()
 
 bool Scene::performSegmentation()
 {
-	segInfo = segmentationClient->segment(cv_rgb_cropped, cv_depth_cropped, cam_msg_cropped);
+	segInfo = scenario->segmentationClient->segment(cv_rgb_cropped, cv_depth_cropped, cam_msg_cropped);
 
 	if (!segInfo)
 	{
@@ -382,10 +389,12 @@ bool Scene::completeShapes()
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	approximateSegments.clear();
 	completedSegments.clear();
-	for (const pcl::PointCloud<PointT>::Ptr& segment_cloud : segments)
+	for (const auto& seg : segments)
 	{
 		if (!ros::ok()) { return false; }
 		assert(!segment_cloud->empty());
+
+		const pcl::PointCloud<PointT>::Ptr& segment_cloud = seg.second;
 
 		// Compute bounding box
 		Eigen::Vector3f min, max;
@@ -413,28 +422,28 @@ bool Scene::completeShapes()
 //			assert(node);
 //		}
 
-		if (completionClient->completionClient.exists())
+		if (scenario->completionClient->completionClient.exists())
 		{
-			completionClient->completeShape(min, max, worldTcamera.cast<float>(), sceneOctree, subtree.get(), false);
+			scenario->completionClient->completeShape(min, max, worldTcamera.cast<float>(), sceneOctree, subtree.get(), false);
 		}
 		setBBox(Eigen::Vector3f(-2,-2,-2), Eigen::Vector3f(2,2,2), subtree.get());
-		completedSegments.push_back(subtree);
+		completedSegments.insert({seg.first, subtree});
 
 
 		// Visualize approximate shape
 		visualization_msgs::Marker m;
 		auto approx = approximateShape(subtree.get());
-		approximateSegments.push_back(approx);
+		approximateSegments.insert({seg.first, approx});
 
 		// Search for this segment in past models
-//		MotionModel* model = matchModel(subtree, motionModels);
+//		MotionModel* model = matchModel(subtree, selfModels);
 //		if (!model)
 //		{
-//			std::string modelID = "completed_"+std::to_string(motionModels.size());
+//			std::string modelID = "completed_"+std::to_string(selfModels.size());
 //			auto newModel = std::make_unique<RigidMotionModel>();
 //			newModel->membershipShapes
-//			motionModels[modelID] = std::move(newModel);
-//			model = motionModels[modelID].get();
+//			selfModels[modelID] = std::move(newModel);
+//			model = selfModels[modelID].get();
 //		}
 
 	}
@@ -468,20 +477,30 @@ bool Scene::completeShapes()
 	{
 		const int nPts = static_cast<int>(occludedPts.size());
 		std::set<octomap::point3d, vector_less_than<3, octomap::point3d>> rejects;
-		#pragma omp parallel for schedule(dynamic)
-		for (size_t s = 0; s < completedSegments.size(); ++s)
+//		#pragma omp parallel for schedule(dynamic)
+		#pragma omp parallel
 		{
-			const std::shared_ptr<octomap::OcTree>& segment = completedSegments[s];
-			unsigned d = segment->getTreeDepth();
-			for (int i = 0; i < nPts; ++i)
+			#pragma omp single
 			{
-				octomap::OcTreeNode* node = segment->search(occludedPts[i], d);
-				if (node && node->getOccupancy() > 0.5)
+				for (const auto seg : completedSegments)
 				{
-					#pragma omp critical
+					#pragma omp task
 					{
-						rejects.insert(occludedPts[i]);
-						occlusionTree->setNodeValue(occludedPts[i], -std::numeric_limits<float>::infinity(), true);
+						const std::shared_ptr<octomap::OcTree>& segment = seg.second;
+						unsigned d = segment->getTreeDepth();
+						for (int i = 0; i<nPts; ++i)
+						{
+							octomap::OcTreeNode* node = segment->search(occludedPts[i], d);
+							if (node && node->getOccupancy()>0.5)
+							{
+								#pragma omp critical
+								{
+									rejects.insert(occludedPts[i]);
+									occlusionTree->setNodeValue(occludedPts[i], -std::numeric_limits<float>::infinity(),
+									                            true);
+								}
+							}
+						}
 					}
 				}
 			}
@@ -505,7 +524,7 @@ bool Scene::completeShapes()
 			Eigen::Vector3d pt(occludedPts[i].x(), occludedPts[i].y(), occludedPts[i].z());
 			int m = 0;
 			double maxL = std::numeric_limits<double>::lowest();
-			for (const auto& model : motionModels)
+			for (const auto& model : selfModels)
 			{
 				double L = model.second->membershipLikelihood(pt);
 				if (L > 0.0 && L > maxL)

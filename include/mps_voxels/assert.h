@@ -20,4 +20,13 @@
 	#define MPS_ASSERT(cond) MPS_UNUSED(cond)
 #endif
 
+
+template <typename Index, typename Container>
+inline void assert_in_range(const Index& idx, const Container& ctr)
+{
+	MPS_ASSERT(0 <= idx && idx < static_cast<Index>(ctr.size()));
+	MPS_UNUSED(idx);
+	MPS_UNUSED(ctr); // Suppress compiler warnings when in release mode
+}
+
 #endif //MPS_ASSERT_H

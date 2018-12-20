@@ -42,8 +42,42 @@
 #include <ros/time.h>
 
 
-using SegmentIndex = std::pair<ros::Time, int>;
+//using SegmentIndex = std::pair<ros::Time, int>;
 
+enum class SEGMENT_TYPE
+{
+	UCM,
+	BODY
+};
+
+template <SEGMENT_TYPE T>
+struct SegmentIndex
+{
+	ros::Time first = ros::Time(0);
+	long second = -1;
+
+//	SegmentIndex() : first(0.0), second(-1) {}
+//	SegmentIndex(const std::pair<ros::Time, int>& p) : first(p.first), second(p.second) {}
+
+	bool operator<(const SegmentIndex& other) const
+	{
+		if (first < other.first)
+		{
+			return true;
+		}
+		else if (first > other.first)
+		{
+			return false;
+		}
+		else
+		{
+			return second < other.second;
+		}
+	}
+};
+
+
+template <SEGMENT_TYPE T>
 struct NodeProperties
 {
 	ros::Time t; ///< Time index in video
@@ -80,9 +114,13 @@ iterator_pair<Iterator> make_range ( std::pair<Iterator, Iterator> p )
 	return iterator_pair<Iterator> ( p );
 }
 
-using VideoSegmentationGraph = boost::adjacency_list<boost::setS, boost::vecS, boost::undirectedS, NodeProperties, EdgeProperties>;
-using SegmentLookup = std::map<SegmentIndex, VideoSegmentationGraph::vertex_descriptor>;
+template <SEGMENT_TYPE T>
+using VideoSegmentationGraph = boost::adjacency_list<boost::setS, boost::vecS, boost::undirectedS, NodeProperties<T>, EdgeProperties>;
 
-std::deque<SegmentIndex> getObjectPath(const VideoSegmentationGraph& G, const SegmentLookup& segmentToNode, const SegmentIndex& from, const SegmentIndex& to);
+template <SEGMENT_TYPE T>
+using SegmentLookup = std::map<SegmentIndex<T>, typename VideoSegmentationGraph<T>::vertex_descriptor>;
+
+template <SEGMENT_TYPE T>
+std::deque<SegmentIndex<T>> getObjectPath(const VideoSegmentationGraph<T>& G, const SegmentLookup<T>& segmentToNode, const SegmentIndex<T>& from, const SegmentIndex<T>& to);
 
 #endif // MAP_GRAPH_H

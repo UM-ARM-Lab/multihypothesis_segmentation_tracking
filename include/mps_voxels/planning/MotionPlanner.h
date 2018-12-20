@@ -17,7 +17,7 @@ public:
 
 	Scene* env;
 
-	bool sampleObject(int& id, Pose& pushFrame) const;
+	bool sampleObject(ObjectIndex& id, Pose& pushFrame) const;
 };
 
 class MotionPlanner
@@ -41,7 +41,7 @@ public:
 
 	std::shared_ptr<Motion> samplePush(const robot_state::RobotState& robotState) const;
 	std::shared_ptr<Motion> sampleSlide(const robot_state::RobotState& robotState) const;
-	std::shared_ptr<Motion> pick(const robot_state::RobotState& robotState, const int target, std::set<int>& collisionObjects) const;
+	std::shared_ptr<Motion> pick(const robot_state::RobotState& robotState, const ObjectIndex target, std::set<ObjectIndex>& collisionObjects) const;
 
 	std::shared_ptr<Motion> recoverCrash(const robot_state::RobotState& robotState, const robot_state::RobotState& recoveryState) const;
 };

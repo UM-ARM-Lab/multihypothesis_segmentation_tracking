@@ -14,7 +14,7 @@ class Action
 {
 public:
 	using Pose = State::Pose;
-	using Poses = State::Poses;
+	using Poses = std::vector<Pose, Eigen::aligned_allocator<Pose>>;
 	virtual ~Action() = default;
 };
 

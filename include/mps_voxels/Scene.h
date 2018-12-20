@@ -6,6 +6,7 @@
 #define MPS_SCENE_H
 
 #include "mps_voxels/PointT.h"
+#include "mps_voxels/ObjectIndex.h"
 #include "mps_voxels/Manipulator.h"
 #include "mps_voxels/MotionModel.h"
 #include "segmentation_utils.h"
@@ -29,23 +30,41 @@ class LocalOctreeServer;
 class VoxelCompleter;
 class RGBDSegmenter;
 
-class Scene
+class Scenario
 {
 public:
 	using Pose = Eigen::Affine3d;
+	// Lifetime properties
 
-	bool visualize = true;
 	std::shared_ptr<tf::TransformListener> listener;
 	std::shared_ptr<tf::TransformBroadcaster> broadcaster;
+
+	std::shared_ptr<LocalOctreeServer> mapServer;
+	std::shared_ptr<VoxelCompleter> completionClient;
+	std::shared_ptr<RGBDSegmenter> segmentationClient;
 
 	robot_model::RobotModelPtr robotModel;
 	std::vector<std::shared_ptr<Manipulator>> manipulators;
 	std::map<std::string, std::shared_ptr<Manipulator>> jointToManipulator;
 
 	std::vector<std::pair<std::shared_ptr<shapes::Shape>, Pose>> staticObstacles;
-	std::map<std::string, std::shared_ptr<MotionModel>> motionModels;
 
 	std::default_random_engine rng;
+
+	bool loadManipulators(robot_model::RobotModelPtr& pModel);
+};
+
+class Scene
+{
+public:
+	using Pose = Scenario::Pose;
+
+	// Per-instant properties
+
+	bool visualize = true;
+
+	std::shared_ptr<Scenario> scenario;
+	std::map<std::string, std::shared_ptr<MotionModel>> selfModels;
 
 	cv_bridge::CvImagePtr cv_rgb_ptr;
 	cv_bridge::CvImagePtr cv_depth_ptr;
@@ -66,29 +85,23 @@ public:
 	cv_bridge::CvImage cv_depth_cropped;
 	sensor_msgs::CameraInfo cam_msg_cropped;
 	std::shared_ptr<SegmentationInfo> segInfo;
-	std::vector<pcl::PointCloud<PointT>::Ptr> segments;
-	std::map<uint16_t, int> labelToIndexLookup;
+	std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segments;
+	std::map<uint16_t, ObjectIndex> labelToIndexLookup; ///< Carries body segmentation to object index in this scene
 
 	octomap::OcTree* sceneOctree;
-	std::map<int, octomap::point3d_collection> objectToShadow;
-	std::map<octomap::point3d, int, vector_less_than<3, octomap::point3d>> coordToObject;
-	std::map<octomap::point3d, int, vector_less_than<3, octomap::point3d>> surfaceCoordToObject;
-	std::vector<std::shared_ptr<octomap::OcTree>> completedSegments;
-	std::vector<std::shared_ptr<shapes::Mesh>> approximateSegments;
+	std::map<ObjectIndex, octomap::point3d_collection> objectToShadow;
+	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> coordToObject;
+	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> surfaceCoordToObject;
+	std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>> completedSegments;
+	std::map<ObjectIndex, std::shared_ptr<shapes::Mesh>> approximateSegments;
 	octomap::point3d_collection occludedPts;
 	std::shared_ptr<octomap::OcTree> occlusionTree;
 
-	std::set<int> obstructions;
+	std::set<ObjectIndex> obstructions;
 
 	static const std::string CLUTTER_NAME;
 	collision_detection::WorldConstPtr collisionWorld;
 	collision_detection::WorldPtr computeCollisionWorld();
-
-	std::shared_ptr<LocalOctreeServer> mapServer;
-	std::shared_ptr<VoxelCompleter> completionClient;
-	std::shared_ptr<RGBDSegmenter> segmentationClient;
-
-	bool loadManipulators(robot_model::RobotModelPtr& pModel);
 
 	bool convertImages(const sensor_msgs::ImageConstPtr& rgb_msg,
 	                   const sensor_msgs::ImageConstPtr& depth_msg,

@@ -391,7 +391,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	{
 		visualization_msgs::MarkerArray markers;
 		int id = 0;
-		for (const auto& model : planningEnvironment->motionModels)
+		for (const auto& model : planningEnvironment->selfModels)
 		{
 			visualization_msgs::Marker m;
 			m.ns = "collision";
@@ -744,7 +744,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	if (trajectoryClient->isServerConnected())
 	{
 		// For safety sake
-		for (auto& manip : planningEnvironment->manipulators)
+		for (auto& manip : planningEnvironment->scenario->manipulators)
 		{
 			manip->configureHardware();
 			ros::Duration(0.5).sleep();
@@ -847,31 +847,34 @@ int main(int argc, char* argv[])
 		= std::make_shared<robot_model_loader::RobotModelLoader>();
 	pModel = mpLoader->getModel();
 
-	planningEnvironment = std::make_unique<Scene>();
+	std::shared_ptr<Scenario> scenario = std::make_shared<Scenario>();
 
-	if (!loadLinkMotionModels(pModel.get(), planningEnvironment->motionModels))
+	planningEnvironment = std::make_unique<Scene>();
+	planningEnvironment->scenario = scenario;
+
+	if (!loadLinkMotionModels(pModel.get(), planningEnvironment->selfModels))
 	{
 		ROS_ERROR("Model loading failed.");
 	}
-	planningEnvironment->motionModels.erase("victor_base_plate"); // HACK: camera always collides
-	planningEnvironment->motionModels.erase("victor_pedestal");
-	planningEnvironment->motionModels.erase("victor_left_arm_mount");
-	planningEnvironment->motionModels.erase("victor_right_arm_mount");
+	planningEnvironment->selfModels.erase("victor_base_plate"); // HACK: camera always collides
+	planningEnvironment->selfModels.erase("victor_pedestal");
+	planningEnvironment->selfModels.erase("victor_left_arm_mount");
+	planningEnvironment->selfModels.erase("victor_right_arm_mount");
 
 	assert(!pModel->getJointModelGroupNames().empty());
 
-	planningEnvironment->loadManipulators(pModel);
+	scenario->loadManipulators(pModel);
 
 	planner = std::make_shared<MotionPlanner>();
 	planner->env = planningEnvironment.get();
 	planner->objectSampler.env = planningEnvironment.get();
 	planningEnvironment->worldFrame = mapServer->getWorldFrame();
 	planningEnvironment->visualize = true;
-	planningEnvironment->listener = listener;
-	planningEnvironment->broadcaster = broadcaster;
-	planningEnvironment->mapServer = mapServer;
-	planningEnvironment->completionClient = completionClient;
-	planningEnvironment->segmentationClient = segmentationClient;
+	scenario->listener = listener;
+	scenario->broadcaster = broadcaster;
+	scenario->mapServer = mapServer;
+	scenario->completionClient = completionClient;
+	scenario->segmentationClient = segmentationClient;
 
 	const std::string mocapFrame = "world_origin";
 	if (listener->waitForTransform(mapServer->getWorldFrame(), mocapFrame, ros::Time(0), ros::Duration(5.0)))
@@ -889,7 +892,7 @@ int main(int argc, char* argv[])
 			wall->size[2] = 3;
 			Eigen::Affine3d pose = Eigen::Affine3d::Identity();
 			pose.translation() = Eigen::Vector3d(2.0, 1.0, ((0==i)?1.0:-1.0));
-			planningEnvironment->staticObstacles.push_back({wall, tableTmocap*pose});
+			scenario->staticObstacles.push_back({wall, tableTmocap*pose});
 		}
 		auto table = std::make_shared<shapes::Box>();
 		table->size[0] = 0.8;
@@ -897,7 +900,7 @@ int main(int argc, char* argv[])
 		table->size[2] = 0.1;
 		Eigen::Affine3d pose = Eigen::Affine3d::Identity();
 		pose.translation() = Eigen::Vector3d(0, 0, -table->size[2]/2.0);
-		planningEnvironment->staticObstacles.push_back({table, pose});
+		scenario->staticObstacles.push_back({table, pose});
 	}
 	else
 	{
