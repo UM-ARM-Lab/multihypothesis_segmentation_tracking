@@ -103,6 +103,8 @@ public:
 	collision_detection::WorldConstPtr collisionWorld;
 	collision_detection::WorldPtr computeCollisionWorld();
 
+	ros::Time getTime() const { return cv_rgb_ptr->header.stamp; }
+
 	bool convertImages(const sensor_msgs::ImageConstPtr& rgb_msg,
 	                   const sensor_msgs::ImageConstPtr& depth_msg,
 	                   const sensor_msgs::CameraInfo& cam_msg);

@@ -54,7 +54,7 @@ template <SEGMENT_TYPE T>
 struct SegmentIndex
 {
 	ros::Time first = ros::Time(0);
-	long second = -1;
+	long second = -1; ///< Segmentation label for this segment
 
 //	SegmentIndex() : first(0.0), second(-1) {}
 //	SegmentIndex(const std::pair<ros::Time, int>& p) : first(p.first), second(p.second) {}

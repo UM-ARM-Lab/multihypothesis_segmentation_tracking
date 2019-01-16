@@ -103,8 +103,8 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi,
 	std::map<uint16_t, ObjectIndex>* labelToIndexLookup)
 {
-	assert(roi.width == labels.cols);
-	assert(roi.height == labels.rows);
+	MPS_ASSERT(roi.width == labels.cols);
+	MPS_ASSERT(roi.height == labels.rows);
 	using LabelT = uint16_t;
 	const LabelT BUFFER_VALUE = std::numeric_limits<LabelT>::max();
 	std::set<LabelT> uniqueLabels = unique(labels);
@@ -145,13 +145,14 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 		}
 	}
 
-	const int threshold = 100;
+	const int nNeighbors = 100;
+	const int sizeThreshold = 100;
 
 	for (auto& segment : segment_clouds)
 	{
-		if (segment.second->size() >= threshold)
+		if (segment.second->size() >= nNeighbors)
 		{
-			segment.second = filterOutliers(segment.second, threshold);
+			segment.second = filterOutliers(segment.second, nNeighbors);
 		}
 	}
 
@@ -167,13 +168,13 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> retVal;
 	for (auto& pair : segment_clouds)
 	{
-		if (pair.second->size() >= threshold)
+		if (pair.second->size() >= sizeThreshold)
 		{
 			ObjectIndex objID{-(static_cast<long>(retVal.size()))}; // retVal.size()-1
 			retVal.insert({objID, pair.second});
 			if (labelToIndexLookup)
 			{
-				auto res = (*labelToIndexLookup).insert({pair.first, objID}); MPS_ASSERT(res.second);
+				auto res = labelToIndexLookup->insert({pair.first, objID}); MPS_ASSERT(res.second);
 			}
 		}
 	}

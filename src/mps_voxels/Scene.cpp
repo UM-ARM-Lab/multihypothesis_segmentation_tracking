@@ -112,7 +112,7 @@ bool Scene::convertImages(const sensor_msgs::ImageConstPtr& rgb_msg,
 bool Scene::loadAndFilterScene()
 {
 	if (!ros::ok()) { return false; }
-	if (!scenario->listener->waitForTransform(scenario->mapServer->getWorldFrame(), cameraModel.tfFrame(), ros::Time(0), ros::Duration(5.0)))
+	if (!scenario->listener->waitForTransform(scenario->mapServer->getWorldFrame(), cameraModel.tfFrame(), getTime(), ros::Duration(5.0)))
 	{
 		ROS_WARN_STREAM("Failed to look up transform between '" << scenario->mapServer->getWorldFrame() << "' and '" << cameraModel.tfFrame() << "'.");
 		return false;
@@ -138,7 +138,7 @@ bool Scene::loadAndFilterScene()
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	tf::StampedTransform cameraFrameInTableCoordinates;
-	scenario->listener->lookupTransform(cameraFrame, worldFrame, ros::Time(0), cameraFrameInTableCoordinates);
+	scenario->listener->lookupTransform(cameraFrame, worldFrame, getTime(), cameraFrameInTableCoordinates);
 	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
 
 	cloud = imagesToCloud(cv_rgb_ptr->image, cv_depth_ptr->image, cameraModel);
@@ -174,10 +174,10 @@ bool Scene::loadAndFilterScene()
 	// Update from robot state + TF
 	for (const auto& model : selfModels)
 	{
-		if (scenario->listener->waitForTransform(model.first, scenario->mapServer->getWorldFrame(), ros::Time(0), ros::Duration(5.0)))
+		if (scenario->listener->waitForTransform(model.first, scenario->mapServer->getWorldFrame(), getTime(), ros::Duration(5.0)))
 		{
 			tf::StampedTransform stf;
-			scenario->listener->lookupTransform(model.first, scenario->mapServer->getWorldFrame(), ros::Time(0), stf);
+			scenario->listener->lookupTransform(model.first, scenario->mapServer->getWorldFrame(), getTime(), stf);
 			tf::transformTFToEigen(stf, model.second->localTglobal);
 		}
 		else if (std::find(scenario->robotModel->getLinkModelNames().begin(), scenario->robotModel->getLinkModelNames().end(), model.first) != scenario->robotModel->getLinkModelNames().end())
@@ -309,7 +309,7 @@ bool Scene::loadAndFilterScene()
 	/////////////////////////////////////////////////////////////////
 	/// Generate an ROI from the cropped, filtered cloud
 	/////////////////////////////////////////////////////////////////
-	pile_cloud = filterPlane(cropped_cloud, 0.02);
+	pile_cloud = filterPlane(cropped_cloud, 0.02, worldTcamera.linear().col(2).cast<float>());
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 //	pile_cloud = filterSmallClusters(pile_cloud, 1000, 0.005); // sqrt(cloud->size())/50
 //	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
@@ -341,7 +341,7 @@ bool Scene::loadAndFilterScene()
 		}
 
 		roi = cv::boundingRect(pile_points);
-		const int buffer = 25;
+		const int buffer = 50; //25
 		if (buffer < roi.x) { roi.x -= buffer; roi.width += buffer; }
 		if (roi.x+roi.width < static_cast<int>(cameraModel.cameraInfo().width)-buffer) { roi.width += buffer; }
 		if (buffer < roi.y) { roi.y -= buffer; roi.height += buffer; }
@@ -379,6 +379,14 @@ bool Scene::performSegmentation()
 	{
 		ROS_WARN_STREAM("No clusters were detected!");
 		return false;
+	}
+
+	for (const auto label : unique(segInfo->objectness_segmentation->image))
+	{
+		if (labelToIndexLookup.find(label) == labelToIndexLookup.end())
+		{
+			segInfo->objectness_segmentation->image.setTo(0, label == segInfo->objectness_segmentation->image);
+		}
 	}
 
 	return true;

@@ -29,7 +29,7 @@ struct SegmentationInfo
 	cv::Mat centroids2;
 	cv::Mat stats2;
 	cv::Mat display_contours;
-	cv::Mat labels;
+	cv::Mat labels; ///< Labels2 downsampled to the original size
 	cv_bridge::CvImagePtr objectness_segmentation;
 };
 

@@ -27,7 +27,8 @@ pcl::PointCloud<PointT>::Ptr filterOutliers(
 
 pcl::PointCloud<PointT>::Ptr filterPlane(
 	pcl::PointCloud<PointT>::Ptr& cloud,
-	const double distanceThreshold = 0.01);
+	const double distanceThreshold = 0.01,
+	const Eigen::Vector3f& normal = Eigen::Vector3f::Zero());
 
 pcl::PointCloud<PointT>::Ptr filterSmallClusters(
 	pcl::PointCloud<PointT>::Ptr& cloud,

@@ -87,7 +87,7 @@ std::deque<SegmentIndex<T>> getObjectPath(const VideoSegmentationGraph<T>& G, co
 		return res;
 	}
 
-	throw std::logic_error("Failed to find path.");
+//	throw std::logic_error("Failed to find path.");
 	return {};
 }
 

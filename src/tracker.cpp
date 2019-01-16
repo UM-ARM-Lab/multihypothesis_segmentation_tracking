@@ -307,15 +307,24 @@ std::map<std::pair<uint16_t, uint16_t>, double> computeUcmDual(const cv::Mat& la
 	return neighbors;
 }
 
+#define REQUIRE_OBJECTNESS_IN_GRAPH true
 
-void addToGraph(VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, const cv::Mat& ucm, const cv::Mat& full_labels, const ros::Time k)
+void addToGraph(VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, const SegmentationInfo& si)
 {
+	const cv::Mat& ucm = si.ucm2;
+	const cv::Mat& full_labels = si.labels2;
+	const ros::Time k = si.t;
+
 	// Frame index, label value
 	SegmentLookup<SEGMENT_TYPE::UCM> segmentToNode;
 
 	for (const auto lbl : unique(full_labels))
 	{
 		if (0 == lbl) { continue; }
+#if REQUIRE_OBJECTNESS_IN_GRAPH
+		if (cv::countNonZero((0 != si.objectness_segmentation->image) & (lbl == si.labels)) < cv::countNonZero(lbl == si.labels)/4) { continue; }
+#endif
+
 		VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor v = boost::add_vertex(NodeProperties<SEGMENT_TYPE::UCM>({k, lbl}), G);
 		segmentToNode.insert({{k, lbl}, v});
 	}
@@ -328,18 +337,29 @@ void addToGraph(VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, const cv::Mat& ucm
 		double dist = edge.second;
 		if (dist <= 0 || 1.0 < dist) { throw std::runtime_error("Ultrametric max distance should be <= 1.0"); }
 
-		MPS_ASSERT(segmentToNode.find({k, p}) != segmentToNode.end());
-		MPS_ASSERT(segmentToNode.find({k, q}) != segmentToNode.end());
+		VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor s, t;
+		const auto a = segmentToNode.find({k, p});
+		const auto b = segmentToNode.find({k, q});
 
-		VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor s = segmentToNode[{k, p}];
-		VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor t = segmentToNode[{k, q}];
+#if REQUIRE_OBJECTNESS_IN_GRAPH
+		if (a == segmentToNode.end() || b == segmentToNode.end()) { continue; }
+#else
+		MPS_ASSERT(a != segmentToNode.end());
+		MPS_ASSERT(b != segmentToNode.end());
+#endif
+
+		s = a->second;
+		t = b->second;
+
 		boost::add_edge(s, t, {1.0/(dist+1e-4)}, G);
 	}
 
+#if !REQUIRE_OBJECTNESS_IN_GRAPH
 	for (VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor vd : make_range(boost::vertices(G)))
 	{
 		MPS_ASSERT(boost::out_degree(vd, G) > 0);
 	}
+#endif
 }
 
 void joinFrameGraphs(VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, const SegmentationInfo& iInfo, const SegmentationInfo& jInfo, const Tracker::Flow2D& flow)
@@ -385,7 +405,17 @@ void joinFrameGraphs(VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, const Segment
 			continue;
 		}
 
-		auto res = boost::add_edge(segmentToNode.at({i, iLabel}), segmentToNode.at({j, jLabel}), G);
+		auto a = segmentToNode.find({i, iLabel});
+		auto b = segmentToNode.find({j, jLabel});
+
+#if REQUIRE_OBJECTNESS_IN_GRAPH
+		if (a == segmentToNode.end() || b == segmentToNode.end()) { continue; }
+#else
+		MPS_ASSERT(a != segmentToNode.end());
+		MPS_ASSERT(b != segmentToNode.end());
+#endif
+
+		auto res = boost::add_edge(a->second, b->second, G);
 		EdgeProperties& eProps = G[res.first];
 		if (eProps.affinity == 0) { eProps.affinity = 1.0; }
 		eProps.affinity += SIFT_MATCH_WEIGHT;
@@ -447,8 +477,38 @@ void joinMotionCliques(VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, const Segme
 	}
 }
 
+void reinforceObjectEdges(VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, const std::map<ros::Time, std::shared_ptr<SegmentationInfo>>& segmentations)
+{
+	using Vertex = VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor;
+	using Edge = VideoSegmentationGraph<SEGMENT_TYPE::UCM>::edge_descriptor;
+
+	for (Edge ed : make_range(boost::edges(G)))
+	{
+		Vertex u = boost::source(ed, G);
+		Vertex v = boost::target(ed, G);
+
+		EdgeProperties& ep = G[ed];
+		const NodeProperties<SEGMENT_TYPE::UCM>& Gu = G[u];
+		const NodeProperties<SEGMENT_TYPE::UCM>& Gv = G[v];
+
+		if (Gu.t != Gv.t) { continue; }
+
+		const std::shared_ptr<SegmentationInfo>& si = segmentations.at(Gu.t);
+
+		const cv::Mat& C = si->centroids2;
+
+		cv::Point2f cu(C.at<double>(Gu.leafID, 0)/2.0, C.at<double>(Gu.leafID, 1)/2.0);
+		cv::Point2f cv(C.at<double>(Gv.leafID, 0)/2.0, C.at<double>(Gv.leafID, 1)/2.0);
+
+		if (si->objectness_segmentation->image.at<uint16_t>(cu) == si->objectness_segmentation->image.at<uint16_t>(cv))
+		{
+			ep.affinity += SIFT_MATCH_WEIGHT / 5.0;
+		}
+	}
+}
+
 #include <pcl_ros/point_cloud.h>
-void visualizeVideoGraph(const VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, std::map<ros::Time, std::shared_ptr<SegmentationInfo>> segmentations)//const std::vector<cv::Mat>& imgs, const std::vector<cv::Mat>& centroids)
+void visualizeVideoGraph(const VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, const std::map<ros::Time, std::shared_ptr<SegmentationInfo>>& segmentations)//const std::vector<cv::Mat>& imgs, const std::vector<cv::Mat>& centroids)
 {
 	using Vertex = VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor;
 	using Edge = VideoSegmentationGraph<SEGMENT_TYPE::UCM>::edge_descriptor;
@@ -547,7 +607,7 @@ void visualizeVideoGraph(const VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, std
 	edgePub.publish(m);
 }
 
-void visualizeObjectBundles(const VideoSegmentationGraph<SEGMENT_TYPE::BODY>& G, std::map<ros::Time, std::shared_ptr<SegmentationInfo>> segmentations, std::map<SegmentIndex<SEGMENT_TYPE::BODY>, int> segmentToBundle, std::map<int, cv::Scalar> bundleColors)//const std::vector<cv::Mat>& imgs, const std::vector<cv::Mat>& centroids)
+void visualizeObjectBundles(const VideoSegmentationGraph<SEGMENT_TYPE::BODY>& G, std::map<ros::Time, std::shared_ptr<SegmentationInfo>> segmentations, std::map<SegmentIndex<SEGMENT_TYPE::BODY>, BundleIndex> segmentToBundle, std::map<BundleIndex, cv::Scalar> bundleColors)//const std::vector<cv::Mat>& imgs, const std::vector<cv::Mat>& centroids)
 {
 	using Vertex = VideoSegmentationGraph<SEGMENT_TYPE::BODY>::vertex_descriptor;
 	using Edge = VideoSegmentationGraph<SEGMENT_TYPE::BODY>::edge_descriptor;
@@ -570,14 +630,14 @@ void visualizeObjectBundles(const VideoSegmentationGraph<SEGMENT_TYPE::BODY>& G,
 			for (int v = 1; v < img.rows; ++v)
 			{
 				int label = img.at<uint16_t>(v, u);
-				std::map<SegmentIndex<SEGMENT_TYPE::BODY>, int>::const_iterator iter = segmentToBundle.find({pair.first, label});
+				auto iter = segmentToBundle.find({pair.first, label});
 				if (iter == segmentToBundle.end())
 				{
 //					std::cerr << "??" << std::endl;
 					++k;
 					continue;
 				}
-				int bundle = iter->second;
+				BundleIndex bundle = iter->second;
 				auto color = bundleColors.at(bundle);
 				pcl::PointXYZRGB pt(color[2], color[1], color[0]);
 				pt.x = UV_SCALE * (u+pair.second->roi.x);
@@ -664,6 +724,50 @@ void visualizeObjectBundles(const VideoSegmentationGraph<SEGMENT_TYPE::BODY>& G,
 	usleep(100000);
 }
 
+VideoSegmentationGraph<SEGMENT_TYPE::UCM> subgraph(const VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G1, const std::vector<int>& labels, const int label)
+{
+	using Vertex = VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor;
+	using Edge = VideoSegmentationGraph<SEGMENT_TYPE::UCM>::edge_descriptor;
+
+	VideoSegmentationGraph<SEGMENT_TYPE::UCM> G2;
+
+	SegmentLookup<SEGMENT_TYPE::UCM> segmentToNode;
+	for (Vertex vd : make_range(boost::vertices(G1)))
+	{
+		if (labels[vd] == label)
+		{
+			const NodeProperties<SEGMENT_TYPE::UCM>& np = G1[vd];
+			Vertex vd2 = boost::add_vertex(np, G2);
+			auto r = segmentToNode.insert({{np.t, np.leafID}, vd2});
+			MPS_ASSERT(r.second);
+		}
+	}
+
+
+	for (const Edge ed : make_range(boost::edges(G1)))
+	{
+		Vertex u = boost::source(ed, G1);
+		Vertex v = boost::target(ed, G1);
+
+		const EdgeProperties& ep = G1[ed];
+		const NodeProperties<SEGMENT_TYPE::UCM>& Gu = G1[u];
+		const NodeProperties<SEGMENT_TYPE::UCM>& Gv = G1[v];
+
+		VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor s, t;
+		const auto a = segmentToNode.find({Gu.t, Gu.leafID});
+		const auto b = segmentToNode.find({Gv.t, Gv.leafID});
+
+		if (a == segmentToNode.end() || b == segmentToNode.end()) { continue; }
+
+		s = a->second;
+		t = b->second;
+
+		boost::add_edge(s, t, ep, G2);
+	}
+
+	return G2;
+}
+
 void getUcmObjectMappings(const SegmentationInfo& si, std::map<uint16_t, uint16_t>& ucmLabelsToObjectLabel, std::map<uint16_t, std::set<uint16_t> >& objectLabelToUcmLabels)
 {
 	MPS_ASSERT(si.labels.size() == si.objectness_segmentation->image.size());
@@ -739,7 +843,7 @@ VideoSegmentationGraph<SEGMENT_TYPE::BODY> compressGraph(const VideoSegmentation
 	size_t num_components = boost::connected_components(G2, boost::associative_property_map<mapping_t>(*mapping));
 	if (num_components > 1)
 	{
-		throw std::logic_error("Graph is disconnected.");
+//		throw std::logic_error("Graph is disconnected.");
 	}
 	else if (num_components == 0)
 	{
@@ -789,10 +893,12 @@ int main(int argc, char* argv[])
 	setIfMissing(pnh, "frame_id", "table_surface");
 	setIfMissing(pnh, "resolution", 0.010);
 
-	auto listener = std::make_shared<tf::TransformListener>();
+	auto listener = std::make_shared<tf::TransformListener>(ros::Duration(60.0));
 
 	image_transport::ImageTransport it(nh);
 //	image_transport::TransportHints hints("compressed", ros::TransportHints(), pnh);
+
+	ros::Publisher pcPub = nh.advertise<pcl::PointCloud<pcl::PointXYZRGB>>("pile_points", 1, true);
 
 	std::shared_ptr<robot_model_loader::RobotModelLoader> mpLoader
 		= std::make_shared<robot_model_loader::RobotModelLoader>();
@@ -847,13 +953,14 @@ int main(int argc, char* argv[])
 	cv::namedWindow("contours", CV_WINDOW_NORMAL);
 	cv::namedWindow("labels", CV_WINDOW_NORMAL);
 
-	const int step = 3;
-//	tracker = std::make_unique<CudaTracker>(5*step, listener);
-	tracker = std::make_unique<Tracker>(5*step, listener);
+	const int step = 8;//3;
+	tracker = std::make_unique<CudaTracker>(20*step, listener);
+//	tracker = std::make_unique<Tracker>(5*step, listener);
 
-	OctreeMotionModel omm;
-	omm.localTglobal = MotionModel::Pose::Identity();
-	omm.octree = std::make_shared<octomap::OcTree>(scenario->mapServer->m_res);
+	std::map<BundleIndex, std::shared_ptr<OctreeMotionModel>> omms;
+//	OctreeMotionModel omm;
+//	omm.localTglobal = MotionModel::Pose::Identity();
+//	omm.octree = std::make_shared<octomap::OcTree>(scenario->mapServer->m_res);
 
 	// TODO: Make step size variable based on average flow
 
@@ -909,10 +1016,11 @@ int main(int argc, char* argv[])
 				sceneSuccess = scene->performSegmentation();
 				if (!sceneSuccess) { throw std::runtime_error(":("); }
 
-				const SegmentationInfo& si = *segmentations[tCurr];
+				const SegmentationInfo& si = *segmentations.at(tCurr);
 
 				double alpha = 0.75;
 				cv::Mat labelColorsMap = colorByLabel(si.objectness_segmentation->image);
+				labelColorsMap.setTo(0, 0 == si.objectness_segmentation->image);
 				labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*si.rgb;
 				cv::imshow("segmentation", labelColorsMap);
 				cv::waitKey(1);
@@ -928,8 +1036,12 @@ int main(int argc, char* argv[])
 				{
 					segmentationPub->publish(cv_bridge::CvImage(tracker->cameraModel.cameraInfo().header, "bgr8", labelColorsMap).toImageMsg());
 				}
+				scene->pile_cloud->header.frame_id = scene->cameraFrame;
+				pcl_conversions::toPCL(ros::Time::now(), scene->pile_cloud->header.stamp);
+				pcPub.publish(scene->pile_cloud);
+				ros::spinOnce();
 
-				addToGraph(G, si.ucm2, si.labels2, tCurr);
+				addToGraph(G, si);//.ucm2, si.labels2, tCurr);
 
 				if (i >= 1)
 				{
@@ -995,6 +1107,7 @@ int main(int argc, char* argv[])
 */
 					}
 				}
+				visualizeVideoGraph(G, segmentations);
 			}
 
 			std::map<ros::Time, std::map<uint16_t, uint16_t>> ucmLabelsToObjectLabelWithTime;
@@ -1013,6 +1126,28 @@ int main(int argc, char* argv[])
 
 			VideoSegmentationGraph<SEGMENT_TYPE::BODY> objectG = compressGraph(G, ucmLabelsToObjectLabelWithTime);
 
+			// Filter for segments that have objects
+//			{
+//				boost::graph_traits<VideoSegmentationGraph<SEGMENT_TYPE::BODY>>::vertex_iterator vi, vi_end, next;
+//				boost::tie(vi, vi_end) = boost::vertices(objectG);
+//				for (next = vi; vi != vi_end; vi = next)
+//				{
+//					++next;
+//					const auto seg = objectG[*vi];
+//					const auto& lookup = scenes.at(seg.t)->labelToIndexLookup;
+//					if (lookup.find(seg.leafID) == lookup.end())
+//					{
+//						std::cerr << "Rejected: <" << seg.t << "," << seg.leafID << ">." << std::endl;
+//						boost::clear_vertex(*vi, objectG);
+//						boost::remove_vertex(*vi, objectG);
+//						// Remove invalidates iterators, start over
+//						boost::tie(vi, vi_end) = boost::vertices(objectG);
+//						next = vi;
+//					}
+//				}
+//				MPS_ASSERT(boost::num_vertices(objectG) > 0);
+//			}
+
 
 			MPS_ASSERT(segmentations.find(segmentations.rbegin()->first) != segmentations.end());
 			MPS_ASSERT(segmentations.rbegin()->first == segmentations.rbegin()->second->t);
@@ -1022,15 +1157,15 @@ int main(int argc, char* argv[])
 			auto res = matchClient.sendGoalAndWait(g);
 			if (!res.isDone() || res.state_ != actionlib::SimpleClientGoalState::SUCCEEDED) { throw std::runtime_error("Matching failed."); }
 
-			mps_msgs::MatchFrameSegmentsResultConstPtr result = matchClient.getResult();
-			if (!result) { continue; }
-			std::map<int, cv::Scalar> bundle_colors;
+			mps_msgs::MatchFrameSegmentsResultConstPtr frameMatchResult = matchClient.getResult();
+			if (!frameMatchResult) { continue; }
+			std::map<BundleIndex, cv::Scalar> bundle_colors;
 			cv::RNG rng(0);
-			for (const auto& b : result->segments_to_bundles)
+			for (const auto& b : frameMatchResult->segments_to_bundles)
 			{
 				for (const auto v : b.values)
 				{
-					bundle_colors[v] = randomColor(rng);
+					bundle_colors[BundleIndex{v}] = randomColor(rng);
 				}
 			}
 
@@ -1038,20 +1173,20 @@ int main(int argc, char* argv[])
 
 			{
 				std::map<ros::Time, cv::Mat> video;
-				for (const ros::Time& t : result->stamps)
+				for (const ros::Time& t : frameMatchResult->stamps)
 				{
 					video.insert({t, cv::Mat::zeros(nativeSize, CV_8UC3)});
 				}
 
-				for (size_t i = 0; i < result->segments_to_bundles.size(); ++i)
+				for (size_t i = 0; i < frameMatchResult->segments_to_bundles.size(); ++i)
 				{
-					const ros::Time& t = result->stamps[i];
-					const mps_msgs::IndexMap& b = result->segments_to_bundles[i];
+					const ros::Time& t = frameMatchResult->stamps[i];
+					const mps_msgs::IndexMap& b = frameMatchResult->segments_to_bundles[i];
 					for (size_t j = 0; j < b.keys.size(); ++j)
 					{
 						const auto& si = segmentations.at(t);
 						const int k = b.keys[j];
-						const int v = b.values[j];
+						const BundleIndex v{b.values[j]};
 //						segmentToBundle.insert({{t, k}, v});
 						cv::Mat active(video.at(t), si->roi);
 						MPS_ASSERT(active.size == segmentations.at(t)->labels.size);
@@ -1076,15 +1211,36 @@ int main(int argc, char* argv[])
 				tracking.release();
 			}
 
-			{
+			{/*
 				// Maps from bundle ID (id) to all segments contained in that "object". Reverse lookup of segments_to_bundles
-				std::map<int, std::set<SegmentIndex<SEGMENT_TYPE::BODY>> > bundleMembership;
-				for (size_t t = 0; t < result->stamps.size(); ++t)
+				std::map<BundleIndex, std::set<SegmentIndex<SEGMENT_TYPE::BODY>> > bundleMembership;
+				for (size_t t = 0; t < frameMatchResult->stamps.size(); ++t)
 				{
-					for (size_t i = 0; i < result->segments_to_bundles[t].keys.size(); ++i)
+					const auto& lookup = scenes.at(frameMatchResult->stamps[t])->labelToIndexLookup;
+					MPS_ASSERT(!lookup.empty());
+					for (size_t i = 0; i < frameMatchResult->segments_to_bundles[t].keys.size(); ++i)
 					{
-						bundleMembership[result->segments_to_bundles[t].values[i]].insert({result->stamps[t], result->segments_to_bundles[t].keys[i]});
+						// Not all segments wind up in our final structure, due to being background, or too small, etc
+						if (lookup.find(frameMatchResult->segments_to_bundles[t].keys[i]) == lookup.end())
+						{
+							std::cerr << "SegmentID <" << frameMatchResult->stamps[t] << "," << frameMatchResult->segments_to_bundles[t].keys[i] << "> was rejected." << std::endl;
+							continue;
+						}
+						else
+						{
+							std::cerr << "SegmentID <" << frameMatchResult->stamps[t] << "," << frameMatchResult->segments_to_bundles[t].keys[i] << "> was located." << std::endl;
+						}
+
+						bundleMembership[BundleIndex{frameMatchResult->segments_to_bundles[t].values[i]}].insert({frameMatchResult->stamps[t], frameMatchResult->segments_to_bundles[t].keys[i]}); // TODO: Problem here???
 					}
+				}
+
+				for (auto& bundle : bundleMembership)
+				{
+					std::shared_ptr<OctreeMotionModel> omm = std::make_shared<OctreeMotionModel>();
+					omm->localTglobal = MotionModel::Pose::Identity();
+					omm->octree = std::make_shared<octomap::OcTree>(scenario->mapServer->m_res);
+					omms.insert({bundle.first, omm});
 				}
 
 				// Map from a segment ID to a vertex ID in the graph
@@ -1095,7 +1251,7 @@ int main(int argc, char* argv[])
 					auto r = objectSegmentToNode.insert({{np.t, np.leafID}, vd}); MPS_ASSERT(r.second);
 				}
 
-				std::map<SegmentIndex<SEGMENT_TYPE::BODY>, int> segmentToBundle;
+				std::map<SegmentIndex<SEGMENT_TYPE::BODY>, BundleIndex> segmentToBundle;
 				visualizeObjectBundles(objectG, segmentations, segmentToBundle, bundle_colors);
 
 				// Eventually the matcher should handle this part...
@@ -1155,6 +1311,7 @@ int main(int argc, char* argv[])
 							cv::Point2i iPt(flowVec.first.x, flowVec.first.y);
 							cv::Point2i jPt(flowVec.second.x, flowVec.second.y);
 
+							// If flow2d @ time t1 in mask1 and flow2d in mask2 @ time t2, add to list
 							if (iter1->second.at<uint8_t>(iPt) > 0
 							    && iter2->second.at<uint8_t>(jPt) > 0)
 							{
@@ -1165,7 +1322,7 @@ int main(int argc, char* argv[])
 						if (bundleFlow3.size() < 3)
 						{
 							std::cerr << "Insufficient matches (" << bundleFlow3.size() << ") for bundle '"
-							          << bundle.first << "' between " << si1->t << " and " << si2->t << std::endl;
+							          << bundle.first.id << "' between " << si1->t << " and " << si2->t << std::endl;
 							continue;
 						}
 
@@ -1182,23 +1339,31 @@ int main(int argc, char* argv[])
 							{
 								if (seg.first == si1->t)
 								{
-									ObjectIndex obj = scene1->labelToIndexLookup[seg.second];
-									omm.observe(scene1->segments[obj], scene1->worldTcamera);
+									// NB: objectID may be missing if it took a stupid path through the inner frames
+									const auto& iter = scene1->labelToIndexLookup.find(seg.second);
+									if (iter == scene1->labelToIndexLookup.end()) { continue; }
+
+									ObjectIndex obj = iter->second;
+									std::shared_ptr<OctreeMotionModel>& omm = omms.at(bundle.first);
+
+//									omm.localTglobal *= bTa;
+									omm->observe(scene1->segments.at(obj), scene1->worldTcamera);
+
+									visualize(*omm, scenario->broadcaster.get(), scene1->worldFrame, "1");
+//									sleep(2);
 								}
 							}
-							visualize(omm, scenario->broadcaster.get(), scene1->worldFrame, "1");
-							sleep(2);
-							omm.localTglobal.translation().x() += 0.1;
-							visualize(omm, scenario->broadcaster.get(), scene1->worldFrame, "1");
+//							omm.localTglobal.translation().x() += 0.1;
+//							visualize(omm, scenario->broadcaster.get(), scene1->worldFrame, "1");
 
-
+							// TODO: Draw the frame-frame connection here!
 
 
 						}
 						else
 						{
 							std::cerr << "RANSAC failed for bundle '"
-							          << bundle.first << "' between " << si1->t << " and " << si2->t << std::endl;
+							          << bundle.first.id << "' between " << si1->t << " and " << si2->t << std::endl;
 						}
 
 					}
@@ -1230,7 +1395,7 @@ int main(int argc, char* argv[])
 //					omm.localTglobal.translation().x() += 0.1;
 //					visualize(omm, scenario->broadcaster.get(), scene->worldFrame, "1");
 				}
-			}
+			*/}
 
 //			std::vector<ComponentGraph> component_graphs;
 //
@@ -1254,10 +1419,6 @@ int main(int argc, char* argv[])
 //				Eigen::VectorXd eigenvalues = solver.eigenvalues();
 //				Eigen::MatrixXd eigenvectors = solver.eigenvectors();
 			}
-
-//			std::vector<int> componentLookup(boost::num_vertices(G));
-//			int num_components = boost::connected_components(G, &componentLookup[0]);
-//			std::vector<VideoSegmentationGraph> Gs(num_components);
 //			for (size_t node = 0; node < componentLookup.size(); ++node)
 //			{
 //				int seg = componentLookup[node];
@@ -1265,41 +1426,73 @@ int main(int argc, char* argv[])
 //			}
 
 			{
+				reinforceObjectEdges(G, segmentations);
 				visualizeVideoGraph(G, segmentations);
 			}
 
-			typedef std::map<VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor, unsigned long> mapping_t;
-			typedef boost::shared_ptr<mapping_t> vertex_component_map;
-//			typedef boost::filtered_graph<VideoSegmentationGraph, boost::function<bool(VideoSegmentationGraph::edge_descriptor)>, boost::function<bool(VideoSegmentationGraph::vertex_descriptor)> > ComponentGraph;
-
-			vertex_component_map mapping = boost::make_shared<mapping_t>();
-			size_t num_components = boost::connected_components(G, boost::associative_property_map<mapping_t>(*mapping));
-			if (num_components > 1)
+			int maxObjs = std::numeric_limits<int>::lowest();
+			for (const auto& scene : scenes)
 			{
-				ROS_ERROR_STREAM("Graph is disconnected. Segmentation would fail.");
-//				continue;
+				maxObjs = std::max(maxObjs, static_cast<int>(scene.second->segments.size()));
 			}
 
+			std::vector<int> componentLookup(boost::num_vertices(G));
+			int num_components = boost::connected_components(G, &componentLookup[0]);
+			std::vector<VideoSegmentationGraph<SEGMENT_TYPE::UCM>> Gs;
+			for (int component = 0; component < num_components; ++component)
 			{
-				Eigen::SparseMatrix<double> adj = getAdjacencySparse(G);
-				mps_msgs::SegmentGraphRequest req;
-				for (const auto& triplet : to_triplets(adj))
+				const auto Gprime = subgraph(G, componentLookup, component);
+				if (static_cast<int>(boost::num_vertices(Gprime)) > maxObjs * 2)
 				{
-					req.adjacency.row_index.push_back(triplet.row());
-					req.adjacency.col_index.push_back(triplet.col());
-					req.adjacency.value.push_back(triplet.value());
+					Gs.push_back(Gprime);
 				}
-				req.num_labels = NUM_OUTPUT_LABELS;
-				req.algorithm = "spectral"; //"affinity"; //dbscan
+			}
 
-				mps_msgs::SegmentGraphResponse resp;
-				bool success = segmentClient.call(req, resp);
-				if (!success)
+			SegmentLookup<SEGMENT_TYPE::UCM> segmentToNode;
+			for (VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor vd : make_range(boost::vertices(G)))
+			{
+				const NodeProperties<SEGMENT_TYPE::UCM>& np = G[vd];
+				segmentToNode[{np.t, np.leafID}] = vd;
+			}
+
+			for (int numObjs = maxObjs - 2; numObjs < maxObjs + 4; ++numObjs)
+			{
+				bundle_colors.clear();
+				std::map<VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor, int> objectClusters;
+				int total_num_labels = 0;
+				for (const auto& Gprime : Gs)
 				{
-					ROS_ERROR_STREAM("Graph segmentation call failed.");
-					break;
+					Eigen::SparseMatrix<double> adj = getAdjacencySparse(Gprime);
+					mps_msgs::SegmentGraphRequest req;
+					for (const auto& triplet : to_triplets(adj))
+					{
+						req.adjacency.row_index.push_back(triplet.row());
+						req.adjacency.col_index.push_back(triplet.col());
+						req.adjacency.value.push_back(triplet.value());
+					}
+					req.num_labels = numObjs;
+					req.algorithm = "spectral"; //"affinity"; //dbscan
+
+					mps_msgs::SegmentGraphResponse resp;
+					bool success = segmentClient.call(req, resp);
+					if (!success)
+					{
+						ROS_ERROR_STREAM("Graph segmentation call failed.");
+						break;
+					}
+
+					for (VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor vd : make_range(boost::vertices(Gprime)))
+					{
+						const NodeProperties<SEGMENT_TYPE::UCM>& np = Gprime[vd];
+						objectClusters.insert({segmentToNode.at({np.t, np.leafID}), resp.labels[vd]+total_num_labels});
+					}
+					total_num_labels += resp.num_labels;
 				}
-//				std::cerr << resp << std::endl;
+
+				for (const auto& oc : objectClusters)
+				{
+					bundle_colors[BundleIndex{oc.second}] = randomColor(rng);
+				}
 
 				// Recolor image based on segments
 				std::map<ros::Time, cv::Mat> video;
@@ -1311,13 +1504,22 @@ int main(int argc, char* argv[])
 				for (VideoSegmentationGraph<SEGMENT_TYPE::UCM>::vertex_descriptor vd : make_range(boost::vertices(G)))
 				{
 					const NodeProperties<SEGMENT_TYPE::UCM>& np = G[vd];
-					cv::Mat(video.at(np.t), segmentations.at(np.t)->roi).setTo(bundle_colors[resp.labels[vd]], segmentations.at(np.t)->labels==np.leafID);
+					const auto& segmentation = segmentations.at(np.t);
+					cv::Mat ucmLabelMask = segmentation->labels==np.leafID;
+//					ucmLabelMask.setTo(0, segmentation->objectness_segmentation->image == 0);
+					const auto iter = objectClusters.find(vd);
+					if (iter != objectClusters.end())
+					{
+						cv::Mat(video.at(np.t), segmentation->roi).setTo(bundle_colors.at(BundleIndex{iter->second}), ucmLabelMask);
+					}
 				}
 
-
-				cv::VideoWriter tracking("clustered.avi", CV_FOURCC('M', 'J', 'P', 'G'), 1, nativeSize, true);
+				const double alpha = 0.75;
+				cv::VideoWriter tracking("clustered_"+std::to_string(numObjs)+".avi", CV_FOURCC('M', 'J', 'P', 'G'), 1, nativeSize, true);
 				for (const auto& pair : video)
-					tracking.write(pair.second);
+				{
+					tracking.write(alpha*pair.second+(1.0-alpha)*scenes.at(pair.first)->cv_rgb_ptr->image);
+				}
 				tracking.release();
 			}
 

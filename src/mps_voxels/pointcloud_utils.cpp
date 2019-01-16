@@ -88,7 +88,8 @@ pcl::PointCloud<PointT>::Ptr filterOutliers(
 
 pcl::PointCloud<PointT>::Ptr filterPlane(
 	pcl::PointCloud<PointT>::Ptr& cloud,
-	const double distanceThreshold)
+	const double distanceThreshold,
+	const Eigen::Vector3f& normal)
 {
 	pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
 	pcl::PointIndices::Ptr table_inliers (new pcl::PointIndices);
@@ -100,6 +101,12 @@ pcl::PointCloud<PointT>::Ptr filterPlane(
 	seg.setModelType (pcl::SACMODEL_PLANE);
 	seg.setMethodType (pcl::SAC_RANSAC);
 	seg.setDistanceThreshold (distanceThreshold); //octree->getResolution();
+	MPS_ASSERT(normal.norm() > 0.1);
+	if (normal.norm() > 0.1)
+	{
+		seg.setAxis(normal);
+		seg.setEpsAngle(0.2);
+	}
 
 	seg.setInputCloud (cloud);
 	seg.segment (*table_inliers, *coefficients);
