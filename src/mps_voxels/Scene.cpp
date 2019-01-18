@@ -22,6 +22,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/extract_indices.h>
 
 bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 {
@@ -160,11 +161,12 @@ bool Scene::loadAndFilterScene()
 	scenario->mapServer->insertCloud(cropped_cloud, worldTcamera);
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
+	pcl::PointCloud<PointT>::Ptr downsampled_cloud(new pcl::PointCloud<PointT>());
 	pcl::VoxelGrid<PointT> voxelFilter;
 	voxelFilter.setInputCloud(cropped_cloud);
-	double resolution = octree->getResolution();
-	voxelFilter.setLeafSize(resolution/2.0, resolution/2.0, resolution/2.0);
-	voxelFilter.filter(*cropped_cloud);
+	float resolution = (float)octree->getResolution()/4.0f;
+	voxelFilter.setLeafSize(resolution, resolution, resolution);
+	voxelFilter.filter(*downsampled_cloud);
 
 
 	/////////////////////////////////////////////////////////////////
@@ -196,14 +198,15 @@ bool Scene::loadAndFilterScene()
 	/////////////////////////////////////////////////////////////////
 
 	SensorModel sensor{worldTcamera.translation()};
+	pcl::PointCloud<PointT>::Ptr non_self_cloud(new pcl::PointCloud<PointT>());
 	{
 		if (!ros::ok()) { return false; }
-		std::vector<int> assignments(cropped_cloud->size(), -1);
-		const int nPts = static_cast<int>(cropped_cloud->size());
+		std::vector<int> assignments(downsampled_cloud->size(), -1);
+		const int nPts = static_cast<int>(downsampled_cloud->size());
 		#pragma omp parallel for schedule(dynamic)
 		for (int i = 0; i < nPts; ++i)
 		{
-			Eigen::Vector3d pt = (worldTcamera.cast<float>()*cropped_cloud->points[i].getVector3fMap()).cast<double>();
+			Eigen::Vector3d pt = (worldTcamera.cast<float>()*downsampled_cloud->points[i].getVector3fMap()).cast<double>();
 			int m = 0;
 			double maxL = std::numeric_limits<double>::lowest();
 			for (const auto& model : selfModels)
@@ -219,11 +222,26 @@ bool Scene::loadAndFilterScene()
 			}
 		}
 
-		cropped_cloud->points.erase(std::remove_if(cropped_cloud->points.begin(), cropped_cloud->points.end(),
-		                                           [&](const PointT& p){ return assignments[&p - &*cropped_cloud->points.begin()] >= 0;}),
-		                            cropped_cloud->points.end());
+		pcl::PointIndices::Ptr self_assigned (new pcl::PointIndices);
+		for (int i = 0; i < nPts; ++i)
+		{
+			if (assignments[i] >= 0)
+			{
+				self_assigned->indices.emplace_back(i);
+			}
+		}
+		pcl::ExtractIndices<PointT> extractor;
+		extractor.setInputCloud(downsampled_cloud);
+		extractor.setIndices(self_assigned);
+		extractor.setNegative(true);
+		extractor.filter(*non_self_cloud);
+
+
+//		downsampled_cloud->points.erase(std::remove_if(downsampled_cloud->points.begin(), downsampled_cloud->points.end(),
+//		                                           [&](const PointT& p){ return assignments[&p - &*downsampled_cloud->points.begin()] >= 0;}),
+//		                            downsampled_cloud->points.end());
 	}
-	if (cropped_cloud->empty())
+	if (downsampled_cloud->empty())
 	{
 		ROS_WARN_STREAM("All points were self-filtered!");
 		return false;
@@ -309,11 +327,11 @@ bool Scene::loadAndFilterScene()
 	/////////////////////////////////////////////////////////////////
 	/// Generate an ROI from the cropped, filtered cloud
 	/////////////////////////////////////////////////////////////////
-	pile_cloud = filterPlane(cropped_cloud, 0.02, worldTcamera.linear().col(2).cast<float>());
+	pile_cloud = filterPlane(non_self_cloud, 0.02, worldTcamera.linear().col(2).cast<float>());
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 //	pile_cloud = filterSmallClusters(pile_cloud, 1000, 0.005); // sqrt(cloud->size())/50
 //	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-	pile_cloud = filterOutliers(pile_cloud, 100);
+	pile_cloud = filterOutliers(pile_cloud, 100, 2.0);
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	if (pile_cloud->empty())
 	{
@@ -400,9 +418,9 @@ bool Scene::completeShapes()
 	for (const auto& seg : segments)
 	{
 		if (!ros::ok()) { return false; }
-		assert(!segment_cloud->empty());
 
 		const pcl::PointCloud<PointT>::Ptr& segment_cloud = seg.second;
+		assert(!segment_cloud->empty());
 
 		// Compute bounding box
 		Eigen::Vector3f min, max;
@@ -471,7 +489,7 @@ bool Scene::completeShapes()
 	}
 
 	std::tie(occludedPts, occlusionTree) = getOcclusionsInFOV(sceneOctree, cameraModel, worldTcamera.inverse(Eigen::Isometry), minExtent.head<3>(), maxExtent.head<3>());
-//	planningEnvironment->occluded_pts = occluded_pts;
+//	scene->occluded_pts = occluded_pts;
 
 	if (occludedPts.empty())
 	{

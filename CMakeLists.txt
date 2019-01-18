@@ -292,13 +292,13 @@ target_link_libraries(${PROJECT_NAME}_tracker
   ${catkin_LIBRARIES}
 )
 
-add_executable(${PROJECT_NAME}_test_graph_segmentation src/test_graph_segmentation.cpp)
-set_target_properties(${PROJECT_NAME}_test_graph_segmentation PROPERTIES OUTPUT_NAME test_graph_segmentation PREFIX "")
-add_dependencies(${PROJECT_NAME}_test_graph_segmentation ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_test_graph_segmentation
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-)
+#add_executable(${PROJECT_NAME}_test_graph_segmentation src/test_graph_segmentation.cpp)
+#set_target_properties(${PROJECT_NAME}_test_graph_segmentation PROPERTIES OUTPUT_NAME test_graph_segmentation PREFIX "")
+#add_dependencies(${PROJECT_NAME}_test_graph_segmentation ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#target_link_libraries(${PROJECT_NAME}_test_graph_segmentation
+#  ${PROJECT_NAME}
+#  ${catkin_LIBRARIES}
+#)
 
 
 add_executable(${PROJECT_NAME}_explorer src/explorer.cpp)

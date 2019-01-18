@@ -13,6 +13,7 @@
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/shape_utils.h"
 #include "mps_voxels/planning/MotionPlanner.h"
+#include "mps_voxels/assert.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
@@ -20,6 +21,8 @@
 #include <moveit/robot_state/conversions.h>
 #include <moveit/planning_scene/planning_scene.h>
 #include <moveit_msgs/DisplayTrajectory.h>
+
+#include <pcl_ros/point_cloud.h> // Needed to publish a point cloud
 
 #include <Eigen/Geometry>
 
@@ -207,13 +210,15 @@ std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Rob
 std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperRPub;
 ros::Publisher octreePub;
 ros::Publisher displayPub;
+ros::Publisher pcPub;
 std::unique_ptr<image_transport::Publisher> segmentationPub;
 std::unique_ptr<image_transport::Publisher> targetPub;
 std::shared_ptr<tf::TransformListener> listener;
 std::shared_ptr<tf::TransformBroadcaster> broadcaster;
 robot_model::RobotModelPtr pModel;
 //std::vector<std::shared_ptr<Manipulator>> manipulators;
-std::unique_ptr<Scene> planningEnvironment;
+std::shared_ptr<Scenario> scenario;
+std::unique_ptr<Scene> scene;
 std::shared_ptr<MotionPlanner> planner;
 sensor_msgs::JointState::ConstPtr latestJoints;
 //std::map<std::string, std::shared_ptr<MotionModel>> motionModels;
@@ -356,19 +361,37 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		return;
 	}
 
+	scene = std::make_unique<Scene>();
+	scene->scenario = scenario;
+
+	if (!loadLinkMotionModels(pModel.get(), scene->selfModels))
+	{
+		ROS_ERROR("Model loading failed.");
+		return;
+	}
+	scene->selfModels.erase("victor_base_plate"); // HACK: camera always collides
+	scene->selfModels.erase("victor_pedestal");
+	scene->selfModels.erase("victor_left_arm_mount");
+	scene->selfModels.erase("victor_right_arm_mount");
+
+	planner->env = scene.get();
+	planner->objectSampler.env = scene.get();
+	scene->worldFrame = mapServer->getWorldFrame();
+	scene->visualize = true;
+
 	// NB: We do this every loop because we shrink the box during the crop/filter process
 	Eigen::Vector4f maxExtent(0.4f, 0.6f, 0.5f, 1);
 	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.020f, 1);
-	planningEnvironment->minExtent = minExtent;//.head<3>().cast<double>();
-	planningEnvironment->maxExtent = maxExtent;//.head<3>().cast<double>();
+	scene->minExtent = minExtent;//.head<3>().cast<double>();
+	scene->maxExtent = maxExtent;//.head<3>().cast<double>();
 
-	bool convertImages = planningEnvironment->convertImages(rgb_msg, depth_msg, *cam_msg);
+	bool convertImages = scene->convertImages(rgb_msg, depth_msg, *cam_msg);
 	if (!convertImages)
 	{
 		return;
 	}
 
-	bool getScene = planningEnvironment->loadAndFilterScene();
+	bool getScene = scene->loadAndFilterScene();
 	if (!getScene)
 	{
 		return;
@@ -391,7 +414,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	{
 		visualization_msgs::MarkerArray markers;
 		int id = 0;
-		for (const auto& model : planningEnvironment->selfModels)
+		for (const auto& model : scene->selfModels)
 		{
 			visualization_msgs::Marker m;
 			m.ns = "collision";
@@ -415,35 +438,37 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	bool getSegmentation = planningEnvironment->performSegmentation();
+	bool getSegmentation = scene->performSegmentation();
 	if (!getSegmentation)
 	{
 		return;
 	}
 
-	int goalSegmentID = -1;
+	const long invalidGoalID = rand();
+	ObjectIndex goalSegmentID{invalidGoalID};
 	{
 		if (!ros::ok()) { return; }
 
 		/////////////////////////////////////////////////////////////////
 		// Search for target object
 		/////////////////////////////////////////////////////////////////
-		cv::Mat targetMask = targetDetector->getMask(planningEnvironment->cv_rgb_cropped.image);
+		cv::Mat targetMask = targetDetector->getMask(scene->cv_rgb_cropped.image);
 		imshow("Target Mask", targetMask);
 		waitKey(10);
 
-		imshow("rgb", planningEnvironment->cv_rgb_cropped.image);
+		imshow("rgb", scene->cv_rgb_cropped.image);
 		waitKey(10);
 		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-		if (!planningEnvironment->segInfo)
+		if (!scene->segInfo)
 		{
 			ROS_ERROR_STREAM("Segmentation failed.");
 			return;
 		}
 		double alpha = 0.75;
-		cv::Mat labelColorsMap = colorByLabel(planningEnvironment->segInfo->objectness_segmentation->image);
-		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*planningEnvironment->cv_rgb_cropped.image;
+		cv::Mat labelColorsMap = colorByLabel(scene->segInfo->objectness_segmentation->image);
+		labelColorsMap.setTo(0, 0 == scene->segInfo->objectness_segmentation->image);
+		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*scene->cv_rgb_cropped.image;
 		imshow("segmentation", labelColorsMap);
 		waitKey(10);
 
@@ -454,12 +479,12 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 
 		int matchID = -1;
-		matchID = targetDetector->matchGoalSegment(targetMask, planningEnvironment->segInfo->objectness_segmentation->image);
+		matchID = targetDetector->matchGoalSegment(targetMask, scene->segInfo->objectness_segmentation->image);
 		if (matchID >= 0)
 		{
-			goalSegmentID = planningEnvironment->labelToIndexLookup.at((unsigned)matchID);
+			goalSegmentID = scene->labelToIndexLookup.at((unsigned)matchID);
 			std::cerr << "**************************" << std::endl;
-			std::cerr << "Found target: " << matchID << " -> " << goalSegmentID << std::endl;
+			std::cerr << "Found target: " << matchID << " -> " << goalSegmentID.id << std::endl;
 			std::cerr << "**************************" << std::endl;
 		}
 
@@ -469,7 +494,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 	}
 
-	bool getCompletion = planningEnvironment->completeShapes();
+	bool getCompletion = scene->completeShapes();
 	if (!getCompletion)
 	{
 		return;
@@ -487,9 +512,45 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	for (const auto& subtree : planningEnvironment->completedSegments)
+	std::cerr << "Completed segments: " << scene->completedSegments.size() << __FILE__ << ": " << __LINE__ << std::endl;
+
 	{
+
+		scene->cloud->header.frame_id = scene->cameraFrame;
+		pcl_conversions::toPCL(ros::Time::now(), scene->cloud->header.stamp);
+		pcPub.publish(*scene->cloud);
+		std::cerr << "cloud." << std::endl;
+		sleep(3);
+
+//		scene->cropped_cloud->header.frame_id = scene->cameraFrame;
+//		pcl_conversions::toPCL(ros::Time::now(), scene->cropped_cloud->header.stamp);
+//		pcPub.publish(*scene->cropped_cloud);
+//		std::cerr << "cropped_cloud." << std::endl;
+//		sleep(3);
+
+		scene->pile_cloud->header.frame_id = scene->cameraFrame;
+		pcl_conversions::toPCL(ros::Time::now(), scene->pile_cloud->header.stamp);
+		pcPub.publish(*scene->pile_cloud);
+		std::cerr << "pile_cloud." << std::endl;
+		sleep(3);
+
+		for (auto& seg : scene->segments)
+		{
+
+			seg.second->header.frame_id = scene->cameraFrame;
+			pcl_conversions::toPCL(ros::Time::now(), seg.second->header.stamp);
+			pcPub.publish(*seg.second);
+			std::cerr << seg.first.id << std::endl;
+			sleep(1);
+		}
+	}
+
+	for (const auto& compSeg : scene->completedSegments)
+	{
+		MPS_ASSERT(scene->segments.find(compSeg.first) != scene->segments.end());
+
 		if (!ros::ok()) { return; }
+		const auto& subtree = compSeg.second;
 
 		std_msgs::ColorRGBA colorRGBA;
 		colorRGBA.a = 1.0f;
@@ -501,16 +562,21 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		{
 //			m.colors.clear();
 //			m.color = colorRGBA;
-			m.ns = "completed_"+std::to_string(planningEnvironment->completedSegments.size());
+			m.ns = "completed_"+std::to_string(std::abs(compSeg.first.id));
 		}
 		octreePub.publish(occupiedNodesVis);
 
 		// Visualize approximate shape
 		visualization_msgs::Marker m;
-		auto approx = approximateShape(subtree.get());
-		planningEnvironment->approximateSegments.push_back(approx);
+		auto approx = scene->approximateSegments.at(compSeg.first);//approximateShape(subtree.get());
+//		auto res = scene->approximateSegments.insert({compSeg.first, approx});
+//		if (!res.second)
+//		{
+//			std::cerr << "ID " << compSeg.first.id << " already exists!" << std::endl;
+//		}
+//		MPS_ASSERT(res.second);
 		shapes::constructMarkerFromShape(approx.get(), m, true);
-		m.id = planningEnvironment->completedSegments.size();
+		m.id = std::abs(compSeg.first.id);
 		m.ns = "bounds";
 		m.header.frame_id = globalFrame;
 		m.header.stamp = ros::Time::now();
@@ -538,26 +604,26 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	/////////////////////////////////////////////////////////////////
 	// Compute the Most Occluding Segment
 	/////////////////////////////////////////////////////////////////
-	std::map<octomap::point3d, int, vector_less_than<3, octomap::point3d>> coordToSegment;
-	std::vector<int> occludedBySegmentCount(planningEnvironment->segments.size(), 0);
-	for (int i = 0; i < static_cast<int>(planningEnvironment->segments.size()); ++i)
+	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> coordToSegment;
+	std::map<ObjectIndex, int> occludedBySegmentCount;
+	for (const auto& seg : scene->segments)
 	{
-		const pcl::PointCloud<PointT>::Ptr& pc = planningEnvironment->segments[i];
+		const pcl::PointCloud<PointT>::Ptr& pc = seg.second;
 		for (const PointT& pt : *pc)
 		{
-			Eigen::Vector3f worldPt = planningEnvironment->worldTcamera.cast<float>()*pt.getVector3fMap();
+			Eigen::Vector3f worldPt = scene->worldTcamera.cast<float>()*pt.getVector3fMap();
 			octomap::point3d coord = octree->keyToCoord(octree->coordToKey(octomap::point3d(worldPt.x(), worldPt.y(), worldPt.z())));
-			coordToSegment.insert({coord, i});
+			coordToSegment.insert({coord, seg.first});
 		}
 	}
 
-	octomap::point3d cameraOrigin((float)planningEnvironment->worldTcamera.translation().x(),
-		                          (float)planningEnvironment->worldTcamera.translation().y(),
-		                          (float)planningEnvironment->worldTcamera.translation().z());
+	octomap::point3d cameraOrigin((float)scene->worldTcamera.translation().x(),
+		                          (float)scene->worldTcamera.translation().y(),
+		                          (float)scene->worldTcamera.translation().z());
 	#pragma omp parallel for
-	for (int i = 0; i < static_cast<int>(planningEnvironment->occludedPts.size()); ++i)
+	for (int i = 0; i < static_cast<int>(scene->occludedPts.size()); ++i)
 	{
-		const auto& pt_world = planningEnvironment->occludedPts[i];
+		const auto& pt_world = scene->occludedPts[i];
 		octomap::point3d collision;
 		bool hit = octree->castRay(cameraOrigin, pt_world-cameraOrigin, collision);
 		assert(hit); _unused(hit);
@@ -569,33 +635,33 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 			#pragma omp critical
 			{
 				occludedBySegmentCount[iter->second]++;
-				planningEnvironment->coordToObject.insert({pt_world, iter->second});
-				planningEnvironment->objectToShadow[iter->second].push_back(pt_world);
+				scene->coordToObject.insert({pt_world, iter->second});
+				scene->objectToShadow[iter->second].push_back(pt_world);
 			}
 		}
 	}
-	planningEnvironment->surfaceCoordToObject = coordToSegment;
+	scene->surfaceCoordToObject = coordToSegment;
 
-	int mostOccludingSegmentIdx = (int)std::distance(occludedBySegmentCount.begin(),
-		std::max_element(occludedBySegmentCount.begin(), occludedBySegmentCount.end()));
-	if (goalSegmentID >= 0) { mostOccludingSegmentIdx = goalSegmentID; }
-	visualization_msgs::MarkerArray objToMoveVis = visualizeOctree(planningEnvironment->completedSegments[mostOccludingSegmentIdx].get(), globalFrame);
-	for (visualization_msgs::Marker& m : objToMoveVis.markers)
-	{
-		m.colors.clear();
-		m.color.r = 1.0;
-		m.color.a = 1.0;
-		m.scale.x *= 1.2; m.scale.y *= 1.2; m.scale.z *= 1.2;
-		m.ns = "worst";// + std::to_string(m.id);
-	}
-	octreePub.publish(objToMoveVis);
-	waitKey(10);
+//	int mostOccludingSegmentIdx = std::advance(occludedBySegmentCount.begin(), (int)std::distance(occludedBySegmentCount.begin(),
+//		std::max_element(occludedBySegmentCount.begin(), occludedBySegmentCount.end()))).first;
+//	if (goalSegmentID.id != -1) { mostOccludingSegmentIdx = goalSegmentID; }
+//	visualization_msgs::MarkerArray objToMoveVis = visualizeOctree(scene->completedSegments[mostOccludingSegmentIdx].get(), globalFrame);
+//	for (visualization_msgs::Marker& m : objToMoveVis.markers)
+//	{
+//		m.colors.clear();
+//		m.color.r = 1.0;
+//		m.color.a = 1.0;
+//		m.scale.x *= 1.2; m.scale.y *= 1.2; m.scale.z *= 1.2;
+//		m.ns = "worst";// + std::to_string(m.id);
+//	}
+//	octreePub.publish(objToMoveVis);
+//	waitKey(10);
 
 	std::random_device rd;
 	std::mt19937 g(rd());
 
 	{
-		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(planningEnvironment->occlusionTree.get(), globalFrame);
+		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(scene->occlusionTree.get(), globalFrame);
 		for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
 		{
 			m.ns = "hidden";
@@ -607,15 +673,15 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 		octreePub.publish(occupiedNodesVis);
 	}
-	std::cerr << "Published " << planningEnvironment->occludedPts.size() << " points." << std::endl;
+	std::cerr << "Published " << scene->occludedPts.size() << " points." << std::endl;
 
 	// Reach out and touch target
 
-	assert(!planningEnvironment->manipulators.empty());
+	assert(!scenario->manipulators.empty());
 
 	const std::string& robotFrame = pModel->getRootLinkName();
 	tf::StampedTransform robotFrameInGlobalCoordinates;
-	if (!listener->waitForTransform(robotFrame, globalFrame, ros::Time(0), ros::Duration(1.0)))
+	if (!listener->waitForTransform(robotFrame, globalFrame, ros::Time::now(), ros::Duration(1.0)))
 	{
 		ROS_ERROR_STREAM("Unable to compute transform from '" << globalFrame << "' to '" << robotFrame << "'.");
 		return;
@@ -623,7 +689,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	listener->lookupTransform(robotFrame, globalFrame, ros::Time(0), robotFrameInGlobalCoordinates);
 	Eigen::Isometry3d robotTworld;
 	tf::transformTFToEigen(robotFrameInGlobalCoordinates, robotTworld);
-	planningEnvironment->worldTrobot = robotTworld.inverse(Eigen::Isometry);
+	scene->worldTrobot = robotTworld.inverse(Eigen::Isometry);
 
 
 //	trajectory_msgs::JointTrajectory cmd;
@@ -635,26 +701,26 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	auto comp = [](const RankedMotion& a, const RankedMotion& b ) { return a.first < b.first; };
 	std::priority_queue<RankedMotion, std::vector<RankedMotion>, decltype(comp)> motionQueue(comp);
 
-	planningEnvironment->visualize = false;
-	planningEnvironment->obstructions.clear();
-	planningEnvironment->computeCollisionWorld();
+	scene->visualize = false;
+	scene->obstructions.clear();
+	scene->computeCollisionWorld();
 	planner->computePlanningScene();
 	auto rs = getCurrentRobotState();
 
 	std::shared_ptr<Motion> motion;
-	if (goalSegmentID >= 0)
+	if (goalSegmentID.id != invalidGoalID)
 	{
-		motion = planner->pick(rs, goalSegmentID, planningEnvironment->obstructions);
+		motion = planner->pick(rs, goalSegmentID, scene->obstructions);
 		if (!motion)
 		{
 			ROS_WARN_STREAM("Saw target object, but failed to compute grasp plan.");
-			std::cerr << "Saw target object, but failed to compute grasp plan." << " (" << planningEnvironment->obstructions.size() << " obstructions)" << std::endl;
+			std::cerr << "Saw target object, but failed to compute grasp plan." << " (" << scene->obstructions.size() << " obstructions)" << std::endl;
 		}
 	}
 
 	if (!motion)
 	{
-		#pragma omp parallel for private(planningEnvironment)
+		#pragma omp parallel for private(scene)
 		for (int i = 0; i<50; ++i)
 		{
 			std::shared_ptr<Motion> motionSlide = planner->sampleSlide(rs);
@@ -744,7 +810,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	if (trajectoryClient->isServerConnected())
 	{
 		// For safety sake
-		for (auto& manip : planningEnvironment->scenario->manipulators)
+		for (auto& manip : scene->scenario->manipulators)
 		{
 			manip->configureHardware();
 			ros::Duration(0.5).sleep();
@@ -790,7 +856,7 @@ int main(int argc, char* argv[])
 	ros::CallbackQueue sensor_queue;
 	ros::AsyncSpinner sensor_spinner(1, &sensor_queue);
 
-	listener = std::make_shared<tf::TransformListener>();
+	listener = std::make_shared<tf::TransformListener>(ros::Duration(60.0));
 	broadcaster = std::make_shared<tf::TransformBroadcaster>();
 
 	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>("joint_states", 2, handleJointState, ros::VoidPtr(), &sensor_queue);
@@ -832,6 +898,7 @@ int main(int argc, char* argv[])
 //	commandPub = nh.advertise<trajectory_msgs::JointTrajectory>("/joint_trajectory", 1, false);
 	displayPub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, false);
 	auto vizPub = nh.advertise<visualization_msgs::MarkerArray>("roi", 10, true);
+	pcPub = nh.advertise<pcl::PointCloud<PointT>>("segment_clouds", 1, true);
 	mapServer = std::make_shared<LocalOctreeServer>(pnh);
 	ros::Duration(1.0).sleep();
 //	mapClient = std::make_shared<OctreeRetriever>(nh);
@@ -847,29 +914,34 @@ int main(int argc, char* argv[])
 		= std::make_shared<robot_model_loader::RobotModelLoader>();
 	pModel = mpLoader->getModel();
 
-	std::shared_ptr<Scenario> scenario = std::make_shared<Scenario>();
-
-	planningEnvironment = std::make_unique<Scene>();
-	planningEnvironment->scenario = scenario;
-
-	if (!loadLinkMotionModels(pModel.get(), planningEnvironment->selfModels))
-	{
-		ROS_ERROR("Model loading failed.");
-	}
-	planningEnvironment->selfModels.erase("victor_base_plate"); // HACK: camera always collides
-	planningEnvironment->selfModels.erase("victor_pedestal");
-	planningEnvironment->selfModels.erase("victor_left_arm_mount");
-	planningEnvironment->selfModels.erase("victor_right_arm_mount");
-
 	assert(!pModel->getJointModelGroupNames().empty());
 
+	scenario = std::make_shared<Scenario>();
 	scenario->loadManipulators(pModel);
 
 	planner = std::make_shared<MotionPlanner>();
-	planner->env = planningEnvironment.get();
-	planner->objectSampler.env = planningEnvironment.get();
-	planningEnvironment->worldFrame = mapServer->getWorldFrame();
-	planningEnvironment->visualize = true;
+
+//	scene = std::make_unique<Scene>();
+//	scene->scenario = scenario;
+//
+//	if (!loadLinkMotionModels(pModel.get(), scene->selfModels))
+//	{
+//		ROS_ERROR("Model loading failed.");
+//	}
+//	scene->selfModels.erase("victor_base_plate"); // HACK: camera always collides
+//	scene->selfModels.erase("victor_pedestal");
+//	scene->selfModels.erase("victor_left_arm_mount");
+//	scene->selfModels.erase("victor_right_arm_mount");
+//
+//	assert(!pModel->getJointModelGroupNames().empty());
+//
+//	scenario->loadManipulators(pModel);
+//
+//	planner = std::make_shared<MotionPlanner>();
+//	planner->env = scene.get();
+//	planner->objectSampler.env = scene.get();
+//	scene->worldFrame = mapServer->getWorldFrame();
+//	scene->visualize = true;
 	scenario->listener = listener;
 	scenario->broadcaster = broadcaster;
 	scenario->mapServer = mapServer;

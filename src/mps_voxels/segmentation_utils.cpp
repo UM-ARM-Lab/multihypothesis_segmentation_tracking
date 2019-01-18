@@ -145,14 +145,14 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 		}
 	}
 
-	const int nNeighbors = 100;
-	const int sizeThreshold = 100;
+	const int nNeighbors = 200;
+	const int sizeThreshold = 50;
 
 	for (auto& segment : segment_clouds)
 	{
 		if (segment.second->size() >= nNeighbors)
 		{
-			segment.second = filterOutliers(segment.second, nNeighbors);
+			segment.second = filterOutliers(segment.second, nNeighbors, 2.0);
 		}
 	}
 
@@ -170,13 +170,14 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	{
 		if (pair.second->size() >= sizeThreshold)
 		{
-			ObjectIndex objID{-(static_cast<long>(retVal.size()))}; // retVal.size()-1
+			ObjectIndex objID{-(static_cast<long>(retVal.size())-100)}; // retVal.size()-1
 			retVal.insert({objID, pair.second});
 			if (labelToIndexLookup)
 			{
 				auto res = labelToIndexLookup->insert({pair.first, objID}); MPS_ASSERT(res.second);
 			}
 		}
+		else { std::cerr << "Rejected object " << pair.second << std::endl; }
 	}
 
 	return retVal;
