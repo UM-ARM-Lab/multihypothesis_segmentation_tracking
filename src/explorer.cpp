@@ -91,7 +91,7 @@ struct SeedDistanceFunctor
 	SeedDistanceFunctor(Solution _seed) : seed(std::move(_seed)) {}
 	static double distance(const Solution& a, const Solution& b)
 	{
-		assert(a.size() == b.size());
+		MPS_ASSERT(a.size() == b.size());
 		double d = 0.0;
 		for (size_t i = 0; i < a.size(); ++i)
 		{
@@ -429,7 +429,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 			m.pose.position.z = p.z();
 			m.pose.orientation.w = 1.0;
 			m.frame_locked = true;
-			m.header.stamp = cam_msg->header.stamp;
+			m.header.stamp = ros::Time::now();//cam_msg->header.stamp;
 			m.header.frame_id = globalFrame;
 			markers.markers.push_back(m);
 		}
@@ -514,36 +514,36 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	std::cerr << "Completed segments: " << scene->completedSegments.size() << __FILE__ << ": " << __LINE__ << std::endl;
 
-	{
-
-		scene->cloud->header.frame_id = scene->cameraFrame;
-		pcl_conversions::toPCL(ros::Time::now(), scene->cloud->header.stamp);
-		pcPub.publish(*scene->cloud);
-		std::cerr << "cloud." << std::endl;
-		sleep(3);
-
+//	{
+//
+//		scene->cloud->header.frame_id = scene->cameraFrame;
+//		pcl_conversions::toPCL(ros::Time::now(), scene->cloud->header.stamp);
+//		pcPub.publish(*scene->cloud);
+//		std::cerr << "cloud." << std::endl;
+//		sleep(3);
+//
 //		scene->cropped_cloud->header.frame_id = scene->cameraFrame;
 //		pcl_conversions::toPCL(ros::Time::now(), scene->cropped_cloud->header.stamp);
 //		pcPub.publish(*scene->cropped_cloud);
 //		std::cerr << "cropped_cloud." << std::endl;
 //		sleep(3);
-
-		scene->pile_cloud->header.frame_id = scene->cameraFrame;
-		pcl_conversions::toPCL(ros::Time::now(), scene->pile_cloud->header.stamp);
-		pcPub.publish(*scene->pile_cloud);
-		std::cerr << "pile_cloud." << std::endl;
-		sleep(3);
-
-		for (auto& seg : scene->segments)
-		{
-
-			seg.second->header.frame_id = scene->cameraFrame;
-			pcl_conversions::toPCL(ros::Time::now(), seg.second->header.stamp);
-			pcPub.publish(*seg.second);
-			std::cerr << seg.first.id << std::endl;
-			sleep(1);
-		}
-	}
+//
+//		scene->pile_cloud->header.frame_id = scene->cameraFrame;
+//		pcl_conversions::toPCL(ros::Time::now(), scene->pile_cloud->header.stamp);
+//		pcPub.publish(*scene->pile_cloud);
+//		std::cerr << "pile_cloud." << std::endl;
+//		sleep(3);
+//
+//		for (auto& seg : scene->segments)
+//		{
+//
+//			seg.second->header.frame_id = scene->cameraFrame;
+//			pcl_conversions::toPCL(ros::Time::now(), seg.second->header.stamp);
+//			pcPub.publish(*seg.second);
+//			std::cerr << seg.first.id << std::endl;
+//			sleep(1);
+//		}
+//	}
 
 	for (const auto& compSeg : scene->completedSegments)
 	{
@@ -563,6 +563,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 //			m.colors.clear();
 //			m.color = colorRGBA;
 			m.ns = "completed_"+std::to_string(std::abs(compSeg.first.id));
+			m.header.stamp = cam_msg->header.stamp;
 		}
 		octreePub.publish(occupiedNodesVis);
 
@@ -579,7 +580,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		m.id = std::abs(compSeg.first.id);
 		m.ns = "bounds";
 		m.header.frame_id = globalFrame;
-		m.header.stamp = ros::Time::now();
+		m.header.stamp = cam_msg->header.stamp;
 		m.pose.orientation.w = 1;
 		m.color = colorRGBA; m.color.a = 0.6;
 		m.frame_locked = true;
@@ -626,7 +627,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		const auto& pt_world = scene->occludedPts[i];
 		octomap::point3d collision;
 		bool hit = octree->castRay(cameraOrigin, pt_world-cameraOrigin, collision);
-		assert(hit); _unused(hit);
+		MPS_ASSERT(hit); _unused(hit);
 		collision = octree->keyToCoord(octree->coordToKey(collision)); // regularize
 
 		const auto& iter = coordToSegment.find(collision);
@@ -677,7 +678,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	// Reach out and touch target
 
-	assert(!scenario->manipulators.empty());
+	MPS_ASSERT(!scenario->manipulators.empty());
 
 	const std::string& robotFrame = pModel->getRootLinkName();
 	tf::StampedTransform robotFrameInGlobalCoordinates;
@@ -914,7 +915,7 @@ int main(int argc, char* argv[])
 		= std::make_shared<robot_model_loader::RobotModelLoader>();
 	pModel = mpLoader->getModel();
 
-	assert(!pModel->getJointModelGroupNames().empty());
+	MPS_ASSERT(!pModel->getJointModelGroupNames().empty());
 
 	scenario = std::make_shared<Scenario>();
 	scenario->loadManipulators(pModel);
@@ -933,7 +934,7 @@ int main(int argc, char* argv[])
 //	scene->selfModels.erase("victor_left_arm_mount");
 //	scene->selfModels.erase("victor_right_arm_mount");
 //
-//	assert(!pModel->getJointModelGroupNames().empty());
+//	MPS_ASSERT(!pModel->getJointModelGroupNames().empty());
 //
 //	scenario->loadManipulators(pModel);
 //

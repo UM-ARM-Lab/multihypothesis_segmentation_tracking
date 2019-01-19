@@ -5,6 +5,7 @@
 #include "mps_voxels/planning/MotionPlanner.h"
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/LocalOctreeServer.h"
+#include "mps_voxels/assert.h"
 
 #include <moveit/planning_scene/planning_scene.h>
 
@@ -50,7 +51,7 @@ std::priority_queue<MotionPlanner::RankedPose, std::vector<MotionPlanner::Ranked
 	Polygon_2 hull;
 //	std::vector<Point_2> hull;
 	CGAL::convex_hull_2(cgal_points.begin(), cgal_points.end(), std::back_inserter(hull)); // O(nh) vs O(nlogn) ch_bykat
-	assert(hull.is_convex());
+	MPS_ASSERT(hull.is_convex());
 
 //	auto comp = [](const RankedPose& a, const RankedPose& b ) { return a.first < b.first; };
 	std::priority_queue<RankedPose, std::vector<RankedPose>, ComparePoses> graspPoses;
@@ -83,7 +84,7 @@ std::priority_queue<MotionPlanner::RankedPose, std::vector<MotionPlanner::Ranked
 			minV = std::min(minV, projV);
 			maxV = std::max(maxV, projV);
 
-			assert(projN > -1e-6);
+			MPS_ASSERT(projN > -1e-6);
 			if (projN > maxN)
 			{
 				maxN = projN;
@@ -189,7 +190,7 @@ ObjectSampler::sampleObject(ObjectIndex& id, Pose& pushFrame) const
 		octomath::Vector3 ray = pt_original-cameraOrigin;
 		octomap::point3d collision;
 		bool hit = env->sceneOctree->castRay(cameraOrigin, ray, collision, true);
-		assert(hit); _unused(hit);
+		MPS_ASSERT(hit); _unused(hit);
 		collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision)); // regularize
 
 		Eigen::Vector3d gHat = -Eigen::Vector3d::UnitZ();
@@ -231,15 +232,15 @@ double
 MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* motion) const
 {
 	const size_t nClusters = motion->state->poses.size();
-	assert(nClusters == env->completedSegments.size());
+	MPS_ASSERT(nClusters == env->completedSegments.size());
 
 	Eigen::Matrix3Xd centroids(3, nClusters);
 	int colIndex = 0;
 	for (const auto& seg : env->completedSegments)
 	{
 		auto obj = seg.first;
-		assert(seg.second.get());
-		assert(seg.second->size() > 0);
+		MPS_ASSERT(seg.second.get());
+		MPS_ASSERT(seg.second->size() > 0);
 		octomap::point3d_collection segmentPoints = getPoints(seg.second.get());
 		Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
 		for (const auto& pt : segmentPoints)
@@ -438,7 +439,7 @@ MotionPlanner::gripperEnvironmentACM(const std::shared_ptr<Manipulator>& manipul
 bool
 MotionPlanner::gripperEnvironmentCollision(const std::shared_ptr<Manipulator>& manipulator, const robot_state::RobotState& collisionState) const
 {
-	assert(env->collisionWorld);
+	MPS_ASSERT(env->collisionWorld);
 
 	collision_detection::CollisionRequest collision_request;
 	collision_detection::CollisionResult collision_result;
@@ -675,7 +676,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 					continue;
 				}
 
-				assert(motion->state->poses.size() == env->completedSegments.size());
+				MPS_ASSERT(motion->state->poses.size() == env->completedSegments.size());
 				return motion;
 			}
 		}
@@ -902,7 +903,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 								continue;
 							}
 
-							assert(motion->state->poses.size() == env->completedSegments.size());
+							MPS_ASSERT(motion->state->poses.size() == env->completedSegments.size());
 							return motion;
 						}
 					}
@@ -1118,7 +1119,7 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 						continue;
 					}
 
-					assert(motion->state->poses.size() == env->completedSegments.size());
+					MPS_ASSERT(motion->state->poses.size() == env->completedSegments.size());
 					return motion;
 				}
 			}

@@ -6,6 +6,7 @@
 #define MPS_SHAPE_UTILS_IMPL_H
 
 #include "mps_voxels/shape_utils.h"
+#include "mps_voxels/assert.h"
 
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Polyhedron_3.h>
@@ -155,7 +156,7 @@ std::shared_ptr<shapes::Mesh> convex_hull(const PointContainerT& points)
 			if (3 != vertex_count)
 				throw std::runtime_error("Facet contains " + std::to_string(vertex_count) + " vertices.");
 		}
-		assert(idx_count == static_cast<int>(poly.size_of_facets())*3);
+		MPS_ASSERT(idx_count == static_cast<int>(poly.size_of_facets())*3);
 
 		m->computeTriangleNormals();
 		return m;

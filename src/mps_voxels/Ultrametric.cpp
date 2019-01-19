@@ -3,6 +3,7 @@
 //
 
 #include "mps_voxels/Ultrametric.h"
+#include "mps_voxels/assert.h"
 
 Ultrametric::Ultrametric(cv::Mat& ucm, cv::Mat& labels)
 {
@@ -28,12 +29,12 @@ Ultrametric::Ultrametric(cv::Mat& ucm, cv::Mat& labels)
 	std::cerr << label_map.rows() << ", " << contour_map.rows() << " ; " << label_map.cols() << ", "
 	          << contour_map.cols() << std::endl;
 
-	assert(label_map.all());
+	MPS_ASSERT(label_map.all());
 
 	merge_tree = ucm2hier(contour_map, label_map.cast<label_type>());
 
-	assert(merge_tree.parent_labels.size()==merge_tree.n_regs-merge_tree.n_leaves);
-	assert(merge_tree.children_labels.size()==merge_tree.n_regs-merge_tree.n_leaves);
+	MPS_ASSERT(merge_tree.parent_labels.size()==merge_tree.n_regs-merge_tree.n_leaves);
+	MPS_ASSERT(merge_tree.children_labels.size()==merge_tree.n_regs-merge_tree.n_leaves);
 
 	for (label_type lbl = 1; lbl <= merge_tree.n_leaves; ++lbl) { label_to_index[lbl] = lbl-1; }
 	// Construct an upward-pointing tree from the downward-pointing one
@@ -43,10 +44,10 @@ Ultrametric::Ultrametric(cv::Mat& ucm, cv::Mat& labels)
 		label_to_index[merge_tree.parent_labels[iter]] = iter + merge_tree.n_leaves;
 		for (label_type& lbl : merge_tree.children_labels[iter])
 		{
-			assert(lbl <= merge_tree.n_regs);
+			MPS_ASSERT(lbl <= merge_tree.n_regs);
 			// Verify that this leaf has not been given another parent
 			auto res = all_leaf_children.insert(lbl);
-			assert(res.second);
+			MPS_ASSERT(res.second);
 			EIGEN_UNUSED_VARIABLE(res);
 
 			parent_tree[lbl] = merge_tree.parent_labels[iter];
@@ -130,7 +131,7 @@ std::map<label_type, std::vector<label_type>> Ultrametric::getCutClusters(const 
 				std::list<label_type> c = getChildren(merge_tree, lbl_pair.first);
 				std::vector<label_type> children; children.reserve(c.size());
 				children.insert(children.end(), c.begin(), c.end());
-				for (const auto& child : children) { assert(label_to_index.at(child) < merge_tree.n_leaves); EIGEN_UNUSED_VARIABLE(child); }
+				for (const auto& child : children) { MPS_ASSERT(label_to_index.at(child) < merge_tree.n_leaves); EIGEN_UNUSED_VARIABLE(child); }
 				clusters.insert({lbl_pair.first, children});
 			}
 		}

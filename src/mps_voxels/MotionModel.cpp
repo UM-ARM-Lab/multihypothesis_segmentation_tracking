@@ -6,6 +6,9 @@
 
 #include <geometric_shapes/body_operations.h>
 
+#include <CGAL/Cartesian_d.h>
+#include <CGAL/Min_sphere_of_spheres_d.h>
+
 static const double PADDING = 0.04;
 static const double NEARLY_ZERO = 1e-9;
 
@@ -80,12 +83,38 @@ bool sphereIntersectsRay(const bodies::BoundingSphere& sphere,
 
 void MotionModel::updateMembershipStructures()
 {
-	std::vector<bodies::BoundingSphere> bspheres(membershipShapes.size());
-	for (size_t i = 0; i < membershipShapes.size(); ++i)
+	typedef double FT;
+	typedef CGAL::Cartesian_d<FT> K;
+	typedef CGAL::Min_sphere_of_spheres_d_traits_d<K,FT,3> Traits;
+	typedef CGAL::Min_sphere_of_spheres_d<Traits> Min_sphere;
+	typedef K::Point_d Point;
+	typedef Traits::Sphere Sphere;
+
+	std::vector<bodies::BoundingSphere> bSpheres(membershipBodies.size());
+	for (size_t i = 0; i < membershipBodies.size(); ++i)
 	{
-		membershipShapes[i]->computeBoundingSphere(bspheres[i]);
+		// For meshes, we want to use CGAL's more sophisticated sphere-fitting algorithm
+		const auto& mesh = std::dynamic_pointer_cast<const shapes::Mesh>(membershipShapes[i]);
+		if (mesh)
+		{
+			std::vector<Sphere> S;
+			for (int pIdx = 0; pIdx < static_cast<int>(mesh->vertex_count); ++pIdx)
+			{
+				Point pt(3, mesh->vertices+(pIdx*3), mesh->vertices+(pIdx*3) + 3);
+				S.emplace_back(Sphere(pt, membershipBodies[i]->getPadding()));
+			}
+			Min_sphere min_sphere(S.begin(), S.end());
+			if (min_sphere.is_valid())
+			{
+				bSpheres[i].center = Eigen::Map<const Eigen::Vector3d>(min_sphere.center_cartesian_begin());
+				bSpheres[i].radius = min_sphere.radius();
+				continue;
+			}
+		}
+
+		membershipBodies[i]->computeBoundingSphere(bSpheres[i]);
 	}
-	bodies::mergeBoundingSpheres(bspheres, boundingSphere);
+	bodies::mergeBoundingSpheres(bSpheres, boundingSphere);
 }
 
 const int RigidMotionModel::MOTION_PARAMETERS_DIMENSION;
@@ -94,7 +123,7 @@ double RigidMotionModel::membershipLikelihood(const Eigen::Vector3d& pt) const
 {
 	const Eigen::Vector3d pt_local = localTglobal*pt;
 
-	if (membershipShapes.empty())
+	if (membershipBodies.empty())
 	{
 		return logLikelihood(exp(-(pt_local.squaredNorm())));
 	}
@@ -109,7 +138,7 @@ double RigidMotionModel::membershipLikelihood(const Eigen::Vector3d& pt) const
 //	else { return std::numeric_limits<double>::max(); }
 
 	// Check member shapes
-	for (const auto& shape : membershipShapes)
+	for (const auto& shape : membershipBodies)
 	{
 		if (shape->containsPoint(pt_local))
 		{
@@ -136,7 +165,7 @@ double RigidMotionModel::membershipLikelihood(const Eigen::Vector3d& pt, const S
 //		return L;
 //	}
 
-	for (const auto& shape : membershipShapes)
+	for (const auto& shape : membershipBodies)
 	{
 		EigenSTL::vector_Vector3d intersections;
 		if (shape->intersectsRay(cam_local, dir, &intersections))
@@ -199,7 +228,8 @@ bool loadLinkMotionModels(const robot_model::RobotModel* pModel, std::map<std::s
 			body->setScale(1.0);
 			body->setPadding(PADDING);
 			body->setPose(link->getCollisionOriginTransforms()[s]);
-			rmm->membershipShapes.emplace_back(body);
+			rmm->membershipBodies.emplace_back(body);
+			rmm->membershipShapes.emplace_back(shape);
 		}
 		motionModels[link->getName()] = std::move(rmm);
 	}

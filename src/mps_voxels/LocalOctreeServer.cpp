@@ -3,6 +3,7 @@
 //
 
 #include "mps_voxels/LocalOctreeServer.h"
+#include "mps_voxels/assert.h"
 
 #include <octomap/Pointcloud.h>
 #include <pcl_ros/transforms.h>
@@ -27,11 +28,11 @@ void insertCloudInOctree(const pcl::PointCloud<PointT>::Ptr& cloud, const Eigen:
 	for (const PointT& pt : *transformed_cloud)
 	{
 		pc.push_back(pt.x, pt.y, pt.z);
-		assert(pt.x > min(0)); assert(pt.x < max(0));
-		assert(pt.y > min(1)); assert(pt.y < max(1));
-		assert(pt.z > min(2)); assert(pt.z < max(2));
+		MPS_ASSERT(pt.x > min(0)); MPS_ASSERT(pt.x < max(0));
+		MPS_ASSERT(pt.y > min(1)); MPS_ASSERT(pt.y < max(1));
+		MPS_ASSERT(pt.z > min(2)); MPS_ASSERT(pt.z < max(2));
 	}
-	assert(pc.size() == cloud->size());
+	MPS_ASSERT(pc.size() == cloud->size());
 	octomap::point3d origin((float)worldTcamera.translation().x(),
 	                        (float)worldTcamera.translation().y(),
 	                        (float)worldTcamera.translation().z());
@@ -41,7 +42,7 @@ void insertCloudInOctree(const pcl::PointCloud<PointT>::Ptr& cloud, const Eigen:
 	tree->insertPointCloud(pc, origin, -1, false, true);
 	tree->updateInnerOccupancy();
 
-	assert(tree->size() > 0);
+	MPS_ASSERT(tree->size() > 0);
 }
 
 LocalOctreeServer::LocalOctreeServer(const ros::NodeHandle& private_nh_)

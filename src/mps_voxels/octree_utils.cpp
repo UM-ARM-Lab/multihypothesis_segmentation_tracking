@@ -4,6 +4,7 @@
 
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/colormap.h"
+#include "mps_voxels/assert.h"
 #include <mps_msgs/CompleteShape.h>
 
 #include <octomap_msgs/conversions.h>
@@ -84,10 +85,10 @@ void VoxelCompleter::completeShape(
 	bool updateMainTree,
 	const int resolution) const
 {
-	assert(resolution > 0);
-	assert(max.x() > min.x());
-	assert(max.y() > min.y());
-	assert(max.z() > min.z());
+	MPS_ASSERT(resolution > 0);
+	MPS_ASSERT(max.x() > min.x());
+	MPS_ASSERT(max.y() > min.y());
+	MPS_ASSERT(max.z() > min.z());
 
 	std::cerr << octree->getNumLeafNodes() << ", " << octree->getResolution() << std::endl;
 	if (subtree)

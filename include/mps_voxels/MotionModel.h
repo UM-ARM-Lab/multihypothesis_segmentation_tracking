@@ -10,6 +10,7 @@
 #include <Eigen/Geometry>
 
 #include <geometric_shapes/bodies.h>
+#include <geometric_shapes/shapes.h>
 
 struct SensorModel
 {
@@ -42,7 +43,8 @@ public:
 	Pose localTglobal;
 
 //protected:
-	std::vector<std::unique_ptr<AbstractShapeBase>> membershipShapes;
+	std::vector<std::unique_ptr<AbstractShapeBase>> membershipBodies;
+	std::vector<shapes::ShapeConstPtr> membershipShapes;
 	bodies::BoundingSphere boundingSphere;
 
 	enum { NeedsToAlign = (sizeof(Pose)%16)==0 };

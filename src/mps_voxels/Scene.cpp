@@ -58,7 +58,7 @@ bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 					if (!manip->configureHardware())
 					{
 						ROS_FATAL_STREAM("Failed to setup hardware '" << manip->arm->getName() << "'");
-						throw std::runtime_error("Hardware config failure.");
+//						throw std::runtime_error("Hardware config failure.");
 					}
 					for (const std::string& jName : manip->arm->getJointModelNames())
 					{
@@ -467,7 +467,7 @@ bool Scene::completeShapes()
 //		{
 //			std::string modelID = "completed_"+std::to_string(selfModels.size());
 //			auto newModel = std::make_unique<RigidMotionModel>();
-//			newModel->membershipShapes
+//			newModel->membershipBodies
 //			selfModels[modelID] = std::move(newModel);
 //			model = selfModels[modelID].get();
 //		}
