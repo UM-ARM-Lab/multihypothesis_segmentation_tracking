@@ -169,7 +169,7 @@ std::shared_ptr<shapes::Mesh> prism(const PointContainerT& points)
 {
 	using Scalar = std::remove_reference_t<typename std::remove_const_t<decltype(std::declval<PointT>().x())>>;
 
-	if (points.empty())
+	if (points.empty() || points.size() < 3)
 	{
 		return std::shared_ptr<shapes::Mesh>(nullptr);
 	}

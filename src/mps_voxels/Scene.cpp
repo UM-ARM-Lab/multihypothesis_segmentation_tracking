@@ -11,6 +11,7 @@
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/shape_utils.h"
+#include "mps_voxels/assert.h"
 
 #include <tf_conversions/tf_eigen.h>
 
@@ -374,6 +375,60 @@ bool Scene::loadAndFilterScene()
 		cam_msg_cropped.roi.height = roi.height;
 		cam_msg_cropped.roi.x_offset = roi.x;
 		cam_msg_cropped.roi.y_offset = roi.y;
+
+		// Force out-of-bounds points to plane
+		Pose cameraTworld = worldTcamera.inverse(Eigen::Isometry);
+
+#pragma omp parallel for
+		for (int v = roi.y; v < roi.y+roi.height; ++v)
+		{
+			for (int u = roi.x; u < roi.x+roi.width; ++u)
+			{
+//				int idx = v * (int)cameraModel.cameraInfo().width + u;
+
+				// Compute the ray-plane intersection
+				Eigen::Vector3d p0 = cameraTworld.translation(); ///< A point in the table plane
+				Eigen::Vector3d pn = cameraTworld.linear().col(2); ///< The table plane normal vector
+				Eigen::Vector3d l0 = Eigen::Vector3d::Zero(); ///< The ray origin (= camera origin)
+				Eigen::Vector3d ln = toPoint3D<Eigen::Vector3d>(u, v, 1.0,
+				                                                cameraModel).normalized(); ///< The ray direction
+				double t = (p0-l0).dot(pn)/(ln.dot(pn)); ///< Distance along ray of intersection
+				Eigen::Vector3d ptIntersection = l0+(ln*t); ///< Point where ray intersects plane
+
+				Eigen::Vector3d ptIntWorld = worldTcamera * ptIntersection;
+
+//				auto color = cv_rgb_ptr->image.at<cv::Vec3b>(v, u);
+				auto dVal = cv_depth_ptr->image.at<uint16_t>(v, u);
+				if (0 == dVal
+				    && minExtent.x() < ptIntWorld.x() && ptIntWorld.x() < maxExtent.x()
+				    && minExtent.y() < ptIntWorld.y() && ptIntWorld.y() < maxExtent.y()
+				    && minExtent.z() < ptIntWorld.z() && ptIntWorld.z() < maxExtent.z())
+				{
+					continue; // Invalid point, but inside
+				}
+
+				float depthVal = depth_image_proc::DepthTraits<uint16_t>::toMeters(dVal); // if (depth1 > maxZ || depth1 < minZ) { continue; }
+				Eigen::Vector3f ptWorld = worldTcamera.cast<float>() * toPoint3D<Eigen::Vector3f>(u, v, depthVal, cameraModel);
+
+				if (0 == dVal
+				    || ptWorld.x() < minExtent.x() || maxExtent.x() < ptWorld.x()
+				    || ptWorld.y() < minExtent.y() || maxExtent.y() < ptWorld.y()
+				    || ptWorld.z() < minExtent.z() || maxExtent.z() < ptWorld.z())
+				{
+					if (t>0.0 && t<10.0)
+					{
+						cv_depth_cropped.image.at<uint16_t>(v-roi.y, u-roi.x)
+						    = depth_image_proc::DepthTraits<uint16_t>::fromMeters(ptIntersection.z());
+					}
+					else
+					{
+						cv_depth_cropped.image.at<uint16_t>(v-roi.y, u-roi.x) = 0;
+					}
+					cv_rgb_cropped.image.at<cv::Vec3b>(v-roi.y, u-roi.x) = cv::Vec3b(255, 255, 255);
+				}
+			}
+		}
+
 		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	}
 
@@ -435,6 +490,7 @@ bool Scene::completeShapes()
 		subtree->setProbHit(0.95);
 		setBBox(minExtent, maxExtent, subtree.get());
 		insertCloudInOctree(segment_cloud, worldTcamera, subtree.get());
+		MPS_ASSERT(subtree->size() > 0);
 		std::cerr << subtree->size() << std::endl;
 //		for (const PointT& pt : *segment_cloud)
 //		{
@@ -459,6 +515,7 @@ bool Scene::completeShapes()
 		// Visualize approximate shape
 		visualization_msgs::Marker m;
 		auto approx = approximateShape(subtree.get());
+		MPS_ASSERT(approx);
 		approximateSegments.insert({seg.first, approx});
 
 		// Search for this segment in past models

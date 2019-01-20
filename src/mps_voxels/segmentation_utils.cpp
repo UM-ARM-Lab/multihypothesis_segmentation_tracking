@@ -133,20 +133,16 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 		imagePt.x -= roi.x;
 		imagePt.y -= roi.y;
 
-		if (bounds.contains(imagePt))
-		{
-			LabelT label = filtered_labels.at<LabelT>(imagePt);
-			if (BUFFER_VALUE == label) { continue; }
-			segment_clouds[label]->push_back(pt);
-		}
-		else
-		{
-			throw std::runtime_error("Point did not reproject onto label mask.");
-		}
+		MPS_ASSERT(bounds.contains(imagePt));
+
+		LabelT label = filtered_labels.at<LabelT>(imagePt);
+		if (BUFFER_VALUE == label) { continue; }
+		segment_clouds[label]->push_back(pt);
 	}
 
 	const int nNeighbors = 200;
-	const int sizeThreshold = 50;
+	const double percentThreshold = 0.04;
+	const int sizeThreshold = 25;
 
 	for (auto& segment : segment_clouds)
 	{
@@ -156,19 +152,20 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 		}
 	}
 
-	for (const auto label : uniqueLabels)
-	{
-		if (label < 100)
-		{
-			segment_clouds.erase(label);
-			break;
-		}
-	}
+//	for (const auto label : uniqueLabels)
+//	{
+//		if (label < 100)
+//		{
+//			segment_clouds.erase(label);
+//			break;
+//		}
+//	}
 
 	std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> retVal;
 	for (auto& pair : segment_clouds)
 	{
-		if (pair.second->size() >= sizeThreshold)
+		double percentFilled = static_cast<double>(pair.second->size())/static_cast<double>(cv::countNonZero(filtered_labels == pair.first));
+		if (percentFilled >= percentThreshold && static_cast<int>(pair.second->size()) > sizeThreshold)
 		{
 			ObjectIndex objID{-(static_cast<long>(retVal.size())-100)}; // retVal.size()-1
 			retVal.insert({objID, pair.second});
@@ -177,7 +174,7 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 				auto res = labelToIndexLookup->insert({pair.first, objID}); MPS_ASSERT(res.second);
 			}
 		}
-		else { std::cerr << "Rejected object " << pair.second << std::endl; }
+		else { std::cerr << "Rejected object " << pair.second << ": " << percentFilled*100.0 << "%." << std::endl; }
 	}
 
 	return retVal;
