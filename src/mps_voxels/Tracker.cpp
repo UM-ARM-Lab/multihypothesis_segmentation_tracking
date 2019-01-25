@@ -43,6 +43,7 @@ Tracker::Tracker(const size_t _buffer, std::shared_ptr<tf::TransformListener> _l
 
 	vizPub = options.nh.advertise<visualization_msgs::MarkerArray>("flow", 10, true);
 
+
 	it = std::make_unique<image_transport::ImageTransport>(options.nh);
 	rgb_sub = std::make_unique<image_transport::SubscriberFilter>(*it, options.rgb_topic, options.buffer, options.hints);
 	depth_sub = std::make_unique<image_transport::SubscriberFilter>(*it, options.depth_topic, options.buffer, options.hints);
@@ -57,6 +58,10 @@ Tracker::Tracker(const size_t _buffer, std::shared_ptr<tf::TransformListener> _l
 void Tracker::startCapture()
 {
 	reset();
+
+	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>(options.joint_topic, 2, boost::bind(&Tracker::jointCb, this, _1), ros::VoidPtr(), &callback_queue);
+	joint_sub = std::make_unique<ros::Subscriber>(options.nh.subscribe(joint_sub_options));
+
 	rgb_sub->subscribe(*it, options.rgb_topic, options.buffer, options.hints);
 	depth_sub->subscribe(*it, options.depth_topic, options.buffer, options.hints);
 	cam_sub->subscribe(options.nh, options.cam_topic, options.buffer);
@@ -67,12 +72,18 @@ void Tracker::stopCapture()
 	rgb_sub->unsubscribe();
 	depth_sub->unsubscribe();
 	cam_sub->unsubscribe();
+	if (joint_sub)
+	{
+		joint_sub->shutdown();
+		joint_sub.reset();
+	}
 }
 
 void Tracker::reset()
 {
 	rgb_buffer.clear();
 	depth_buffer.clear();
+	joint_buffer.clear();
 	flows2.clear();
 	flows3.clear();
 }
@@ -255,6 +266,11 @@ void Tracker::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	{
 		stopCapture();
 	}
+}
+
+void Tracker::jointCb(const sensor_msgs::JointStateConstPtr& joint_msg)
+{
+	joint_buffer.insert(joint_buffer.end(), {joint_msg->header.stamp, joint_msg});
 }
 
 bool estimateRigidTransform(const Tracker::Flow3D& flow, Eigen::Isometry3d& bTa)

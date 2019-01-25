@@ -20,6 +20,8 @@
 
 bool isSpeckleNode(const octomap::OcTreeKey& nKey, const octomap::OcTree* octree);
 
+void decayMemory(octomap::OcTree* octree, const octomap::point3d& cameraOrigin, const float alphaVisible = 0.1, const float alphaHidden = 0.8);
+
 class OctreeRetriever
 {
 public:
@@ -53,7 +55,7 @@ public:
 octomap::point3d_collection getPoints(const octomap::OcTree* octree);
 
 std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOcclusionsInFOV(
-	const octomap::OcTree* octree,
+	octomap::OcTree* octree,
 	const image_geometry::PinholeCameraModel& cameraModel,
 	const Eigen::Affine3d& cameraTworld,
 	const Eigen::Vector3f& minExtent,

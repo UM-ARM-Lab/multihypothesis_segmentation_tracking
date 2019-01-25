@@ -35,6 +35,54 @@ bool isSpeckleNode(const octomap::OcTreeKey& nKey, const octomap::OcTree* octree
 	return !neighborFound;
 }
 
+void decayMemory(octomap::OcTree* octree, const octomap::point3d& cameraOrigin, const float alphaVisible, const float alphaHidden)
+{
+	// Decay to just below the occupancy threshold
+	const float decayTarget = 0.8 * octree->getOccupancyThres();
+	MPS_ASSERT(decayTarget > 0.0);
+	float alpha = alphaHidden;
+
+	std::vector<octomap::OcTreeKey> toDelete;
+
+	for (octomap::OcTree::iterator it = octree->begin(octree->getTreeDepth()),
+		     end = octree->end(); it != end; ++it)
+	{
+		if (octree->isNodeOccupied(*it))
+		{
+			const auto& pt_world = it.getCoordinate();
+
+			octomap::point3d collision;
+			bool hit = octree->castRay(cameraOrigin, pt_world-cameraOrigin, collision, true);
+			MPS_ASSERT(hit);
+
+			float hitDist = pt_world.distance(collision);
+
+			if (hitDist <= 2.0*octree->getResolution())
+			{
+				alpha = alphaVisible;
+			}
+			else
+			{
+				alpha = alphaHidden;
+			}
+
+			it->setValue(alpha * it->getValue() + (1.0f-alpha)*decayTarget);
+		}
+
+		if (fabs(it->getValue()-decayTarget) < 0.2)
+		{
+			toDelete.push_back(it.getKey());
+		}
+	}
+
+	for (const octomap::OcTreeKey& key : toDelete) { octree->deleteNode(key, octree->getTreeDepth()); }
+
+	octree->updateInnerOccupancy();
+	octree->prune();
+
+}
+
+
 OctreeRetriever::OctreeRetriever(ros::NodeHandle& nh)
 {
 	mapClient = nh.serviceClient<octomap_msgs::GetOctomap>("/octomap_binary");
@@ -249,7 +297,7 @@ octomap::point3d_collection getPoints(const octomap::OcTree* tree)
 }
 
 std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOcclusionsInFOV(
-	const octomap::OcTree* octree,
+	octomap::OcTree* octree,
 	const image_geometry::PinholeCameraModel& cameraModel,
 	const Eigen::Affine3d& cameraTtable,
 	const Eigen::Vector3f& minExtent,
@@ -287,6 +335,8 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 				if (imgPt.x > x_buffer && imgPt.x < cameraModel.cameraInfo().width - x_buffer
 				    && imgPt.y > y_buffer && imgPt.y < cameraModel.cameraInfo().height - y_buffer)
 				{
+					if (!octree->inBBX(octomap::point3d(ix, iy, iz))) { continue; }
+
 					if (!octree->search(ix, iy, iz))
 					{
 						//This cell is unknown
@@ -297,13 +347,17 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 						octomap::point3d collision;
 						bool collided = octree->castRay(cameraOrigin, ray, collision, false);
 
-						if (collided && ray.norm_sq() > (collision-cameraOrigin).norm_sq())
+						if (collided && (ray.norm_sq() > (collision-cameraOrigin).norm_sq()+octree->getResolution()))
 						{
 							#pragma omp critical
 							{
 								occluded_pts.push_back(coord);
 								occlusionTree->setNodeValue(coord, std::numeric_limits<float>::infinity(), true);
 							}
+						}
+						else
+						{
+							octree->updateNode(coord, false, true);
 						}
 					}
 				}

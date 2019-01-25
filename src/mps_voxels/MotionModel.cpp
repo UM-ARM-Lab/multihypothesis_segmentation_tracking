@@ -9,7 +9,7 @@
 #include <CGAL/Cartesian_d.h>
 #include <CGAL/Min_sphere_of_spheres_d.h>
 
-static const double PADDING = 0.04;
+static const double PADDING = 0.02;
 static const double NEARLY_ZERO = 1e-9;
 
 static inline double distanceSQR(const Eigen::Vector3d& p, const Eigen::Vector3d& origin, const Eigen::Vector3d& dir)

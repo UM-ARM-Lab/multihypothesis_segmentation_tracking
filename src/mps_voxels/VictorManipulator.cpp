@@ -87,3 +87,37 @@ bool VictorManipulator::configureHardware()
 	bool callSucceeded = configurationClient.call(req, resp);
 	return callSucceeded && resp.success;
 }
+
+bool VictorManipulator::isGrasping(const robot_state::RobotState& currentState) const
+{
+//	for (const auto& n : currentState.getVariableNames()) { std::cerr << n << std::endl; }
+//	std::cerr << "-----------------" << std::endl;
+//	for (const auto& n : gripper->getActiveJointModelNames()) { std::cerr << n << std::endl; }
+
+	std::vector<std::string> fingerJointNames;
+	if (arm->getName().find("left") != std::string::npos)
+	{
+		fingerJointNames = { "victor_left_gripper_fingerA_joint_2", "victor_left_gripper_fingerB_joint_2", "victor_left_gripper_fingerC_joint_2" };
+	}
+	else if (arm->getName().find("right") != std::string::npos)
+	{
+		fingerJointNames = { "victor_right_gripper_fingerA_joint_2", "victor_right_gripper_fingerB_joint_2", "victor_right_gripper_fingerC_joint_2" };
+	}
+	else
+	{
+		throw std::runtime_error("Unknown arm.");
+	}
+
+	const double MIN_POS = 0.075;
+	const double MAX_POS = 0.35;
+	for (const auto& n : fingerJointNames)
+	{
+		double q = currentState.getVariablePosition(n);
+		if (MIN_POS < q && q < MAX_POS)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}

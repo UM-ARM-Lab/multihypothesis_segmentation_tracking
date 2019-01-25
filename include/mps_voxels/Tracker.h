@@ -6,6 +6,7 @@
 #define MPS_VOXELS_TRACKER_H
 
 #include "mps_voxels/ROI.h"
+#include "mps_voxels/colormap.h"
 
 #include <opencv2/imgproc.hpp>
 
@@ -16,6 +17,7 @@
 #include <depth_image_proc/depth_conversions.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
+#include <sensor_msgs/JointState.h>
 
 #include <visualization_msgs/MarkerArray.h>
 #include <depth_image_proc/depth_traits.h>
@@ -24,7 +26,6 @@
 #include <tf/transform_datatypes.h>
 #include <tf/transform_listener.h>
 
-#include "mps_voxels/colormap.h"
 
 #include <Eigen/Geometry>
 
@@ -93,6 +94,7 @@ public:
 		std::string rgb_topic;
 		std::string depth_topic;
 		std::string cam_topic;
+		std::string joint_topic;
 		SubscriptionOptions(const std::string& prefix = "/kinect2_victor_head/hd")
 			: nh(), pnh("~"),
 //			  it(nh),
@@ -100,7 +102,8 @@ public:
 			  buffer(10), topic_prefix(prefix),
 			  rgb_topic(topic_prefix+"/image_color_rect"),
 			  depth_topic(topic_prefix+"/image_depth_rect"),
-			  cam_topic(topic_prefix+"/camera_info")
+			  cam_topic(topic_prefix+"/camera_info"),
+			  joint_topic("joint_states")
 		{
 		}
 	};
@@ -122,6 +125,7 @@ public:
 
 	std::map<ros::Time, cv_bridge::CvImagePtr> rgb_buffer;
 	std::map<ros::Time, cv_bridge::CvImagePtr> depth_buffer;
+	std::map<ros::Time, sensor_msgs::JointStateConstPtr> joint_buffer;
 	image_geometry::PinholeCameraModel cameraModel;
 
 	std::unique_ptr<image_transport::ImageTransport> it;
@@ -129,6 +133,7 @@ public:
 	std::unique_ptr<image_transport::SubscriberFilter> depth_sub;
 	std::unique_ptr<message_filters::Subscriber<sensor_msgs::CameraInfo>> cam_sub;
 	std::unique_ptr<message_filters::Synchronizer<SyncPolicy>> sync;
+	std::unique_ptr<ros::Subscriber> joint_sub;
 
 	cv::Mat mask;
 //	std::vector<Flow3D> flows3;
@@ -165,6 +170,8 @@ public:
 	void imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	             const sensor_msgs::ImageConstPtr& depth_msg,
 	             const sensor_msgs::CameraInfoConstPtr& cam_msg);
+
+	void jointCb(const sensor_msgs::JointStateConstPtr& joint_msg);
 };
 
 struct CaptureGuard

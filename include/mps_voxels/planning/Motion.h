@@ -15,6 +15,8 @@ struct Motion
 	std::shared_ptr<State> state;
 	std::shared_ptr<Action> action;
 	std::shared_ptr<Motion> parent;
+
+	std::vector<ObjectIndex> targets;
 };
 
 #endif //MPS_PLANNING_MOTION_H

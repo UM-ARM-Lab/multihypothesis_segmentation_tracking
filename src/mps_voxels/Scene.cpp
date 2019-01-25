@@ -124,7 +124,7 @@ bool Scene::loadAndFilterScene()
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	scenario->mapServer->getOctree()->clear();
+//	scenario->mapServer->getOctree()->clear();
 
 	// Get Octree
 	octomap::OcTree* octree = scenario->mapServer->getOctree();
@@ -143,6 +143,13 @@ bool Scene::loadAndFilterScene()
 	scenario->listener->lookupTransform(cameraFrame, worldFrame, getTime(), cameraFrameInTableCoordinates);
 	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
 
+	octomap::point3d cameraOrigin((float)worldTcamera.translation().x(),
+	                              (float)worldTcamera.translation().y(),
+	                              (float)worldTcamera.translation().z());
+	decayMemory(octree, cameraOrigin);
+	octree->setProbMiss(0.025);
+	octree->setProbHit(0.90);
+
 	cloud = imagesToCloud(cv_rgb_ptr->image, cv_depth_ptr->image, cameraModel);
 
 	/////////////////////////////////////////////////////////////////
@@ -160,6 +167,8 @@ bool Scene::loadAndFilterScene()
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	scenario->mapServer->insertCloud(cropped_cloud, worldTcamera);
+//	scenario->mapServer->insertCloud(cloud, worldTcamera);
+//	octree->prune();
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	pcl::PointCloud<PointT>::Ptr downsampled_cloud(new pcl::PointCloud<PointT>());
@@ -376,10 +385,22 @@ bool Scene::loadAndFilterScene()
 		cam_msg_cropped.roi.x_offset = roi.x;
 		cam_msg_cropped.roi.y_offset = roi.y;
 
+////		cv_depth_cropped->image
+//		cv::Mat cleaned_depth(cv_depth_cropped.image.size(), CV_16UC1);
+//
+//		cv::rgbd::DepthCleaner dc(CV_16U, 7);
+//		dc(cv_depth_cropped.image, cleaned_depth);
+//
+////		std::cerr << "type: " << cleaned_depth.type() << std::endl;
+////		cv::imshow("raw", cv_depth_cropped.image*10);
+////		cv::imshow("cleaned", cleaned_depth*10);
+////		cv::waitKey(0);
+//		cv_depth_cropped.image = cleaned_depth;
+
 		// Force out-of-bounds points to plane
 		Pose cameraTworld = worldTcamera.inverse(Eigen::Isometry);
 
-#pragma omp parallel for
+		#pragma omp parallel for
 		for (int v = roi.y; v < roi.y+roi.height; ++v)
 		{
 			for (int u = roi.x; u < roi.x+roi.width; ++u)
@@ -482,15 +503,45 @@ bool Scene::completeShapes()
 		getBoundingCube(*segment_cloud, min, max);
 		double edge_length = max.x()-min.x(); // all edge of cube are same size
 		double inflation = edge_length/5.0;
-		min -= inflation * Eigen::Vector3f::Ones();
-		max += inflation * Eigen::Vector3f::Ones();
+		min -= inflation*Eigen::Vector3f::Ones();
+		max += inflation*Eigen::Vector3f::Ones();
 
 		std::shared_ptr<octomap::OcTree> subtree(sceneOctree->create());
 		subtree->setProbMiss(0.05);
 		subtree->setProbHit(0.95);
 		setBBox(minExtent, maxExtent, subtree.get());
 		insertCloudInOctree(segment_cloud, worldTcamera, subtree.get());
-		MPS_ASSERT(subtree->size() > 0);
+		MPS_ASSERT(subtree->size()>0);
+
+		// Delete speckle nodes
+		std::vector<octomap::OcTree::iterator> iters;
+		std::vector<octomap::OcTreeKey> toDelete;
+		for (octomap::OcTree::iterator it = subtree->begin(subtree->getTreeDepth()),
+			     end = subtree->end(); it!=end; ++it)
+		{
+			if (subtree->isNodeOccupied(*it))
+			{
+				iters.push_back(it);
+			}
+		}
+
+		#pragma omp parallel for
+		for (size_t i = 0; i<iters.size(); ++i)
+		{
+			const auto& it = iters[i];
+			const octomap::OcTreeKey& key = it.getKey();
+			if (isSpeckleNode(key, subtree.get()))
+			{
+				#pragma omp critical
+				{
+					toDelete.push_back(key);
+				}
+			}
+		}
+
+		for (const octomap::OcTreeKey& key : toDelete) { subtree->deleteNode(key); }
+		subtree->updateInnerOccupancy();
+
 		std::cerr << subtree->size() << std::endl;
 //		for (const PointT& pt : *segment_cloud)
 //		{
@@ -506,17 +557,19 @@ bool Scene::completeShapes()
 
 		if (scenario->completionClient->completionClient.exists())
 		{
-			scenario->completionClient->completeShape(min, max, worldTcamera.cast<float>(), sceneOctree, subtree.get(), false);
+			scenario->completionClient->completeShape(min, max, worldTcamera.cast<float>(), sceneOctree, subtree.get(),
+			                                          false);
 		}
-		setBBox(Eigen::Vector3f(-2,-2,-2), Eigen::Vector3f(2,2,2), subtree.get());
-		completedSegments.insert({seg.first, subtree});
+		setBBox(Eigen::Vector3f(-2, -2, -2), Eigen::Vector3f(2, 2, 2), subtree.get());
 
 
 		// Visualize approximate shape
-		visualization_msgs::Marker m;
 		auto approx = approximateShape(subtree.get());
-		MPS_ASSERT(approx);
-		approximateSegments.insert({seg.first, approx});
+		if (approx)
+		{
+			completedSegments.insert({seg.first, subtree});
+			approximateSegments.insert({seg.first, approx});
+		}
 
 		// Search for this segment in past models
 //		MotionModel* model = matchModel(subtree, selfModels);

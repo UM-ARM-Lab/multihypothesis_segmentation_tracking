@@ -20,6 +20,7 @@ public:
 	                  std::string _palmName);
 
 	bool configureHardware() override;
+	bool isGrasping(const robot_state::RobotState& currentState) const override;
 
 	ros::ServiceClient configurationClient;
 

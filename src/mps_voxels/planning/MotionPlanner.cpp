@@ -257,7 +257,7 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 	Eigen::Matrix3Xd deltas = centroids.colwise() - centroid;
 	double spread = deltas.colwise().squaredNorm().sum();
 
-	int changeCount = 0;
+	double changeScore = 0;
 
 	// Compute change in umbras
 	for (const auto& seg : env->completedSegments)
@@ -293,7 +293,7 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 			if (!occluded)
 			{
 				// This world-attached point is now seen
-				++changeCount;
+				changeScore+=1;
 			}
 
 			// TODO: Verify
@@ -303,12 +303,12 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 			if (!occluded)
 			{
 				// This body-attached point is now seen
-				++changeCount;
+				changeScore+=1;
 			}
 
 		}
 
-		std::cerr << "Revealed " << changeCount << " voxels" << std::endl;
+		std::cerr << "Revealed " << changeScore << " voxels" << std::endl;
 	}
 
 	auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
@@ -385,7 +385,7 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 		}
 	}
 
-	return spread + 3.0*dir - 5.0*collisionCount + (double)changeCount/2000.0;
+	return spread + 3.0*dir - 5.0*collisionCount + changeScore/2000.0;
 }
 
 planning_scene::PlanningSceneConstPtr
@@ -676,6 +676,8 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 					continue;
 				}
 
+				motion->targets.push_back(slideSegmentID);
+
 				MPS_ASSERT(motion->state->poses.size() == env->completedSegments.size());
 				return motion;
 			}
@@ -903,6 +905,8 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 								continue;
 							}
 
+							motion->targets.push_back(slideSegmentID);
+
 							MPS_ASSERT(motion->state->poses.size() == env->completedSegments.size());
 							return motion;
 						}
@@ -1118,6 +1122,8 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 					{
 						continue;
 					}
+
+					motion->targets.push_back(targetID);
 
 					MPS_ASSERT(motion->state->poses.size() == env->completedSegments.size());
 					return motion;

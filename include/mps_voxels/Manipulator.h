@@ -54,6 +54,9 @@ public:
 
 	bool grasp(const robot_state::RobotState& currentState, moveit_msgs::Grasp& grasp) const;
 
+	virtual
+	bool isGrasping(const robot_state::RobotState&) const { return true; }
+
 protected:
 	mutable std::vector<double> qHome;
 	std::vector<double> qMin;

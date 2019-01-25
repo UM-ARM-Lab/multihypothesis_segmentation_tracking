@@ -5,6 +5,7 @@
 #include "mps_voxels/Manipulator.h"
 #include "mps_voxels/MotionModel.h"
 #include "mps_voxels/Tracker.h"
+#include "mps_voxels/CudaTracker.h"
 #include "mps_voxels/TargetDetector.h"
 #include "mps_voxels/LocalOctreeServer.h"
 #include "mps_voxels/octree_utils.h"
@@ -12,6 +13,7 @@
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/shape_utils.h"
+#include "mps_voxels/map_nearest.hpp"
 #include "mps_voxels/planning/MotionPlanner.h"
 #include "mps_voxels/assert.h"
 
@@ -247,6 +249,84 @@ robot_state::RobotState getCurrentRobotState()
 	return currentState;
 }
 
+std::map<ObjectIndex, Eigen::Affine3d> followObjects(const std::shared_ptr<Motion>& motion, const Tracker* track)
+{
+	Eigen::Affine3d worldTstart = Eigen::Affine3d::Identity();
+	Eigen::Affine3d worldTend = Eigen::Affine3d::Identity();
+	Eigen::Affine3d worldTobject_init = Eigen::Affine3d::Identity(); // Object pose at the initial time
+
+#ifdef USE_PLAN_POSES
+	// Compute the motion transform from the initial hand pose to the final
+	const auto& composite = std::dynamic_pointer_cast<CompositeAction>(motion->action);
+	const auto& action = std::dynamic_pointer_cast<JointTrajectoryAction>(composite->actions[composite->primaryAction]);
+
+	worldTstart = action->palm_trajectory.front();
+	worldTend = action->palm_trajectory.back();
+
+#else
+	auto msgStart = find_nearest(track->joint_buffer, track->rgb_buffer.begin()->first)->second;
+	auto msgEnd = find_nearest(track->joint_buffer, track->rgb_buffer.rbegin()->first)->second;
+
+	// Assume that state at start of track is start of manipulation
+	robot_state::RobotState qStart(pModel);
+	qStart.setToDefaultValues();
+	moveit::core::jointStateToRobotState(*msgStart, qStart);
+	qStart.update();
+
+	robot_state::RobotState qEnd(pModel);
+	qEnd.setToDefaultValues();
+	moveit::core::jointStateToRobotState(*msgEnd, qEnd);
+	qEnd.update();
+
+	double maxDist = 0;
+	bool isGrasping = false;
+	for (const auto& manip : scene->scenario->manipulators)
+	{
+		if (manip->isGrasping(qStart) && manip->isGrasping(qEnd))
+		{
+			isGrasping = true;
+			std::cerr << "Is grasping!" << std::endl;
+			const Eigen::Affine3d Tstart = qStart.getFrameTransform(manip->palmName);
+			const Eigen::Affine3d Tend = qEnd.getFrameTransform(manip->palmName);
+
+			const Eigen::Affine3d Tdist = Tstart.inverse(Eigen::Isometry)*Tend;
+			double dist = Tdist.translation().norm()+2.0*Eigen::Quaterniond(Tdist.rotation()).vec().norm();
+
+			if (dist>maxDist)
+			{
+				worldTstart = scene->worldTrobot*Tstart;
+				worldTend = scene->worldTrobot*Tend;
+			}
+		}
+	}
+
+#endif
+
+	auto worldTobject_final = worldTend * worldTstart.inverse(Eigen::Isometry) * worldTobject_init;
+
+	std::map<ObjectIndex, Eigen::Affine3d> trajs;
+	if (isGrasping)
+	{
+		trajs.insert({motion->targets.front(), worldTobject_final});
+	}
+	else
+	{
+		std::cerr << "Did not grasp!" << std::endl;
+	}
+
+	return trajs;
+}
+
+//std::map<ObjectIndex, Eigen::Affine3d> followObjects(const Tracker* track)
+//{
+
+//
+//	// Compute the motion transform from the initial hand pose to the final
+//
+//	// TODO: Use JointTrajectoryAction::palm_trajectory?
+//
+//}
+
 bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::RobotState& recoveryState)
 {
 	if (!ros::ok()) { return false; }
@@ -275,6 +355,7 @@ bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::Rob
 		if (isPrimaryAction)
 		{
 			captureGuard = std::make_unique<CaptureGuard>(tracker.get());
+			std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient)->cache.clear();
 			tracker->startCapture();
 		}
 
@@ -343,7 +424,14 @@ bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::Rob
 		if (isPrimaryAction)
 		{
 			tracker->stopCapture();
-//			tracker->track();
+
+			std::vector<ros::Time> steps;
+			for (auto iter = tracker->rgb_buffer.begin(); iter != tracker->rgb_buffer.end(); std::advance(iter, 5))
+			{
+				steps.push_back(iter->first);
+			}
+
+			tracker->track(steps);
 		}
 	}
 	return true;
@@ -402,13 +490,6 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	const std::string globalFrame = mapServer->getWorldFrame();
 	const std::string cameraFrame = cam_msg->header.frame_id;
 
-	// Clear visualization
-	{
-		visualization_msgs::MarkerArray ma;
-		ma.markers.resize(1);
-		ma.markers.front().action = visualization_msgs::Marker::DELETEALL;
-		octreePub.publish(ma);
-	}
 
 	// Show robot collision
 	{
@@ -494,13 +575,13 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 	}
 
-	bool getCompletion = scene->completeShapes();
-	if (!getCompletion)
+	// Clear visualization
 	{
-		return;
+		visualization_msgs::MarkerArray ma;
+		ma.markers.resize(1);
+		ma.markers.front().action = visualization_msgs::Marker::DELETEALL;
+		octreePub.publish(ma);
 	}
-
-	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	{
 		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(octree, globalFrame);
@@ -510,6 +591,14 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 		octreePub.publish(occupiedNodesVis);
 	}
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+	bool getCompletion = scene->completeShapes();
+	if (!getCompletion)
+	{
+		return;
+	}
+
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	std::cerr << "Completed segments: " << scene->completedSegments.size() << __FILE__ << ": " << __LINE__ << std::endl;
@@ -722,7 +811,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	if (!motion)
 	{
 		#pragma omp parallel for private(scene)
-		for (int i = 0; i<50; ++i)
+		for (int i = 0; i<25; ++i)
 		{
 			std::shared_ptr<Motion> motionSlide = planner->sampleSlide(rs);
 			if (motionSlide)
@@ -823,6 +912,35 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		{
 			static int actionCount = 0;
 			std::cerr << "Actions: " << ++actionCount << std::endl;
+
+			std::map<ObjectIndex, Eigen::Affine3d> objTrajs = followObjects(motion, tracker.get());
+			for (int iter = 0; iter < 10; ++iter)
+			{
+				tf::Transform temp;
+				for (const auto& p : objTrajs)
+				{
+					const std::string frameID = "next_"+std::to_string(std::abs(p.first.id));
+					tf::poseEigenToTF(p.second, temp);
+					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, frameID));
+
+					const auto& composite = std::dynamic_pointer_cast<CompositeAction>(motion->action);
+					const auto& action = std::dynamic_pointer_cast<JointTrajectoryAction>(composite->actions[composite->primaryAction]);
+
+					tf::poseEigenToTF(action->palm_trajectory.front(), temp);
+					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, frameID+"front"));
+
+					tf::poseEigenToTF(action->palm_trajectory.back(), temp);
+					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, frameID+"back"));
+
+					visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(scene->completedSegments.at(p.first).get(), frameID);
+					for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
+					{
+						m.ns = frameID;
+					}
+					octreePub.publish(occupiedNodesVis);
+					ros::Duration(0.5).sleep();
+				}
+			}
 		}
 	}
 	else
@@ -872,7 +990,8 @@ int main(int argc, char* argv[])
 	setIfMissing(pnh, "sensor_model/max_range", 8.0);
 	setIfMissing(pnh, "track_color", "green");
 
-	tracker = std::make_unique<Tracker>();
+	tracker = std::make_unique<CudaTracker>(500, listener);
+//	tracker = std::make_unique<Tracker>(500, listener);
 	tracker->stopCapture();
 
 	// Get target color
@@ -904,7 +1023,7 @@ int main(int argc, char* argv[])
 	ros::Duration(1.0).sleep();
 //	mapClient = std::make_shared<OctreeRetriever>(nh);
 	completionClient = std::make_shared<VoxelCompleter>(nh);
-	segmentationClient = std::make_shared<RGBDSegmenter>(nh);
+	segmentationClient = std::make_shared<CachingRGBDSegmenter>(nh);
 	trajectoryClient = std::make_shared<TrajectoryClient>("follow_joint_trajectory", true);
 	if (!trajectoryClient->waitForServer(ros::Duration(3.0)))
 	{
@@ -919,6 +1038,9 @@ int main(int argc, char* argv[])
 
 	scenario = std::make_shared<Scenario>();
 	scenario->loadManipulators(pModel);
+
+	std::cerr << scenario->manipulators.front()->isGrasping(getCurrentRobotState()) << std::endl;
+	std::cerr << scenario->manipulators.back()->isGrasping(getCurrentRobotState()) << std::endl;
 
 	planner = std::make_shared<MotionPlanner>();
 
@@ -981,7 +1103,7 @@ int main(int argc, char* argv[])
 		throw std::runtime_error("Safety reference frame failure.");
 	}
 
-	std::string topic_prefix = "/kinect2_victor_head/qhd";
+	std::string topic_prefix = "/kinect2_victor_head/hd";
 //	ros::Subscriber camInfoSub = nh.subscribe("kinect2_victor_head/qhd/camera_info", 1, camera_cb);
 
 //	message_filters::Subscriber<sensor_msgs::PointCloud2> point_sub(nh, topic_prefix+"/points", 10);

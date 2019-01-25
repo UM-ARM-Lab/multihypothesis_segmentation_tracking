@@ -19,10 +19,8 @@ std::shared_ptr<shapes::Mesh> approximateShape(const octomap::OcTree* tree)
 {
 	// Convex hull
 	octomap::point3d_collection pts = getPoints(tree);
-	MPS_ASSERT(pts.size() > 2);
 //	std::shared_ptr<shapes::Mesh> hull = convex_hull(pts);
 	std::shared_ptr<shapes::Mesh> hull = prism(pts);
 //	std::shared_ptr<shapes::Mesh> hull = ZAMBB(pts);
-	MPS_ASSERT(hull);
 	return hull;
 }

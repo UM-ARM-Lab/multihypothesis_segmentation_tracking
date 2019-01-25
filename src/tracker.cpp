@@ -519,6 +519,7 @@ void visualizeVideoGraph(const VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, con
 
 	const float UV_SCALE = 0.001;
 	const float T_SCALE = 0.3;
+	const int IMAGE_SCALE = 2; // SEGMENT_TYPE::UCM is at double the resolution normal
 	const ros::Time& startTime = segmentations.begin()->first;
 	pcl::PointCloud<pcl::PointXYZRGB> pc;
 //	size_t k = 0;
@@ -531,8 +532,8 @@ void visualizeVideoGraph(const VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, con
 			{
 				auto color = img.at<cv::Vec3b>(v, u);
 				pcl::PointXYZRGB pt(color[2], color[1], color[0]);
-				pt.x = UV_SCALE * (u+pair.second->roi.x);
-				pt.y = -UV_SCALE * (v+pair.second->roi.y);
+				pt.x = UV_SCALE * (u + IMAGE_SCALE*pair.second->roi.x);
+				pt.y = -UV_SCALE * (v + IMAGE_SCALE*pair.second->roi.y);
 				pt.z = -T_SCALE * (pair.first-startTime).toSec();
 				pc.points.push_back(pt);
 			}
@@ -587,16 +588,17 @@ void visualizeVideoGraph(const VideoSegmentationGraph<SEGMENT_TYPE::UCM>& G, con
 		cv::Point2f cu(Cu.at<double>(Gu.leafID, 0), Cu.at<double>(Gu.leafID, 1));
 		cv::Point2f cv(Cv.at<double>(Gv.leafID, 0), Cv.at<double>(Gv.leafID, 1));
 
-		pt.x = UV_SCALE * (cu.x+Su->roi.x);
-		pt.y = -UV_SCALE * (cu.y+Su->roi.y);
+		pt.x = UV_SCALE * (cu.x + IMAGE_SCALE*Su->roi.x);
+		pt.y = -UV_SCALE * (cu.y + IMAGE_SCALE*Su->roi.y);
 		pt.z = -T_SCALE * (Gu.t-startTime).toSec();
 		m.points.push_back(pt);
 
-		colormap(igl::viridis_cm, (float)((ep.affinity-minAffinity)/(maxAffinity-minAffinity)), color.r, color.g, color.b);
+//		colormap(igl::viridis_cm, (float)(ep.affinity-minAffinity)/(maxAffinity-minAffinity)), color.r, color.g, color.b);
+		colormap(igl::viridis_cm, (float)tanh(10.0*(ep.affinity-minAffinity)/(maxAffinity-minAffinity)), color.r, color.g, color.b);
 		m.colors.push_back(color);
 
-		pt.x = UV_SCALE * (cv.x+Sv->roi.x);
-		pt.y = -UV_SCALE * (cv.y+Sv->roi.y);
+		pt.x = UV_SCALE * (cv.x + IMAGE_SCALE*Sv->roi.x);
+		pt.y = -UV_SCALE * (cv.y + IMAGE_SCALE*Sv->roi.y);
 		pt.z = -T_SCALE * (Gv.t-startTime).toSec();
 		m.points.push_back(pt);
 		m.colors.push_back(color);
@@ -923,17 +925,17 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
-	RigidClusterClient motionClient("/cluster_flow", true);
-	if (!motionClient.waitForServer(ros::Duration(3)))
-	{
-		ROS_ERROR("Flow segmentation server not connected.");
-	}
-
-	FrameMatchClient matchClient("/histogram_matcher", true);
-	if (!matchClient.waitForServer(ros::Duration(3)))
-	{
-		ROS_ERROR("Frame match server not connected.");
-	}
+//	RigidClusterClient motionClient("/cluster_flow", true);
+//	if (!motionClient.waitForServer(ros::Duration(3)))
+//	{
+//		ROS_ERROR("Flow segmentation server not connected.");
+//	}
+//
+//	FrameMatchClient matchClient("/histogram_matcher", true);
+//	if (!matchClient.waitForServer(ros::Duration(3)))
+//	{
+//		ROS_ERROR("Frame match server not connected.");
+//	}
 
 
 	std::shared_ptr<Scenario> scenario = std::make_shared<Scenario>();
@@ -954,7 +956,7 @@ int main(int argc, char* argv[])
 	cv::namedWindow("labels", CV_WINDOW_NORMAL);
 
 	const int step = 8;//3;
-	tracker = std::make_unique<CudaTracker>(20*step, listener);
+	tracker = std::make_unique<CudaTracker>(25*step, listener);
 //	tracker = std::make_unique<Tracker>(5*step, listener);
 
 	std::map<BundleIndex, std::shared_ptr<OctreeMotionModel>> omms;
@@ -1050,9 +1052,10 @@ int main(int argc, char* argv[])
 					joinFrameGraphs(G, *segmentations[tPrev], si, tracker->flows2.at({tPrev, tCurr}));
 
 					// Add rigid motion cliques
+					/*
 					if (motionClient.isServerConnected())
 					{
-/*
+
 						mps_msgs::ClusterRigidMotionsGoal req;
 						req.flow_field.reserve(tracker->flows3.at({tPrev, tCurr}).size());
 						std::vector<size_t> valid_flow_to_all_flow_lookup;
@@ -1104,8 +1107,8 @@ int main(int argc, char* argv[])
 								}
 							}
 						}
-*/
 					}
+					*/
 				}
 				visualizeVideoGraph(G, segmentations);
 			}
@@ -1148,68 +1151,68 @@ int main(int argc, char* argv[])
 //				MPS_ASSERT(boost::num_vertices(objectG) > 0);
 //			}
 
+			std::map<BundleIndex, cv::Scalar> bundle_colors;
+			cv::RNG rng(0);
 
 			MPS_ASSERT(segmentations.find(segmentations.rbegin()->first) != segmentations.end());
 			MPS_ASSERT(segmentations.rbegin()->first == segmentations.rbegin()->second->t);
-			mps_msgs::MatchFrameSegmentsGoal g;
-			g.frames.emplace_back(toSegmentationMsg(*segmentations.begin()->second));
-			g.frames.emplace_back(toSegmentationMsg(*segmentations.rbegin()->second));
-			auto res = matchClient.sendGoalAndWait(g);
-			if (!res.isDone() || res.state_ != actionlib::SimpleClientGoalState::SUCCEEDED) { throw std::runtime_error("Matching failed."); }
-
-			mps_msgs::MatchFrameSegmentsResultConstPtr frameMatchResult = matchClient.getResult();
-			if (!frameMatchResult) { continue; }
-			std::map<BundleIndex, cv::Scalar> bundle_colors;
-			cv::RNG rng(0);
-			for (const auto& b : frameMatchResult->segments_to_bundles)
-			{
-				for (const auto v : b.values)
-				{
-					bundle_colors[BundleIndex{v}] = randomColor(rng);
-				}
-			}
+//			mps_msgs::MatchFrameSegmentsGoal g;
+//			g.frames.emplace_back(toSegmentationMsg(*segmentations.begin()->second));
+//			g.frames.emplace_back(toSegmentationMsg(*segmentations.rbegin()->second));
+//			auto res = matchClient.sendGoalAndWait(g);
+//			if (!res.isDone() || res.state_ != actionlib::SimpleClientGoalState::SUCCEEDED) { throw std::runtime_error("Matching failed."); }
+//
+//			mps_msgs::MatchFrameSegmentsResultConstPtr frameMatchResult = matchClient.getResult();
+//			if (!frameMatchResult) { continue; }
+//			for (const auto& b : frameMatchResult->segments_to_bundles)
+//			{
+//				for (const auto v : b.values)
+//				{
+//					bundle_colors[BundleIndex{v}] = randomColor(rng);
+//				}
+//			}
 
 //			std::map<SegmentIndex, int> segmentToBundle;
 
-			{
-				std::map<ros::Time, cv::Mat> video;
-				for (const ros::Time& t : frameMatchResult->stamps)
-				{
-					video.insert({t, cv::Mat::zeros(nativeSize, CV_8UC3)});
-				}
-
-				for (size_t i = 0; i < frameMatchResult->segments_to_bundles.size(); ++i)
-				{
-					const ros::Time& t = frameMatchResult->stamps[i];
-					const mps_msgs::IndexMap& b = frameMatchResult->segments_to_bundles[i];
-					for (size_t j = 0; j < b.keys.size(); ++j)
-					{
-						const auto& si = segmentations.at(t);
-						const int k = b.keys[j];
-						const BundleIndex v{b.values[j]};
-//						segmentToBundle.insert({{t, k}, v});
-						cv::Mat active(video.at(t), si->roi);
-						MPS_ASSERT(active.size == segmentations.at(t)->labels.size);
-						active.setTo(bundle_colors.at(v), si->objectness_segmentation->image == k);
-
-						cv::imshow("source", si->rgb);
-						cv::imshow("mask", si->objectness_segmentation->image == k);
-						cv::imshow("video", video.at(t));
-	//								cv::waitKey(0);
-					}
-				}
-
-				for (const auto& pair : video)
-				{
-					cv::imshow("video", pair.second);
-					cv::waitKey(1);
-				}
-
-				cv::VideoWriter tracking("bundled_pair.avi", CV_FOURCC('M', 'J', 'P', 'G'), 1, nativeSize, true);
-				for (const auto& pair : video)
-					tracking.write(pair.second);
-				tracking.release();
-			}
+//			{
+//				std::map<ros::Time, cv::Mat> video;
+//				for (const ros::Time& t : frameMatchResult->stamps)
+//				{
+//					video.insert({t, cv::Mat::zeros(nativeSize, CV_8UC3)});
+//				}
+//
+//				for (size_t i = 0; i < frameMatchResult->segments_to_bundles.size(); ++i)
+//				{
+//					const ros::Time& t = frameMatchResult->stamps[i];
+//					const mps_msgs::IndexMap& b = frameMatchResult->segments_to_bundles[i];
+//					for (size_t j = 0; j < b.keys.size(); ++j)
+//					{
+//						const auto& si = segmentations.at(t);
+//						const int k = b.keys[j];
+//						const BundleIndex v{b.values[j]};
+////						segmentToBundle.insert({{t, k}, v});
+//						cv::Mat active(video.at(t), si->roi);
+//						MPS_ASSERT(active.size == segmentations.at(t)->labels.size);
+//						active.setTo(bundle_colors.at(v), si->objectness_segmentation->image == k);
+//
+//						cv::imshow("source", si->rgb);
+//						cv::imshow("mask", si->objectness_segmentation->image == k);
+//						cv::imshow("video", video.at(t));
+//	//								cv::waitKey(0);
+//					}
+//				}
+//
+//				for (const auto& pair : video)
+//				{
+//					cv::imshow("video", pair.second);
+//					cv::waitKey(1);
+//				}
+//
+//				cv::VideoWriter tracking("bundled_pair.avi", CV_FOURCC('M', 'J', 'P', 'G'), 1, nativeSize, true);
+//				for (const auto& pair : video)
+//					tracking.write(pair.second);
+//				tracking.release();
+//			}
 
 			{/*
 				// Maps from bundle ID (id) to all segments contained in that "object". Reverse lookup of segments_to_bundles
