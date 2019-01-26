@@ -30,6 +30,13 @@ class LocalOctreeServer;
 class VoxelCompleter;
 class RGBDSegmenter;
 
+enum class FEATURE_AVAILABILITY
+{
+	REQUIRED,
+	OPTIONAL,
+	FORBIDDEN,
+};
+
 class Scenario
 {
 public:
@@ -99,6 +106,7 @@ public:
 	std::shared_ptr<octomap::OcTree> occlusionTree;
 
 	std::set<ObjectIndex> obstructions;
+	std::shared_ptr<ObjectIndex> targetObjectID;
 
 	static const std::string CLUTTER_NAME;
 	collision_detection::WorldConstPtr collisionWorld;
@@ -110,15 +118,29 @@ public:
 	                   const sensor_msgs::ImageConstPtr& depth_msg,
 	                   const sensor_msgs::CameraInfo& cam_msg);
 
-	bool loadAndFilterScene();
-
-	bool performSegmentation();
-
-	bool completeShapes();
-
-
 	enum { NeedsToAlign = (sizeof(Pose)%16)==0 };
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW_IF(NeedsToAlign)
+};
+
+class SceneProcessor
+{
+public:
+	using Pose = Scenario::Pose;
+
+	const std::shared_ptr<Scenario> scenario;
+	const bool useMemory;
+	const FEATURE_AVAILABILITY useShapeCompletion;
+
+	explicit
+	SceneProcessor(std::shared_ptr<Scenario> _scenario, bool memory = true, FEATURE_AVAILABILITY completion = FEATURE_AVAILABILITY::OPTIONAL)
+	: scenario(std::move(_scenario)), useMemory(memory), useShapeCompletion(completion) {}
+
+	bool loadAndFilterScene(Scene& s);
+
+	bool performSegmentation(Scene& s);
+
+	bool completeShapes(Scene& s);
+
 };
 
 #endif // MPS_SCENE_H

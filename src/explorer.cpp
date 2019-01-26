@@ -225,6 +225,7 @@ robot_model::RobotModelPtr pModel;
 //std::vector<std::shared_ptr<Manipulator>> manipulators;
 std::shared_ptr<Scenario> scenario;
 std::unique_ptr<Scene> scene;
+std::unique_ptr<SceneProcessor> processor;
 std::shared_ptr<MotionPlanner> planner;
 sensor_msgs::JointState::ConstPtr latestJoints;
 //std::map<std::string, std::shared_ptr<MotionModel>> motionModels;
@@ -321,16 +322,6 @@ std::map<ObjectIndex, Eigen::Affine3d> followObjects(const std::shared_ptr<Motio
 	return trajs;
 }
 
-//std::map<ObjectIndex, Eigen::Affine3d> followObjects(const Tracker* track)
-//{
-
-//
-//	// Compute the motion transform from the initial hand pose to the final
-//
-//	// TODO: Use JointTrajectoryAction::palm_trajectory?
-//
-//}
-
 bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::RobotState& recoveryState)
 {
 	if (!ros::ok()) { return false; }
@@ -359,7 +350,8 @@ bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::Rob
 		if (isPrimaryAction)
 		{
 			captureGuard = std::make_unique<CaptureGuard>(tracker.get());
-			std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient)->cache.clear();
+			auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
+			if (cache) { cache->cache.clear(); }
 			tracker->startCapture();
 		}
 
@@ -435,7 +427,7 @@ bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::Rob
 				steps.push_back(iter->first);
 			}
 
-			tracker->track(steps);
+//			tracker->track(steps);
 		}
 	}
 	return true;
@@ -454,7 +446,9 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 
 	std::string experiment_id;
-	_nh->getParam("/experiment_id", experiment_id);
+	_nh->getParam("/experiment/id", experiment_id);
+	std::string experiment_dir;
+	_nh->getParam("/experiment/directory", experiment_dir);
 
 	scene = std::make_unique<Scene>();
 	scene->scenario = scenario;
@@ -488,7 +482,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		return;
 	}
 
-	bool getScene = scene->loadAndFilterScene();
+	bool getScene = processor->loadAndFilterScene(*scene);
 	if (!getScene)
 	{
 		return;
@@ -532,14 +526,14 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_START("Segment Scene");
 
-	bool getSegmentation = scene->performSegmentation();
+	bool getSegmentation = processor->performSegmentation(*scene);
 	if (!getSegmentation)
 	{
 		return;
 	}
 
-	const long invalidGoalID = rand();
-	ObjectIndex goalSegmentID{invalidGoalID};
+//	const long invalidGoalID = rand();
+//	ObjectIndex goalSegmentID{invalidGoalID};
 	{
 		if (!ros::ok()) { return; }
 
@@ -576,9 +570,9 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		matchID = targetDetector->matchGoalSegment(targetMask, scene->segInfo->objectness_segmentation->image);
 		if (matchID >= 0)
 		{
-			goalSegmentID = scene->labelToIndexLookup.at((unsigned)matchID);
+			scene->targetObjectID = std::make_shared<ObjectIndex>(scene->labelToIndexLookup.at((unsigned)matchID));
 			std::cerr << "**************************" << std::endl;
-			std::cerr << "Found target: " << matchID << " -> " << goalSegmentID.id << std::endl;
+			std::cerr << "Found target: " << matchID << " -> " << scene->targetObjectID->id << std::endl;
 			std::cerr << "**************************" << std::endl;
 		}
 
@@ -610,7 +604,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_START("Complete Scene");
 
-	bool getCompletion = scene->completeShapes();
+	bool getCompletion = processor->completeShapes(*scene);
 	if (!getCompletion)
 	{
 		return;
@@ -813,14 +807,15 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	auto rs = getCurrentRobotState();
 
 	std::shared_ptr<Motion> motion;
-	if (goalSegmentID.id != invalidGoalID)
+	if (scene->targetObjectID)
 	{
-		motion = planner->pick(rs, goalSegmentID, scene->obstructions);
+		motion = planner->pick(rs, *scene->targetObjectID, scene->obstructions);
 		if (!motion)
 		{
 			ROS_WARN_STREAM("Saw target object, but failed to compute grasp plan.");
 			std::cerr << "Saw target object, but failed to compute grasp plan." << " (" << scene->obstructions.size() << " obstructions)" << std::endl;
 		}
+		MPS_ASSERT(scene->obstructions.find(*scene->targetObjectID) == scene->obstructions.end());
 	}
 
 	if (!motion)
@@ -938,8 +933,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 				PROFILE_RECORD("Execution");
 				PROFILE_START("Actions Required");
 				PROFILE_RECORD_DOUBLE("Actions Required", actionCount);
-				PROFILE_WRITE_SUMMARY_FOR_ALL("/tmp/" + experiment_id + ".txt");
-				PROFILE_WRITE_ALL("/tmp/" + experiment_id + ".txt");
+				PROFILE_WRITE_SUMMARY_FOR_ALL(experiment_dir + "/profile.txt");
+				PROFILE_WRITE_ALL(experiment_dir + "/profile.txt");
 				ros::shutdown();
 				return;
 			}
@@ -1021,14 +1016,18 @@ int main(int argc, char* argv[])
 	setIfMissing(pnh, "publish_free_space", false);
 	setIfMissing(pnh, "sensor_model/max_range", 8.0);
 	setIfMissing(pnh, "track_color", "green");
+	setIfMissing(pnh, "use_memory", true);
+	setIfMissing(pnh, "use_completion", "optional");
 
 	tracker = std::make_unique<CudaTracker>(500, listener);
 //	tracker = std::make_unique<Tracker>(500, listener);
 	tracker->stopCapture();
 
+	bool gotParam = false;
+
 	// Get target color
 	std::string track_color;
-	pnh.getParam("track_color", track_color);
+	gotParam = pnh.getParam("track_color", track_color); MPS_ASSERT(gotParam);
 	std::transform(track_color.begin(), track_color.end(), track_color.begin(), ::tolower);
 	if (track_color == "green")
 	{
@@ -1044,6 +1043,32 @@ int main(int argc, char* argv[])
 		throw std::runtime_error("Invalid tracking color.");
 	}
 
+	// Get shape completion requirements
+	FEATURE_AVAILABILITY useShapeCompletion;
+	std::string use_completion;
+	gotParam = pnh.getParam("use_completion", use_completion); MPS_ASSERT(gotParam);
+	std::transform(use_completion.begin(), use_completion.end(), use_completion.begin(), ::tolower);
+	if (use_completion == "forbidden")
+	{
+		useShapeCompletion = FEATURE_AVAILABILITY::FORBIDDEN;
+	}
+	else if (use_completion == "optional")
+	{
+		useShapeCompletion = FEATURE_AVAILABILITY::OPTIONAL;
+	}
+	else if (use_completion == "required")
+	{
+		useShapeCompletion = FEATURE_AVAILABILITY::REQUIRED;
+	}
+	else
+	{
+		ROS_ERROR_STREAM("Color must be one of {forbidden, optional, required}.");
+		throw std::runtime_error("Invalid completion option.");
+	}
+
+	bool use_memory;
+	gotParam = pnh.getParam("use_memory", use_memory); MPS_ASSERT(gotParam);
+
 	octreePub = nh.advertise<visualization_msgs::MarkerArray>("occluded_points", 1, true);
 	gripperLPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/left_arm/gripper_command", 1, false);
 	gripperRPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/right_arm/gripper_command", 1, false);
@@ -1055,7 +1080,7 @@ int main(int argc, char* argv[])
 	ros::Duration(1.0).sleep();
 //	mapClient = std::make_shared<OctreeRetriever>(nh);
 	completionClient = std::make_shared<VoxelCompleter>(nh);
-	segmentationClient = std::make_shared<CachingRGBDSegmenter>(nh);
+	segmentationClient = std::make_shared<RGBDSegmenter>(nh);
 	trajectoryClient = std::make_shared<TrajectoryClient>("follow_joint_trajectory", true);
 	if (!trajectoryClient->waitForServer(ros::Duration(3.0)))
 	{
@@ -1103,6 +1128,8 @@ int main(int argc, char* argv[])
 	scenario->completionClient = completionClient;
 	scenario->segmentationClient = segmentationClient;
 
+	processor = std::make_unique<SceneProcessor>(scenario, use_memory, useShapeCompletion);
+
 	// Wait for joints, then set the current state as the return state
 	sensor_spinner.start();
 	while(ros::ok())
@@ -1142,6 +1169,32 @@ int main(int argc, char* argv[])
 	{
 		ROS_ERROR_STREAM("Failed to look up transform between '" << mapServer->getWorldFrame() << "' and '" << "world_origin" << "'. Unable to set safety barriers");
 		throw std::runtime_error("Safety reference frame failure.");
+	}
+
+	for (const auto& manip : scenario->manipulators)
+	{
+		std::shared_ptr<Motion> motion = std::make_shared<Motion>();
+		motion->state = std::make_shared<State>();
+		motion->action = std::make_shared<CompositeAction>();
+		auto pregraspAction = std::make_shared<GripperCommandAction>();
+		std::static_pointer_cast<CompositeAction>(motion->action)->actions.push_back(pregraspAction);
+
+		// Pregrasp
+		pregraspAction->grasp.finger_a_command.position = 0.0;
+		pregraspAction->grasp.finger_a_command.speed = 1.0;
+		pregraspAction->grasp.finger_a_command.force = 1.0;
+		pregraspAction->grasp.finger_b_command.position = 0.0;
+		pregraspAction->grasp.finger_b_command.speed = 1.0;
+		pregraspAction->grasp.finger_b_command.force = 1.0;
+		pregraspAction->grasp.finger_c_command.position = 0.0;
+		pregraspAction->grasp.finger_c_command.speed = 1.0;
+		pregraspAction->grasp.finger_c_command.force = 1.0;
+		pregraspAction->grasp.scissor_command.position = 0.1;
+		pregraspAction->grasp.scissor_command.speed = 1.0;
+		pregraspAction->grasp.scissor_command.force = 1.0;
+		pregraspAction->jointGroupName = manip->gripper->getName();
+
+		executeMotion(motion, *scenario->homeState);
 	}
 
 	std::string topic_prefix = "/kinect2_victor_head/hd";

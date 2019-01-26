@@ -21,6 +21,7 @@ public:
 
 	bool configureHardware() override;
 	bool isGrasping(const robot_state::RobotState& currentState) const override;
+	std::vector<double> getGripperOpenJoints() const override;
 
 	ros::ServiceClient configurationClient;
 

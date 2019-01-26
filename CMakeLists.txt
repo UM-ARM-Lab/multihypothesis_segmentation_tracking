@@ -284,13 +284,13 @@ target_link_libraries(${PROJECT_NAME}_entropy
 )
 
 
-cuda_add_executable(${PROJECT_NAME}_tracker src/tracker.cpp)
-set_target_properties(${PROJECT_NAME}_tracker PROPERTIES OUTPUT_NAME tracker PREFIX "")
-add_dependencies(${PROJECT_NAME}_tracker ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_tracker
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-)
+#cuda_add_executable(${PROJECT_NAME}_tracker src/tracker.cpp)
+#set_target_properties(${PROJECT_NAME}_tracker PROPERTIES OUTPUT_NAME tracker PREFIX "")
+#add_dependencies(${PROJECT_NAME}_tracker ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#target_link_libraries(${PROJECT_NAME}_tracker
+#  ${PROJECT_NAME}
+#  ${catkin_LIBRARIES}
+#)
 
 #add_executable(${PROJECT_NAME}_test_graph_segmentation src/test_graph_segmentation.cpp)
 #set_target_properties(${PROJECT_NAME}_test_graph_segmentation PROPERTIES OUTPUT_NAME test_graph_segmentation PREFIX "")
@@ -301,7 +301,7 @@ target_link_libraries(${PROJECT_NAME}_tracker
 #)
 
 
-add_executable(${PROJECT_NAME}_explorer src/explorer.cpp)
+cuda_add_executable(${PROJECT_NAME}_explorer src/explorer.cpp)
 set_target_properties(${PROJECT_NAME}_explorer PROPERTIES OUTPUT_NAME explorer PREFIX "")
 add_dependencies(${PROJECT_NAME}_explorer ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME}_explorer

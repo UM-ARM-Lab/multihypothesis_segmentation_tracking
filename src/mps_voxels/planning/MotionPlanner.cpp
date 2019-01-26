@@ -973,6 +973,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robotState, const ObjectIndex targetID,
                                             std::set<ObjectIndex>& collisionObjects) const
 {
+	MPS_ASSERT(targetID.id == env->targetObjectID->id);
 	// Check whether the hand collides with the scene
 	for (const auto& manipulator : env->scenario->manipulators)
 	{
@@ -1037,6 +1038,7 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 				{
 					robot_state::RobotState collisionState(robotState);
 					collisionState.setJointGroupPositions(manipulator->arm, sln.front());
+					collisionState.setJointGroupPositions(manipulator->gripper, manipulator->getGripperOpenJoints());
 					collisionState.update();
 					if (gripperEnvironmentCollision(manipulator, collisionState))
 					{
@@ -1055,27 +1057,34 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 						{
 							std::cerr << cts.second.size() << std::endl;
 
-							// For each contact point, cast ray from camera to point; see if it hits completed shape
-							for (auto& c : cts.second)
+							for (const auto& seg : env->completedSegments)
 							{
-								Eigen::Vector3d p = env->worldTrobot * c.pos;
-								std::cerr << p.transpose() << std::endl;
+								auto objIdx = seg.first;
+								const auto& segmentOctree = seg.second;
 
-								octomap::point3d collision = octomap::point3d((float)p.x(), (float)p.y(), (float)p.z());
-//								collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision));
-
-								std::cerr << "raycasting" << std::endl;
-								octomath::Vector3 ray = collision-cameraOrigin;
-								for (const auto& seg : env->completedSegments)
+								// For each contact point, cast ray from camera to point; see if it hits completed shape
+								for (auto& c : cts.second)
 								{
-									auto objIdx = seg.first;
-									const auto& segmentOctree = seg.second;
+									Eigen::Vector3d p = env->worldTrobot * c.pos;
+									std::cerr << p.transpose() << std::endl;
+
+									octomap::point3d collision = octomap::point3d((float)p.x(), (float)p.y(), (float)p.z());
+	//								collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision));
+
+									std::cerr << "raycasting" << std::endl;
+									octomath::Vector3 ray = collision-cameraOrigin;
 
 									bool hit = segmentOctree->castRay(cameraOrigin, ray, collision, true);
 									if (hit)
 									{
+										if (env->targetObjectID && env->targetObjectID->id == objIdx.id)
+										{
+											std::cerr << "Attempt to grasp object resulted in collision with object. (Are the grippers open?)" << std::endl;
+										}
+
 										collisionObjects.insert(objIdx);
 										std::cerr << "hit " << objIdx.id << std::endl;
+										break;
 									}
 								}
 							}

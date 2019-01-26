@@ -122,3 +122,8 @@ bool VictorManipulator::isGrasping(const robot_state::RobotState& currentState) 
 
 	return false;
 }
+
+std::vector<double> VictorManipulator::getGripperOpenJoints() const
+{
+	return std::vector<double>(this->gripper->getVariableCount(), 0.0);
+}

@@ -15,7 +15,7 @@
 
 #include <tf_conversions/tf_eigen.h>
 
-// Point cloud utilities
+// Point s.cloud utilities
 #include <depth_image_proc/depth_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -111,70 +111,68 @@ bool Scene::convertImages(const sensor_msgs::ImageConstPtr& rgb_msg,
 	return true;
 }
 
-bool Scene::loadAndFilterScene()
+bool SceneProcessor::loadAndFilterScene(Scene& s)
 {
 	if (!ros::ok()) { return false; }
-	if (!scenario->listener->waitForTransform(scenario->mapServer->getWorldFrame(), cameraModel.tfFrame(), getTime(), ros::Duration(5.0)))
+
+	s.worldFrame = scenario->mapServer->getWorldFrame();
+	s.cameraFrame = s.cameraModel.tfFrame();
+
+	if (!scenario->listener->waitForTransform(s.worldFrame, s.cameraModel.tfFrame(), s.getTime(), ros::Duration(5.0)))
 	{
-		ROS_WARN_STREAM("Failed to look up transform between '" << scenario->mapServer->getWorldFrame() << "' and '" << cameraModel.tfFrame() << "'.");
+		ROS_WARN_STREAM("Failed to look up transform between '" << s.worldFrame << "' and '" << s.cameraModel.tfFrame() << "'.");
 		return false;
 	}
-
-	setBBox(minExtent, maxExtent, scenario->mapServer->getOctree());
-
-	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-
-//	scenario->mapServer->getOctree()->clear();
 
 	// Get Octree
 	octomap::OcTree* octree = scenario->mapServer->getOctree();
-	worldFrame = scenario->mapServer->getWorldFrame();
-	cameraFrame = cameraModel.tfFrame();
-	sceneOctree = octree;
+	MPS_ASSERT(octree);
+	s.sceneOctree = octree;
 
-	if (!octree)
+	if (!useMemory)
 	{
-		ROS_ERROR("Octree generation failed.");
-		return false;
+		octree->clear();
 	}
+
+	setBBox(s.minExtent, s.maxExtent, octree);
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	tf::StampedTransform cameraFrameInTableCoordinates;
-	scenario->listener->lookupTransform(cameraFrame, worldFrame, getTime(), cameraFrameInTableCoordinates);
-	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
+	scenario->listener->lookupTransform(s.cameraFrame, s.worldFrame, s.getTime(), cameraFrameInTableCoordinates);
+	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), s.worldTcamera);
 
-	octomap::point3d cameraOrigin((float)worldTcamera.translation().x(),
-	                              (float)worldTcamera.translation().y(),
-	                              (float)worldTcamera.translation().z());
+	octomap::point3d cameraOrigin((float)s.worldTcamera.translation().x(),
+	                              (float)s.worldTcamera.translation().y(),
+	                              (float)s.worldTcamera.translation().z());
 	decayMemory(octree, cameraOrigin);
 	const double missProb = 0.05;
 	octree->setProbMiss(missProb);
 	octree->setProbHit(1.0-missProb);
 
-	cloud = imagesToCloud(cv_rgb_ptr->image, cv_depth_ptr->image, cameraModel);
+	s.cloud = imagesToCloud(s.cv_rgb_ptr->image, s.cv_depth_ptr->image, s.cameraModel);
 
 	/////////////////////////////////////////////////////////////////
 	// Crop to bounding box
 	/////////////////////////////////////////////////////////////////
-	cropped_cloud = cropInCameraFrame(cloud, minExtent, maxExtent, worldTcamera);
-	if (cropped_cloud->empty())
+	s.cropped_cloud = cropInCameraFrame(s.cloud, s.minExtent, s.maxExtent, s.worldTcamera);
+	if (s.cropped_cloud->empty())
 	{
 		ROS_WARN("Filtered cloud contains no points.");
 		return false;
 	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	cropped_cloud = filterInCameraFrame(cropped_cloud);
+	s.cropped_cloud = filterInCameraFrame(s.cropped_cloud);
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	scenario->mapServer->insertCloud(cropped_cloud, worldTcamera);
-//	scenario->mapServer->insertCloud(cloud, worldTcamera);
+	scenario->mapServer->insertCloud(s.cropped_cloud, s.worldTcamera);
+//	scenario->mapServer->insertCloud(s.cloud, s.worldTcamera);
 //	octree->prune();
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	pcl::PointCloud<PointT>::Ptr downsampled_cloud(new pcl::PointCloud<PointT>());
 	pcl::VoxelGrid<PointT> voxelFilter;
-	voxelFilter.setInputCloud(cropped_cloud);
+	voxelFilter.setInputCloud(s.cropped_cloud);
 	float resolution = (float)octree->getResolution()/4.0f;
 	voxelFilter.setLeafSize(resolution, resolution, resolution);
 	voxelFilter.filter(*downsampled_cloud);
@@ -185,17 +183,17 @@ bool Scene::loadAndFilterScene()
 	/////////////////////////////////////////////////////////////////
 
 	// Update from robot state + TF
-	for (const auto& model : selfModels)
+	for (const auto& model : s.selfModels)
 	{
-		if (scenario->listener->waitForTransform(model.first, scenario->mapServer->getWorldFrame(), getTime(), ros::Duration(5.0)))
+		if (scenario->listener->waitForTransform(model.first, s.worldFrame, s.getTime(), ros::Duration(5.0)))
 		{
 			tf::StampedTransform stf;
-			scenario->listener->lookupTransform(model.first, scenario->mapServer->getWorldFrame(), getTime(), stf);
+			scenario->listener->lookupTransform(model.first, s.worldFrame, s.getTime(), stf);
 			tf::transformTFToEigen(stf, model.second->localTglobal);
 		}
 		else if (std::find(scenario->robotModel->getLinkModelNames().begin(), scenario->robotModel->getLinkModelNames().end(), model.first) != scenario->robotModel->getLinkModelNames().end())
 		{
-			ROS_ERROR_STREAM("Unable to compute transform from '" << scenario->mapServer->getWorldFrame() << "' to '" << model.first << "'.");
+			ROS_ERROR_STREAM("Unable to compute transform from '" << s.worldFrame << "' to '" << model.first << "'.");
 			return false;
 		}
 
@@ -205,10 +203,10 @@ bool Scene::loadAndFilterScene()
 
 
 	/////////////////////////////////////////////////////////////////
-	// Self-filter Point Cloud
+	// Self-filter Point s.cloud
 	/////////////////////////////////////////////////////////////////
 
-	SensorModel sensor{worldTcamera.translation()};
+	SensorModel sensor{s.worldTcamera.translation()};
 	pcl::PointCloud<PointT>::Ptr non_self_cloud(new pcl::PointCloud<PointT>());
 	{
 		if (!ros::ok()) { return false; }
@@ -217,10 +215,10 @@ bool Scene::loadAndFilterScene()
 		#pragma omp parallel for schedule(dynamic)
 		for (int i = 0; i < nPts; ++i)
 		{
-			Eigen::Vector3d pt = (worldTcamera.cast<float>()*downsampled_cloud->points[i].getVector3fMap()).cast<double>();
+			Eigen::Vector3d pt = (s.worldTcamera.cast<float>()*downsampled_cloud->points[i].getVector3fMap()).cast<double>();
 			int m = 0;
 			double maxL = std::numeric_limits<double>::lowest();
-			for (const auto& model : selfModels)
+			for (const auto& model : s.selfModels)
 			{
 				double L = model.second->membershipLikelihood(pt, sensor);
 				if (L > 0.0 && L > maxL)
@@ -283,7 +281,7 @@ bool Scene::loadAndFilterScene()
 			Eigen::Vector3d pt(it.getX(), it.getY(), it.getZ());
 //			double size = octree->getNodeSize(it.getDepth());
 			int m = 0;
-			for (const auto& model : selfModels)
+			for (const auto& model : s.selfModels)
 			{
 //				Eigen::Vector3d p = model.second->localTglobal.inverse() * model.second->boundingSphere.center;
 //				pt -= ((p - pt).normalized() * size);
@@ -336,17 +334,17 @@ bool Scene::loadAndFilterScene()
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	/////////////////////////////////////////////////////////////////
-	/// Generate an ROI from the cropped, filtered cloud
+	/// Generate an ROI from the cropped, filtered s.cloud
 	/////////////////////////////////////////////////////////////////
-	pile_cloud = filterPlane(non_self_cloud, 0.02, worldTcamera.linear().col(2).cast<float>());
+	s.pile_cloud = filterPlane(non_self_cloud, 0.02, s.worldTcamera.linear().col(2).cast<float>());
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-//	pile_cloud = filterSmallClusters(pile_cloud, 1000, 0.005); // sqrt(cloud->size())/50
+//	s.pile_cloud = filterSmallClusters(s.pile_cloud, 1000, 0.005); // sqrt(s.cloud->size())/50
 //	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-	pile_cloud = filterOutliers(pile_cloud, 100, 2.0);
+	s.pile_cloud = filterOutliers(s.pile_cloud, 100, 2.0);
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-	if (pile_cloud->empty())
+	if (s.pile_cloud->empty())
 	{
-		ROS_ERROR_STREAM("No points in pile cloud.");
+		ROS_ERROR_STREAM("No points in pile s.cloud.");
 		return false;
 	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
@@ -355,98 +353,98 @@ bool Scene::loadAndFilterScene()
 	{
 		if (!ros::ok()) { return false; }
 //		static pcl::visualization::CloudViewer viewer("PilePoints");
-//		viewer.showCloud(pile_cloud);
+//		viewer.showCloud(s.pile_cloud);
 //		while (!viewer.wasStopped ()){}
 
 		std::vector<cv::Point> pile_points;
-		pile_points.reserve(pile_cloud->size());
+		pile_points.reserve(s.pile_cloud->size());
 
-		for (const PointT& pt : *pile_cloud)
+		for (const PointT& pt : *s.pile_cloud)
 		{
-			// NB: pile_cloud is in the camera frame
+			// NB: s.pile_cloud is in the camera frame
 			Eigen::Vector3d p = pt.getVector3fMap().cast<double>();
 			cv::Point3d worldPt_camera(p.x(), p.y(), p.z());
-			pile_points.push_back(cameraModel.project3dToPixel(worldPt_camera));
+			pile_points.push_back(s.cameraModel.project3dToPixel(worldPt_camera));
 		}
 
-		roi = cv::boundingRect(pile_points);
+		s.roi = cv::boundingRect(pile_points);
 		const int buffer = 50; //25
-		if (buffer < roi.x) { roi.x -= buffer; roi.width += buffer; }
-		if (roi.x+roi.width < static_cast<int>(cameraModel.cameraInfo().width)-buffer) { roi.width += buffer; }
-		if (buffer < roi.y) { roi.y -= buffer; roi.height += buffer; }
-		if (roi.y+roi.height < static_cast<int>(cameraModel.cameraInfo().height)-buffer) { roi.height += buffer; }
+		if (buffer < s.roi.x) { s.roi.x -= buffer; s.roi.width += buffer; }
+		if (s.roi.x+s.roi.width < static_cast<int>(s.cameraModel.cameraInfo().width)-buffer) { s.roi.width += buffer; }
+		if (buffer < s.roi.y) { s.roi.y -= buffer; s.roi.height += buffer; }
+		if (s.roi.y+s.roi.height < static_cast<int>(s.cameraModel.cameraInfo().height)-buffer) { s.roi.height += buffer; }
 
-		cv::Mat rgb_cropped(cv_rgb_ptr->image, roi);
-		cv::Mat depth_cropped(cv_depth_ptr->image, roi);
-		cv_rgb_cropped = cv_bridge::CvImage(cv_rgb_ptr->header, cv_rgb_ptr->encoding, rgb_cropped);
-		cv_depth_cropped = cv_bridge::CvImage(cv_depth_ptr->header, cv_depth_ptr->encoding, depth_cropped);
-		cam_msg_cropped = cameraModel.cameraInfo();
-		cam_msg_cropped.roi.width = roi.width;
-		cam_msg_cropped.roi.height = roi.height;
-		cam_msg_cropped.roi.x_offset = roi.x;
-		cam_msg_cropped.roi.y_offset = roi.y;
+		cv::Mat rgb_cropped(s.cv_rgb_ptr->image, s.roi);
+		cv::Mat depth_cropped(s.cv_depth_ptr->image, s.roi);
+		s.cv_rgb_cropped = cv_bridge::CvImage(s.cv_rgb_ptr->header, s.cv_rgb_ptr->encoding, rgb_cropped);
+		s.cv_depth_cropped = cv_bridge::CvImage(s.cv_depth_ptr->header, s.cv_depth_ptr->encoding, depth_cropped);
+		s.cam_msg_cropped = s.cameraModel.cameraInfo();
+		s.cam_msg_cropped.roi.width = s.roi.width;
+		s.cam_msg_cropped.roi.height = s.roi.height;
+		s.cam_msg_cropped.roi.x_offset = s.roi.x;
+		s.cam_msg_cropped.roi.y_offset = s.roi.y;
 
-////		cv_depth_cropped->image
-//		cv::Mat cleaned_depth(cv_depth_cropped.image.size(), CV_16UC1);
+////		s.cv_depth_cropped->image
+//		cv::Mat cleaned_depth(s.cv_depth_cropped.image.size(), CV_16UC1);
 //
 //		cv::rgbd::DepthCleaner dc(CV_16U, 7);
-//		dc(cv_depth_cropped.image, cleaned_depth);
+//		dc(s.cv_depth_cropped.image, cleaned_depth);
 //
 ////		std::cerr << "type: " << cleaned_depth.type() << std::endl;
-////		cv::imshow("raw", cv_depth_cropped.image*10);
+////		cv::imshow("raw", s.cv_depth_cropped.image*10);
 ////		cv::imshow("cleaned", cleaned_depth*10);
 ////		cv::waitKey(0);
-//		cv_depth_cropped.image = cleaned_depth;
+//		s.cv_depth_cropped.image = cleaned_depth;
 
 		// Force out-of-bounds points to plane
-		Pose cameraTworld = worldTcamera.inverse(Eigen::Isometry);
+		Pose cameraTworld = s.worldTcamera.inverse(Eigen::Isometry);
 
 		#pragma omp parallel for
-		for (int v = roi.y; v < roi.y+roi.height; ++v)
+		for (int v = s.roi.y; v < s.roi.y+s.roi.height; ++v)
 		{
-			for (int u = roi.x; u < roi.x+roi.width; ++u)
+			for (int u = s.roi.x; u < s.roi.x+s.roi.width; ++u)
 			{
-//				int idx = v * (int)cameraModel.cameraInfo().width + u;
+//				int idx = v * (int)s.cameraModel.cameraInfo().width + u;
 
 				// Compute the ray-plane intersection
 				Eigen::Vector3d p0 = cameraTworld.translation(); ///< A point in the table plane
 				Eigen::Vector3d pn = cameraTworld.linear().col(2); ///< The table plane normal vector
 				Eigen::Vector3d l0 = Eigen::Vector3d::Zero(); ///< The ray origin (= camera origin)
 				Eigen::Vector3d ln = toPoint3D<Eigen::Vector3d>(u, v, 1.0,
-				                                                cameraModel).normalized(); ///< The ray direction
+				                                                s.cameraModel).normalized(); ///< The ray direction
 				double t = (p0-l0).dot(pn)/(ln.dot(pn)); ///< Distance along ray of intersection
 				Eigen::Vector3d ptIntersection = l0+(ln*t); ///< Point where ray intersects plane
 
-				Eigen::Vector3d ptIntWorld = worldTcamera * ptIntersection;
+				Eigen::Vector3d ptIntWorld = s.worldTcamera * ptIntersection;
 
-//				auto color = cv_rgb_ptr->image.at<cv::Vec3b>(v, u);
-				auto dVal = cv_depth_ptr->image.at<uint16_t>(v, u);
+//				auto color = s.cv_rgb_ptr->image.at<cv::Vec3b>(v, u);
+				auto dVal = s.cv_depth_ptr->image.at<uint16_t>(v, u);
 				if (0 == dVal
-				    && minExtent.x() < ptIntWorld.x() && ptIntWorld.x() < maxExtent.x()
-				    && minExtent.y() < ptIntWorld.y() && ptIntWorld.y() < maxExtent.y()
-				    && minExtent.z() < ptIntWorld.z() && ptIntWorld.z() < maxExtent.z())
+				    && s.minExtent.x() < ptIntWorld.x() && ptIntWorld.x() < s.maxExtent.x()
+				    && s.minExtent.y() < ptIntWorld.y() && ptIntWorld.y() < s.maxExtent.y()
+				    && s.minExtent.z() < ptIntWorld.z() && ptIntWorld.z() < s.maxExtent.z())
 				{
 					continue; // Invalid point, but inside
 				}
 
 				float depthVal = depth_image_proc::DepthTraits<uint16_t>::toMeters(dVal); // if (depth1 > maxZ || depth1 < minZ) { continue; }
-				Eigen::Vector3f ptWorld = worldTcamera.cast<float>() * toPoint3D<Eigen::Vector3f>(u, v, depthVal, cameraModel);
+				Eigen::Vector3f ptWorld = s.worldTcamera.cast<float>() * toPoint3D<Eigen::Vector3f>(u, v, depthVal, s.cameraModel);
 
 				if (0 == dVal
-				    || ptWorld.x() < minExtent.x() || maxExtent.x() < ptWorld.x()
-				    || ptWorld.y() < minExtent.y() || maxExtent.y() < ptWorld.y()
-				    || ptWorld.z() < minExtent.z() || maxExtent.z() < ptWorld.z())
+				    || ptWorld.x() < s.minExtent.x() || s.maxExtent.x() < ptWorld.x()
+				    || ptWorld.y() < s.minExtent.y() || s.maxExtent.y() < ptWorld.y()
+				    || ptWorld.z() < s.minExtent.z() || s.maxExtent.z() < ptWorld.z())
 				{
 					if (t>0.0 && t<10.0)
 					{
-						cv_depth_cropped.image.at<uint16_t>(v-roi.y, u-roi.x)
+						s.cv_depth_cropped.image.at<uint16_t>(v-s.roi.y, u-s.roi.x)
 						    = depth_image_proc::DepthTraits<uint16_t>::fromMeters(ptIntersection.z());
 					}
 					else
 					{
-						cv_depth_cropped.image.at<uint16_t>(v-roi.y, u-roi.x) = 0;
+						s.cv_depth_cropped.image.at<uint16_t>(v-s.roi.y, u-s.roi.x) = 0;
 					}
-					cv_rgb_cropped.image.at<cv::Vec3b>(v-roi.y, u-roi.x) = cv::Vec3b(255, 255, 255);
+					s.cv_rgb_cropped.image.at<cv::Vec3b>(v-s.roi.y, u-s.roi.x) = cv::Vec3b(255, 255, 255);
 				}
 			}
 		}
@@ -458,41 +456,49 @@ bool Scene::loadAndFilterScene()
 }
 
 
-bool Scene::performSegmentation()
+bool SceneProcessor::performSegmentation(Scene& s)
 {
-	segInfo = scenario->segmentationClient->segment(cv_rgb_cropped, cv_depth_cropped, cam_msg_cropped);
+	s.segInfo = scenario->segmentationClient->segment(s.cv_rgb_cropped, s.cv_depth_cropped, s.cam_msg_cropped);
 
-	if (!segInfo)
+	if (!s.segInfo)
 	{
 		ROS_WARN_STREAM("Segmentation Failed!");
 		return false;
 	}
 
-	segments = segmentCloudsFromImage(pile_cloud, segInfo->objectness_segmentation->image, cameraModel, roi, &labelToIndexLookup);
+	s.segments = segmentCloudsFromImage(s.pile_cloud, s.segInfo->objectness_segmentation->image, s.cameraModel, s.roi, &s.labelToIndexLookup);
 
-	if (segments.empty())
+	if (s.segments.empty())
 	{
 		ROS_WARN_STREAM("No clusters were detected!");
 		return false;
 	}
 
-	for (const auto label : unique(segInfo->objectness_segmentation->image))
+	for (const auto label : unique(s.segInfo->objectness_segmentation->image))
 	{
-		if (labelToIndexLookup.find(label) == labelToIndexLookup.end())
+		if (s.labelToIndexLookup.find(label) == s.labelToIndexLookup.end())
 		{
-			segInfo->objectness_segmentation->image.setTo(0, label == segInfo->objectness_segmentation->image);
+			s.segInfo->objectness_segmentation->image.setTo(0, label == s.segInfo->objectness_segmentation->image);
 		}
 	}
 
 	return true;
 }
 
-bool Scene::completeShapes()
+bool SceneProcessor::completeShapes(Scene& s)
 {
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-	approximateSegments.clear();
-	completedSegments.clear();
-	for (const auto& seg : segments)
+	s.approximateSegments.clear();
+	s.completedSegments.clear();
+
+	bool completionIsAvailable = scenario->completionClient->completionClient.exists()
+		&& FEATURE_AVAILABILITY::FORBIDDEN != useShapeCompletion;
+	if (FEATURE_AVAILABILITY::REQUIRED == useShapeCompletion && !completionIsAvailable)
+	{
+		throw std::runtime_error("Shape completion is set to REQUIRED, but the server is unavailable.");
+	}
+
+	for (const auto& seg : s.segments)
 	{
 		if (!ros::ok()) { return false; }
 
@@ -507,11 +513,11 @@ bool Scene::completeShapes()
 		min -= inflation*Eigen::Vector3f::Ones();
 		max += inflation*Eigen::Vector3f::Ones();
 
-		std::shared_ptr<octomap::OcTree> subtree(sceneOctree->create());
+		std::shared_ptr<octomap::OcTree> subtree(s.sceneOctree->create());
 		subtree->setProbMiss(0.05);
 		subtree->setProbHit(0.95);
-		setBBox(minExtent, maxExtent, subtree.get());
-		insertCloudInOctree(segment_cloud, worldTcamera, subtree.get());
+		setBBox(s.minExtent, s.maxExtent, subtree.get());
+		insertCloudInOctree(segment_cloud, s.worldTcamera, subtree.get());
 		MPS_ASSERT(subtree->size()>0);
 
 		// Delete speckle nodes
@@ -543,22 +549,9 @@ bool Scene::completeShapes()
 		for (const octomap::OcTreeKey& key : toDelete) { subtree->deleteNode(key); }
 		subtree->updateInnerOccupancy();
 
-		std::cerr << subtree->size() << std::endl;
-//		for (const PointT& pt : *segment_cloud)
-//		{
-//			Eigen::Vector3f worldPt = worldTcamera.cast<float>()*pt.getVector3fMap();
-//			assert(worldPt.cwiseMax(maxExtent.head<3>())==maxExtent.head<3>());
-//			assert(worldPt.cwiseMin(minExtent.head<3>())==minExtent.head<3>());
-//
-//			octomap::OcTreeNode* node = subtree->setNodeValue(worldPt.x(), worldPt.y(), worldPt.z(),
-//			                                                  std::numeric_limits<float>::infinity(), false);
-//			subtree->insertPointCloud()
-//			assert(node);
-//		}
-
-		if (scenario->completionClient->completionClient.exists())
+		if (completionIsAvailable)
 		{
-			scenario->completionClient->completeShape(min, max, worldTcamera.cast<float>(), sceneOctree, subtree.get(),
+			scenario->completionClient->completeShape(min, max, s.worldTcamera.cast<float>(), s.sceneOctree, subtree.get(),
 			                                          false);
 		}
 		setBBox(Eigen::Vector3f(-2, -2, -2), Eigen::Vector3f(2, 2, 2), subtree.get());
@@ -568,20 +561,9 @@ bool Scene::completeShapes()
 		auto approx = approximateShape(subtree.get());
 		if (approx)
 		{
-			completedSegments.insert({seg.first, subtree});
-			approximateSegments.insert({seg.first, approx});
+			s.completedSegments.insert({seg.first, subtree});
+			s.approximateSegments.insert({seg.first, approx});
 		}
-
-		// Search for this segment in past models
-//		MotionModel* model = matchModel(subtree, selfModels);
-//		if (!model)
-//		{
-//			std::string modelID = "completed_"+std::to_string(selfModels.size());
-//			auto newModel = std::make_unique<RigidMotionModel>();
-//			newModel->membershipBodies
-//			selfModels[modelID] = std::move(newModel);
-//			model = selfModels[modelID].get();
-//		}
 
 	}
 
@@ -594,15 +576,15 @@ bool Scene::completeShapes()
 		Eigen::Vector3f min, max;
 		pcl::PointCloud<PointT>::Ptr transformed_cloud (new pcl::PointCloud<PointT>());
 		// You can either apply transform_1 or transform_2; they are the same
-		pcl::transformPointCloud (*cropped_cloud, *transformed_cloud, worldTcamera);
+		pcl::transformPointCloud (*s.cropped_cloud, *transformed_cloud, s.worldTcamera);
 		getAABB(*transformed_cloud, min, max);
-		minExtent.head<3>() = min; maxExtent.head<3>() = max;
+		s.minExtent.head<3>() = min; s.maxExtent.head<3>() = max;
 	}
 
-	std::tie(occludedPts, occlusionTree) = getOcclusionsInFOV(sceneOctree, cameraModel, worldTcamera.inverse(Eigen::Isometry), minExtent.head<3>(), maxExtent.head<3>());
+	std::tie(s.occludedPts, s.occlusionTree) = getOcclusionsInFOV(s.sceneOctree, s.cameraModel, s.worldTcamera.inverse(Eigen::Isometry), s.minExtent.head<3>(), s.maxExtent.head<3>());
 //	scene->occluded_pts = occluded_pts;
 
-	if (occludedPts.empty())
+	if (s.occludedPts.empty())
 	{
 		ROS_ERROR_STREAM("Occluded points returned empty.");
 		return false;
@@ -612,14 +594,14 @@ bool Scene::completeShapes()
 	// Filter completion results
 	/////////////////////////////////////////////////////////////////
 	{
-		const int nPts = static_cast<int>(occludedPts.size());
+		const int nPts = static_cast<int>(s.occludedPts.size());
 		std::set<octomap::point3d, vector_less_than<3, octomap::point3d>> rejects;
 //		#pragma omp parallel for schedule(dynamic)
 		#pragma omp parallel
 		{
 			#pragma omp single
 			{
-				for (const auto seg : completedSegments)
+				for (const auto seg : s.completedSegments)
 				{
 					#pragma omp task
 					{
@@ -627,13 +609,13 @@ bool Scene::completeShapes()
 						unsigned d = segment->getTreeDepth();
 						for (int i = 0; i<nPts; ++i)
 						{
-							octomap::OcTreeNode* node = segment->search(occludedPts[i], d);
+							octomap::OcTreeNode* node = segment->search(s.occludedPts[i], d);
 							if (node && node->getOccupancy()>0.5)
 							{
 								#pragma omp critical
 								{
-									rejects.insert(occludedPts[i]);
-									occlusionTree->setNodeValue(occludedPts[i], -std::numeric_limits<float>::infinity(),
+									rejects.insert(s.occludedPts[i]);
+									s.occlusionTree->setNodeValue(s.occludedPts[i], -std::numeric_limits<float>::infinity(),
 									                            true);
 								}
 							}
@@ -643,25 +625,25 @@ bool Scene::completeShapes()
 			}
 		}
 		std::cerr << "Rejected " << rejects.size() << " hidden voxels due to shape completion." << std::endl;
-		occlusionTree->updateInnerOccupancy();
-		occludedPts.erase(std::remove_if(occludedPts.begin(), occludedPts.end(),
+		s.occlusionTree->updateInnerOccupancy();
+		s.occludedPts.erase(std::remove_if(s.occludedPts.begin(), s.occludedPts.end(),
 		                                 [&](const octomath::Vector3& p){ return rejects.find(p) != rejects.end();}),
-		                  occludedPts.end());
+		                  s.occludedPts.end());
 	}
 
 	/////////////////////////////////////////////////////////////////
 	// Filter parts of models
 	/////////////////////////////////////////////////////////////////
 	{
-		std::vector<int> assignments(occludedPts.size(), -1);
-		const int nPts = static_cast<int>(occludedPts.size());
+		std::vector<int> assignments(s.occludedPts.size(), -1);
+		const int nPts = static_cast<int>(s.occludedPts.size());
 		#pragma omp parallel for schedule(dynamic)
 		for (int i = 0; i < nPts; ++i)
 		{
-			Eigen::Vector3d pt(occludedPts[i].x(), occludedPts[i].y(), occludedPts[i].z());
+			Eigen::Vector3d pt(s.occludedPts[i].x(), s.occludedPts[i].y(), s.occludedPts[i].z());
 			int m = 0;
 			double maxL = std::numeric_limits<double>::lowest();
-			for (const auto& model : selfModels)
+			for (const auto& model : s.selfModels)
 			{
 				double L = model.second->membershipLikelihood(pt);
 				if (L > 0.0 && L > maxL)
@@ -677,15 +659,15 @@ bool Scene::completeShapes()
 		{
 			if (assignments[i] >= 0)
 			{
-				occlusionTree->deleteNode(occludedPts[i]);
-				sceneOctree->deleteNode(occludedPts[i]);
+				s.occlusionTree->deleteNode(s.occludedPts[i]);
+				s.sceneOctree->deleteNode(s.occludedPts[i]);
 			}
 		}
-		occlusionTree->updateInnerOccupancy();
+		s.occlusionTree->updateInnerOccupancy();
 		// Lambda function: capture by reference, get contained value, predicate function
-		occludedPts.erase(std::remove_if(occludedPts.begin(), occludedPts.end(),
-		                                 [&](const octomath::Vector3& p){ return assignments[&p - &*occludedPts.begin()] >= 0;}),
-		                  occludedPts.end());
+		s.occludedPts.erase(std::remove_if(s.occludedPts.begin(), s.occludedPts.end(),
+		                                 [&](const octomath::Vector3& p){ return assignments[&p - &*s.occludedPts.begin()] >= 0;}),
+		                  s.occludedPts.end());
 	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 

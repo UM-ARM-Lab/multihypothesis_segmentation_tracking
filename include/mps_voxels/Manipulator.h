@@ -57,6 +57,9 @@ public:
 	virtual
 	bool isGrasping(const robot_state::RobotState&) const { return true; }
 
+	virtual
+	std::vector<double> getGripperOpenJoints() const { return {}; }
+
 protected:
 	mutable std::vector<double> qHome;
 	std::vector<double> qMin;
