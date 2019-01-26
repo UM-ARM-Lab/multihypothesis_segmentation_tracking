@@ -46,6 +46,7 @@ public:
 	robot_model::RobotModelPtr robotModel;
 	std::vector<std::shared_ptr<Manipulator>> manipulators;
 	std::map<std::string, std::shared_ptr<Manipulator>> jointToManipulator;
+	robot_state::RobotStateConstPtr homeState;
 
 	std::vector<std::pair<std::shared_ptr<shapes::Shape>, Pose>> staticObstacles;
 

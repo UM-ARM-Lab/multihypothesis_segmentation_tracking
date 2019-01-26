@@ -17,6 +17,9 @@
 #include "mps_voxels/planning/MotionPlanner.h"
 #include "mps_voxels/assert.h"
 
+#define ENABLE_PROFILING
+#include <arc_utilities/timing.hpp>
+
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/robot_state/robot_state.h>
@@ -208,6 +211,7 @@ std::shared_ptr<RGBDSegmenter> segmentationClient;
 std::unique_ptr<Tracker> tracker;
 std::unique_ptr<TargetDetector> targetDetector;
 std::shared_ptr<TrajectoryClient> trajectoryClient;
+ros::NodeHandle* _nh;
 std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperLPub;
 std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperRPub;
 ros::Publisher octreePub;
@@ -280,7 +284,7 @@ std::map<ObjectIndex, Eigen::Affine3d> followObjects(const std::shared_ptr<Motio
 
 	double maxDist = 0;
 	bool isGrasping = false;
-	for (const auto& manip : scene->scenario->manipulators)
+	for (const auto& manip : scenario->manipulators)
 	{
 		if (manip->isGrasping(qStart) && manip->isGrasping(qEnd))
 		{
@@ -449,6 +453,9 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		return;
 	}
 
+	std::string experiment_id;
+	_nh->getParam("/experiment_id", experiment_id);
+
 	scene = std::make_unique<Scene>();
 	scene->scenario = scenario;
 
@@ -473,6 +480,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	scene->minExtent = minExtent;//.head<3>().cast<double>();
 	scene->maxExtent = maxExtent;//.head<3>().cast<double>();
 
+	PROFILE_START("Preprocess Scene");
+
 	bool convertImages = scene->convertImages(rgb_msg, depth_msg, *cam_msg);
 	if (!convertImages)
 	{
@@ -484,6 +493,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	{
 		return;
 	}
+
+	PROFILE_RECORD("Preprocess Scene");
 
 	// Get Octree
 	octomap::OcTree* octree = mapServer->getOctree();
@@ -518,6 +529,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+	PROFILE_START("Segment Scene");
 
 	bool getSegmentation = scene->performSegmentation();
 	if (!getSegmentation)
@@ -575,6 +588,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 	}
 
+	PROFILE_RECORD("Segment Scene");
+
 	// Clear visualization
 	{
 		visualization_msgs::MarkerArray ma;
@@ -592,6 +607,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		octreePub.publish(occupiedNodesVis);
 	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+	PROFILE_START("Complete Scene");
 
 	bool getCompletion = scene->completeShapes();
 	if (!getCompletion)
@@ -659,12 +676,6 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		// Visualize approximate shape
 		visualization_msgs::Marker m;
 		auto approx = scene->approximateSegments.at(compSeg.first);//approximateShape(subtree.get());
-//		auto res = scene->approximateSegments.insert({compSeg.first, approx});
-//		if (!res.second)
-//		{
-//			std::cerr << "ID " << compSeg.first.id << " already exists!" << std::endl;
-//		}
-//		MPS_ASSERT(res.second);
 		shapes::constructMarkerFromShape(approx.get(), m, true);
 		m.id = std::abs(compSeg.first.id);
 		m.ns = "bounds";
@@ -679,6 +690,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		waitKey(10);
 
 	}
+
+	PROFILE_RECORD("Complete Scene");
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
@@ -787,6 +800,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	if (!ros::ok()) { return; }
 
+	PROFILE_START("Planning");
+
 	using RankedMotion = std::pair<double, std::shared_ptr<Motion>>;
 	auto comp = [](const RankedMotion& a, const RankedMotion& b ) { return a.first < b.first; };
 	std::priority_queue<RankedMotion, std::vector<RankedMotion>, decltype(comp)> motionQueue(comp);
@@ -846,6 +861,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		motion = motionQueue.top().second;
 	}
 
+	PROFILE_RECORD("Planning");
+
 	moveit_msgs::DisplayTrajectory dt;
 	moveit::core::robotStateToRobotStateMsg(getCurrentRobotState(), dt.trajectory_start);
 	dt.model_id = pModel->getName();
@@ -893,6 +910,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	waitKey(10);
 
+	PROFILE_START("Execution");
+
 	auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
 	// Allow some visualization time
 //	ros::Duration(3.0+compositeAction->actions.size()).sleep();
@@ -900,18 +919,29 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	if (trajectoryClient->isServerConnected())
 	{
 		// For safety sake
-		for (auto& manip : scene->scenario->manipulators)
+		for (auto& manip : scenario->manipulators)
 		{
 			manip->configureHardware();
 			ros::Duration(0.5).sleep();
 		}
 		if (!ros::ok()) { return; }
 
-		bool success = executeMotion(motion, getCurrentRobotState());
+		bool success = executeMotion(motion, *scenario->homeState);
 		if (success)
 		{
 			static int actionCount = 0;
 			std::cerr << "Actions: " << ++actionCount << std::endl;
+
+			const auto& action = std::dynamic_pointer_cast<JointTrajectoryAction>(compositeAction->actions[compositeAction->primaryAction]);
+			if (!action) // Not Joint Action
+			{
+				PROFILE_RECORD("Execution");
+				PROFILE_RECORD_DOUBLE("Actions Required", actionCount);
+				PROFILE_WRITE_SUMMARY_FOR_ALL("/tmp/" + experiment_id + ".txt");
+				PROFILE_WRITE_ALL("/tmp/" + experiment_id + ".txt");
+				ros::shutdown();
+				return;
+			}
 
 			std::map<ObjectIndex, Eigen::Affine3d> objTrajs = followObjects(motion, tracker.get());
 			for (int iter = 0; iter < 10; ++iter)
@@ -923,8 +953,6 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 					tf::poseEigenToTF(p.second, temp);
 					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, frameID));
 
-					const auto& composite = std::dynamic_pointer_cast<CompositeAction>(motion->action);
-					const auto& action = std::dynamic_pointer_cast<JointTrajectoryAction>(composite->actions[composite->primaryAction]);
 
 					tf::poseEigenToTF(action->palm_trajectory.front(), temp);
 					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, frameID+"front"));
@@ -947,6 +975,8 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	{
 		ros::Duration(5).sleep();
 	}
+
+	PROFILE_RECORD("Execution");
 
 //	// Check if we used to see the target, but don't anymore
 //	if (goalSegmentID >= 0)
@@ -971,6 +1001,7 @@ int main(int argc, char* argv[])
 {
 	ros::init(argc, argv, "scene_explorer");
 	ros::NodeHandle nh, pnh("~");
+	_nh = &nh;
 
 	ros::CallbackQueue sensor_queue;
 	ros::AsyncSpinner sensor_spinner(1, &sensor_queue);
@@ -1071,6 +1102,15 @@ int main(int argc, char* argv[])
 	scenario->completionClient = completionClient;
 	scenario->segmentationClient = segmentationClient;
 
+	// Wait for joints, then set the current state as the return state
+	sensor_spinner.start();
+	while(ros::ok())
+	{
+		usleep(100000);
+		if (latestJoints) { break; }
+	}
+	scenario->homeState = std::make_shared<robot_state::RobotState>(getCurrentRobotState());
+
 	const std::string mocapFrame = "world_origin";
 	if (listener->waitForTransform(mapServer->getWorldFrame(), mocapFrame, ros::Time(0), ros::Duration(5.0)))
 	{
@@ -1140,11 +1180,15 @@ int main(int argc, char* argv[])
 	//(new octomap::OcTree(d));
 
 
-	sensor_spinner.start();
 	ros::spin();
 	sensor_spinner.stop();
 
 //	spinner.spin();
+
+	listener.reset();
+	scenario.reset();
+	scene.reset();
+	planner.reset();
 
 	return 0;
 }
