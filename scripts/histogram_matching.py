@@ -28,7 +28,7 @@ def hists(img, segments, s):
     h = []
     for i, col in enumerate(bgr):
         hi = cv2.calcHist([img], [i], mask, [256], [0, 256])
-        h.append(hi / (1.0+np.sum(hi)))
+        h.append(hi) # (hi / (1.0+np.sum(hi)))
     return h
 
 
@@ -81,6 +81,10 @@ class HistogramMatcher(object):
         unique_segments1 = np.sort(np.unique(seg1))
         unique_segments2 = np.sort(np.unique(seg2))
 
+        # NB: label '0' designates 'background'
+        unique_segments1 = unique_segments1[unique_segments1 != 0]
+        unique_segments2 = unique_segments2[unique_segments2 != 0]
+
         histograms1 = mask_hists(img1, seg1, unique_segments1)
         histograms2 = mask_hists(img2, seg2, unique_segments2)
 
@@ -97,25 +101,29 @@ class HistogramMatcher(object):
         k = min(len(unique_segments1), len(unique_segments2))
         assert(len(row_ind) == k)
         for i in range(k):
+            # a.keys.append(unique_segments1[row_ind[i]])
+            # a.values.append(row_ind[i])
+            # b.keys.append(unique_segments2[col_ind[i]])
+            # b.values.append(col_ind[i])
+            # ^ Why is this wrong?
             n = unique_segments1[i]
             # m = unique_segments2[i]
             a.keys.append(n)
             a.values.append(row_ind[i])
             j = col_ind[i]
             b.keys.append(unique_segments2[j])
-            b.values.append(row_ind[i])
-        # for i, n in enumerate(unique_segments1):
-        #     if i < k:
-        #         a.keys.append(n)
-        #         a.values.append(row_ind[i])
-        # for j, m in enumerate(unique_segments2):
-        #     if j < k:
-        #         b.keys.append(m)
-        #         b.values.append(col_ind[j])
+            b.values.append(row_ind[i])  # < Why is this not col_ind?
+
         resp.segments_to_bundles.append(a)
         resp.segments_to_bundles.append(b)
 
+        print(resp)
+
         self.server.set_succeeded(result=resp)
+
+        # plt.figure()
+        # plt.imshow(D, cmap=cm.gist_heat, interpolation='nearest')
+        # plt.show()
 
 
 if __name__ == '__main__':
