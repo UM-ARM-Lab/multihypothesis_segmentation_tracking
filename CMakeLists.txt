@@ -8,6 +8,7 @@ add_compile_options(-std=c++14)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
+  arm_video_recorder
   cv_bridge
   depth_image_proc
   image_geometry
@@ -186,6 +187,7 @@ catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES mps_voxels
   CATKIN_DEPENDS
+    arm_video_recorder
     cv_bridge
     depth_image_proc
     image_geometry

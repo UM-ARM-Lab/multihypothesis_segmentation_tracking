@@ -32,6 +32,7 @@
   <!-- Dependencies can be catkin packages or system dependencies -->
   <buildtool_depend>catkin</buildtool_depend>
 
+  <depend>arm_video_recorder</depend>
   <depend>cv_bridge</depend>
   <depend>depth_image_proc</depend>
   <depend>image_geometry</depend>

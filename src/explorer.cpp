@@ -17,9 +17,6 @@
 #include "mps_voxels/planning/MotionPlanner.h"
 #include "mps_voxels/assert.h"
 
-#define ENABLE_PROFILING
-#include <arc_utilities/timing.hpp>
-
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/robot_state/robot_state.h>
@@ -61,6 +58,11 @@
 #include <random>
 #include <queue>
 
+
+#define ENABLE_PROFILING
+#include <arc_utilities/timing.hpp>
+
+#include <arm_video_recorder/TriggerVideoRecording.h>
 
 #define _unused(x) ((void)(x))
 
@@ -211,7 +213,6 @@ std::shared_ptr<RGBDSegmenter> segmentationClient;
 std::unique_ptr<Tracker> tracker;
 std::unique_ptr<TargetDetector> targetDetector;
 std::shared_ptr<TrajectoryClient> trajectoryClient;
-ros::NodeHandle* _nh;
 std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperLPub;
 std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperRPub;
 ros::Publisher octreePub;
@@ -230,6 +231,10 @@ std::shared_ptr<MotionPlanner> planner;
 sensor_msgs::JointState::ConstPtr latestJoints;
 //std::map<std::string, std::shared_ptr<MotionModel>> motionModels;
 std::mutex joint_mtx;
+
+std::string experiment_id;
+std::string experiment_dir;
+ros::ServiceClient externalVideoClient;
 
 void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 {
@@ -444,11 +449,6 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		ROS_WARN_STREAM("Failed to look up transform between '" << mapServer->getWorldFrame() << "' and '" << cam_msg->header.frame_id << "'.");
 		return;
 	}
-
-	std::string experiment_id;
-	_nh->getParam("/experiment/id", experiment_id);
-	std::string experiment_dir;
-	_nh->getParam("/experiment/directory", experiment_dir);
 
 	scene = std::make_unique<Scene>();
 	scene->scenario = scenario;
@@ -815,7 +815,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 			ROS_WARN_STREAM("Saw target object, but failed to compute grasp plan.");
 			std::cerr << "Saw target object, but failed to compute grasp plan." << " (" << scene->obstructions.size() << " obstructions)" << std::endl;
 		}
-		MPS_ASSERT(scene->obstructions.find(*scene->targetObjectID) == scene->obstructions.end());
+//		MPS_ASSERT(scene->obstructions.find(*scene->targetObjectID) == scene->obstructions.end());
 	}
 
 	if (!motion)
@@ -935,6 +935,17 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 				PROFILE_RECORD_DOUBLE("Actions Required", actionCount);
 				PROFILE_WRITE_SUMMARY_FOR_ALL(experiment_dir + "/profile.txt");
 				PROFILE_WRITE_ALL(experiment_dir + "/profile.txt");
+
+				if (externalVideoClient.waitForExistence(ros::Duration(3)))
+				{
+					arm_video_recorder::TriggerVideoRecordingRequest req;
+					req.filename = experiment_dir + "/external.mp4";
+					req.timeout_in_sec = 3600;
+					req.record = false;
+					arm_video_recorder::TriggerVideoRecordingResponse resp;
+					externalVideoClient.call(req, resp);
+				}
+
 				ros::shutdown();
 				return;
 			}
@@ -997,7 +1008,6 @@ int main(int argc, char* argv[])
 {
 	ros::init(argc, argv, "scene_explorer");
 	ros::NodeHandle nh, pnh("~");
-	_nh = &nh;
 
 	ros::CallbackQueue sensor_queue;
 	ros::AsyncSpinner sensor_spinner(1, &sensor_queue);
@@ -1068,6 +1078,9 @@ int main(int argc, char* argv[])
 
 	bool use_memory;
 	gotParam = pnh.getParam("use_memory", use_memory); MPS_ASSERT(gotParam);
+
+	nh.getParam("/experiment/id", experiment_id);
+	nh.getParam("/experiment/directory", experiment_dir);
 
 	octreePub = nh.advertise<visualization_msgs::MarkerArray>("occluded_points", 1, true);
 	gripperLPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/left_arm/gripper_command", 1, false);
@@ -1195,6 +1208,22 @@ int main(int argc, char* argv[])
 		pregraspAction->jointGroupName = manip->gripper->getName();
 
 		executeMotion(motion, *scenario->homeState);
+	}
+
+
+	externalVideoClient = nh.serviceClient<arm_video_recorder::TriggerVideoRecording>("video_recorder");
+	if (!externalVideoClient.waitForExistence(ros::Duration(3)))
+	{
+		ROS_WARN("External video server not connected.");
+	}
+	else
+	{
+		arm_video_recorder::TriggerVideoRecordingRequest req;
+		req.filename = experiment_dir + "/external.mp4";
+		req.timeout_in_sec = 3600;
+		req.record = true;
+		arm_video_recorder::TriggerVideoRecordingResponse resp;
+		externalVideoClient.call(req, resp);
 	}
 
 	std::string topic_prefix = "/kinect2_victor_head/hd";
