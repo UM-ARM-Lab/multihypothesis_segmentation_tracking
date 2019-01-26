@@ -1214,7 +1214,8 @@ int main(int argc, char* argv[])
 	externalVideoClient = nh.serviceClient<arm_video_recorder::TriggerVideoRecording>("video_recorder");
 	if (!externalVideoClient.waitForExistence(ros::Duration(3)))
 	{
-		ROS_WARN("External video server not connected.");
+		ROS_FATAL("External video server not connected.");
+		return -1;
 	}
 	else
 	{
