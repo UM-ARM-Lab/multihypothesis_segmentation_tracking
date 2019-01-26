@@ -347,17 +347,17 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 						octomap::point3d collision;
 						bool collided = octree->castRay(cameraOrigin, ray, collision, false);
 
-						if (collided && (ray.norm_sq() > (collision-cameraOrigin).norm_sq()+octree->getResolution()))
+						#pragma omp critical
 						{
-							#pragma omp critical
+							if (collided && (ray.norm_sq()>(collision-cameraOrigin).norm_sq()+octree->getResolution()))
 							{
 								occluded_pts.push_back(coord);
 								occlusionTree->setNodeValue(coord, std::numeric_limits<float>::infinity(), true);
 							}
-						}
-						else
-						{
-							octree->updateNode(coord, false, true);
+							else
+							{
+								octree->updateNode(coord, false, true);
+							}
 						}
 					}
 				}

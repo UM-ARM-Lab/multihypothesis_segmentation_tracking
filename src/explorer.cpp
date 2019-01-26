@@ -371,7 +371,7 @@ bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::Rob
 
 			std::cerr << "Sending joint trajectory." << std::endl;
 
-			auto res = trajectoryClient->sendGoalAndWait(goal, ros::Duration(30.0) + totalTime);
+			auto res = trajectoryClient->sendGoalAndWait(goal, ros::Duration(30.0) + totalTime, ros::Duration(1.0));
 			if (!res.isDone() || (res.state_!=actionlib::SimpleClientGoalState::SUCCEEDED))
 			{
 				if (!res.isDone())
@@ -936,6 +936,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 			if (!action) // Not Joint Action
 			{
 				PROFILE_RECORD("Execution");
+				PROFILE_START("Actions Required");
 				PROFILE_RECORD_DOUBLE("Actions Required", actionCount);
 				PROFILE_WRITE_SUMMARY_FOR_ALL("/tmp/" + experiment_id + ".txt");
 				PROFILE_WRITE_ALL("/tmp/" + experiment_id + ".txt");

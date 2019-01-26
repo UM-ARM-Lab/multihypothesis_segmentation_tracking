@@ -108,8 +108,9 @@ bool VictorManipulator::isGrasping(const robot_state::RobotState& currentState) 
 		throw std::runtime_error("Unknown arm.");
 	}
 
-	const double MIN_POS = 0.075;
-	const double MAX_POS = 0.35;
+	// NB: These are the values in radians, not the control signal from 0-1
+	const double MIN_POS = 0.1; // 0.075;
+	const double MAX_POS = 0.75; // 0.35;
 	for (const auto& n : fingerJointNames)
 	{
 		double q = currentState.getVariablePosition(n);

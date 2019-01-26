@@ -24,6 +24,37 @@
 
 const std::string Scene::CLUTTER_NAME = "clutter";
 
+bool arePointsInHandRegion(const octomap::OcTree* tree, const Eigen::Affine3d& palmTworld)
+{
+	Eigen::Vector3d aabbMin(-0.05, -0.05, 0.0);
+	Eigen::Vector3d aabbMax(0.05, 0.05, 0.1);
+
+	for (const auto& p : getPoints(tree))
+	{
+		Eigen::Vector3d p_palm = palmTworld * Eigen::Vector3d(p.x(), p.y(), p.z());
+
+		bool contained = true;
+		for (int d = 0; d < 3; ++d)
+		{
+			contained = contained && (aabbMin[d] < p_palm[d]) && (p_palm[d] < aabbMax[d]);
+		}
+
+		if (contained)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool arePointsInHandRegion(const Manipulator* manip, const octomap::OcTree* tree, const robot_state::RobotState& state, const Eigen::Affine3d& robotTworld)
+{
+	const Eigen::Affine3d& robotTpalm = state.getFrameTransform(manip->palmName);
+	const Eigen::Affine3d palmTworld = robotTpalm.inverse(Eigen::Isometry) * robotTworld;
+
+	return arePointsInHandRegion(tree, palmTworld);
+}
 
 std::priority_queue<MotionPlanner::RankedPose, std::vector<MotionPlanner::RankedPose>, ComparePoses> getGraspPoses(const octomap::OcTree* tree)
 {
@@ -104,6 +135,8 @@ std::priority_queue<MotionPlanner::RankedPose, std::vector<MotionPlanner::Ranked
 
 	return graspPoses;
 }
+
+
 
 collision_detection::WorldPtr
 Scene::computeCollisionWorld()
@@ -536,6 +569,14 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 		env->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->worldFrame, "push_gripper_frame_1"));
 	}
 
+	pushGripperFrames.erase(std::remove_if(pushGripperFrames.begin(), pushGripperFrames.end(),
+	                                 [&](const Eigen::Affine3d& p){ return !arePointsInHandRegion(tree, p.inverse(Eigen::Isometry));}),
+	                        pushGripperFrames.end());
+	if (pushGripperFrames.empty())
+	{
+		return std::shared_ptr<Motion>();
+	}
+
 	// Shuffle manipulators (without shuffling underlying array)
 	std::vector<unsigned int> manip_indices(env->scenario->manipulators.size());
 	std::iota(manip_indices.begin(), manip_indices.end(), 0);
@@ -546,7 +587,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 	std::iota(push_indices.begin(), push_indices.end(), 0);
 	std::shuffle(push_indices.begin(), push_indices.end(), env->scenario->rng);
 
-	std::uniform_int_distribution<int> stepDistr(5, 15);
+	std::uniform_int_distribution<int> stepDistr(15, 20);
 
 	const int INTERPOLATE_STEPS = 25;
 	const int TRANSIT_INTERPOLATE_STEPS = 50;
@@ -745,6 +786,12 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 		gripperPose.linear() = gripperPose.linear() * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).matrix();
 		gripperPose.translation() -= PALM_DISTANCE*gripperPose.linear().col(2);
 		gripperPose.translation().z() = std::max(gripperPose.translation().z(), Z_SAFETY_HEIGHT);
+
+		if (!arePointsInHandRegion(tree, gripperPose.inverse(Eigen::Isometry)))
+		{
+			continue;
+		}
+
 		if (env->visualize)
 		{
 			tf::Transform t = tf::Transform::getIdentity();
@@ -967,6 +1014,12 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 		gripperPose.linear() = gripperPose.linear() * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).matrix();
 		gripperPose.translation() -= PALM_DISTANCE*gripperPose.linear().col(2);
 		gripperPose.translation().z() = std::max(gripperPose.translation().z(), Z_SAFETY_HEIGHT);
+
+		if (!arePointsInHandRegion(tree, gripperPose.inverse(Eigen::Isometry)))
+		{
+			continue;
+		}
+
 		if (env->visualize)
 		{
 			tf::Transform t = tf::Transform::getIdentity();
