@@ -356,7 +356,7 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 							}
 							else
 							{
-								octree->updateNode(coord, false, true);
+								octree->updateNode(coord, octree->getProbMissLog(), true);
 							}
 						}
 					}

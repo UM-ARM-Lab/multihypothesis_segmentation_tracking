@@ -147,8 +147,9 @@ bool Scene::loadAndFilterScene()
 	                              (float)worldTcamera.translation().y(),
 	                              (float)worldTcamera.translation().z());
 	decayMemory(octree, cameraOrigin);
-	octree->setProbMiss(0.025);
-	octree->setProbHit(0.90);
+	const double missProb = 0.05;
+	octree->setProbMiss(missProb);
+	octree->setProbHit(1.0-missProb);
 
 	cloud = imagesToCloud(cv_rgb_ptr->image, cv_depth_ptr->image, cameraModel);
 
