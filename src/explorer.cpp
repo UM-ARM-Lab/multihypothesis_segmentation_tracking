@@ -916,8 +916,14 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 		// For safety sake
 		for (auto& manip : scenario->manipulators)
 		{
-			manip->configureHardware();
+			bool configured = manip->configureHardware();
 			ros::Duration(0.5).sleep();
+			if (!configured)
+			{
+				ROS_FATAL("Failed to configure hardware. Potential safety violation.");
+				ros::shutdown();
+				return;
+			}
 		}
 		if (!ros::ok()) { return; }
 
