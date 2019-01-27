@@ -625,6 +625,10 @@ bool SceneProcessor::completeShapes(Scene& s)
 			}
 		}
 		std::cerr << "Rejected " << rejects.size() << " hidden voxels due to shape completion." << std::endl;
+		if (completionIsAvailable && rejects.empty())
+		{
+			throw std::runtime_error("Shape completion did not contribute any points.");
+		}
 		s.occlusionTree->updateInnerOccupancy();
 		s.occludedPts.erase(std::remove_if(s.occludedPts.begin(), s.occludedPts.end(),
 		                                 [&](const octomath::Vector3& p){ return rejects.find(p) != rejects.end();}),
