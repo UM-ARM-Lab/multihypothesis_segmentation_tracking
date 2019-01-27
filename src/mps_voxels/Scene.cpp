@@ -597,13 +597,13 @@ bool SceneProcessor::completeShapes(Scene& s)
 		const int nPts = static_cast<int>(s.occludedPts.size());
 		std::set<octomap::point3d, vector_less_than<3, octomap::point3d>> rejects;
 //		#pragma omp parallel for schedule(dynamic)
-		#pragma omp parallel
+//		#pragma omp parallel
 		{
-			#pragma omp single
+//			#pragma omp single
 			{
-				for (const auto seg : s.completedSegments)
+				for (const auto& seg : s.completedSegments)
 				{
-					#pragma omp task
+//					#pragma omp task
 					{
 						const std::shared_ptr<octomap::OcTree>& segment = seg.second;
 						unsigned d = segment->getTreeDepth();
@@ -612,7 +612,7 @@ bool SceneProcessor::completeShapes(Scene& s)
 							octomap::OcTreeNode* node = segment->search(s.occludedPts[i], d);
 							if (node && node->getOccupancy()>0.5)
 							{
-								#pragma omp critical
+//								#pragma omp critical
 								{
 									rejects.insert(s.occludedPts[i]);
 									s.occlusionTree->setNodeValue(s.occludedPts[i], -std::numeric_limits<float>::infinity(),
