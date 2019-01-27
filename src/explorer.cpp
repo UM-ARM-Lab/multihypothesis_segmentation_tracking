@@ -820,14 +820,14 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	if (!motion)
 	{
-		#pragma omp parallel for private(scene)
+//		#pragma omp parallel for private(scene)
 		for (int i = 0; i<25; ++i)
 		{
 			std::shared_ptr<Motion> motionSlide = planner->sampleSlide(rs);
 			if (motionSlide)
 			{
 				double reward = planner->reward(rs, motionSlide.get());
-				#pragma omp critical
+//				#pragma omp critical
 				{
 					motionQueue.push({reward, motionSlide});
 				}
@@ -837,7 +837,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 			if (motionPush)
 			{
 				double reward = planner->reward(rs, motionPush.get());
-				#pragma omp critical
+//				#pragma omp critical
 				{
 					motionQueue.push({reward, motionPush});
 				}
