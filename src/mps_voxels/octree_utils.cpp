@@ -283,6 +283,7 @@ void VoxelCompleter::completeShape(
 octomap::point3d_collection getPoints(const octomap::OcTree* tree)
 {
 	octomap::point3d_collection pts;
+	pts.reserve(tree->size()/2); // Guess that the octree is half-full
 	for (octomap::OcTree::iterator it = tree->begin(tree->getTreeDepth()),
 		     end = tree->end(); it != end; ++it)
 	{
@@ -293,6 +294,7 @@ octomap::point3d_collection getPoints(const octomap::OcTree* tree)
 			pts.emplace_back(it.getCoordinate());
 		}
 	}
+	pts.shrink_to_fit();
 	return pts;
 }
 

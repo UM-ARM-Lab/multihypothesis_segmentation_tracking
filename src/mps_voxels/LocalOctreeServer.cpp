@@ -9,7 +9,7 @@
 #include <pcl_ros/transforms.h>
 #include <pcl/filters/voxel_grid.h>
 
-namespace octomap
+/*namespace octomap
 {
 
 bool computeRayKeys(OcTree* tree,
@@ -87,7 +87,7 @@ bool computeRayKeys(OcTree* tree,
 		current_key[dim] += step[dim];
 		tMax[dim] += tDelta[dim];
 
-		assert (current_key[dim] < 2*this->tree_max_val);
+		assert (current_key[dim] < 2*tree->tree_max_val);
 
 		// reached endpoint, key equv?
 		if (current_key == key_end) {
@@ -159,7 +159,7 @@ void insertPointCloudRays(OcTree* tree, const Pointcloud& pc, const point3d& ori
 	}
 }
 
-}
+}*/
 
 void insertCloudInOctree(const pcl::PointCloud<PointT>::Ptr& cloud, const Eigen::Affine3d& worldTcamera, octomap::OcTree* tree)
 {

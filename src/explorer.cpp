@@ -228,6 +228,7 @@ std::shared_ptr<Scenario> scenario;
 std::unique_ptr<Scene> scene;
 std::unique_ptr<SceneProcessor> processor;
 std::shared_ptr<MotionPlanner> planner;
+std::map<std::string, std::shared_ptr<MotionModel>> selfModels;
 sensor_msgs::JointState::ConstPtr latestJoints;
 //std::map<std::string, std::shared_ptr<MotionModel>> motionModels;
 std::mutex joint_mtx;
@@ -452,16 +453,7 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	scene = std::make_unique<Scene>();
 	scene->scenario = scenario;
-
-	if (!loadLinkMotionModels(pModel.get(), scene->selfModels))
-	{
-		ROS_ERROR("Model loading failed.");
-		return;
-	}
-	scene->selfModels.erase("victor_base_plate"); // HACK: camera always collides
-	scene->selfModels.erase("victor_pedestal");
-	scene->selfModels.erase("victor_left_arm_mount");
-	scene->selfModels.erase("victor_right_arm_mount");
+	scene->selfModels = selfModels;
 
 	planner->env = scene.get();
 	planner->objectSampler.env = scene.get();
@@ -1120,27 +1112,16 @@ int main(int argc, char* argv[])
 
 	planner = std::make_shared<MotionPlanner>();
 
-//	scene = std::make_unique<Scene>();
-//	scene->scenario = scenario;
-//
-//	if (!loadLinkMotionModels(pModel.get(), scene->selfModels))
-//	{
-//		ROS_ERROR("Model loading failed.");
-//	}
-//	scene->selfModels.erase("victor_base_plate"); // HACK: camera always collides
-//	scene->selfModels.erase("victor_pedestal");
-//	scene->selfModels.erase("victor_left_arm_mount");
-//	scene->selfModels.erase("victor_right_arm_mount");
-//
-//	MPS_ASSERT(!pModel->getJointModelGroupNames().empty());
-//
-//	scenario->loadManipulators(pModel);
-//
-//	planner = std::make_shared<MotionPlanner>();
-//	planner->env = scene.get();
-//	planner->objectSampler.env = scene.get();
-//	scene->worldFrame = mapServer->getWorldFrame();
-//	scene->visualize = true;
+	if (!loadLinkMotionModels(pModel.get(), selfModels))
+	{
+		ROS_ERROR("Model loading failed.");
+		return -1;
+	}
+	selfModels.erase("victor_base_plate"); // HACK: camera always collides
+	selfModels.erase("victor_pedestal");
+	selfModels.erase("victor_left_arm_mount");
+	selfModels.erase("victor_right_arm_mount");
+
 	scenario->listener = listener;
 	scenario->broadcaster = broadcaster;
 	scenario->mapServer = mapServer;

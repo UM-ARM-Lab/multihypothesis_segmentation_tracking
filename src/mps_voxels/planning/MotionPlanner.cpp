@@ -188,7 +188,7 @@ ObjectSampler::sampleObject(ObjectIndex& id, Pose& pushFrame) const
 	}
 
 	// If the target object grasp is obstructed somehow
-	if (!env->obstructions.empty())// && ((rand()/RAND_MAX) < 0.9))
+	if (!env->obstructions.empty() && ((rand()/RAND_MAX) < 0.9))
 	{
 		// Select one obstructing object with uniform probability
 		std::uniform_int_distribution<size_t> distr(0, env->obstructions.size()-1);
@@ -781,8 +781,8 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 
 	while (!graspPoses.empty())
 	{
-		const auto& pair = graspPoses.top();
-		Eigen::Affine3d gripperPose = pair.second;
+		Eigen::Affine3d gripperPose = graspPoses.top().second;
+		graspPoses.pop();
 		gripperPose.linear() = gripperPose.linear() * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).matrix();
 		gripperPose.translation() -= PALM_DISTANCE*gripperPose.linear().col(2);
 		gripperPose.translation().z() = std::max(gripperPose.translation().z(), Z_SAFETY_HEIGHT);
@@ -961,8 +961,6 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 				}
 			}
 		}
-
-		graspPoses.pop();
 	}
 
 
@@ -1010,8 +1008,8 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 
 	while (!graspPoses.empty())
 	{
-		const auto& pair = graspPoses.top();
-		Eigen::Affine3d gripperPose = pair.second;
+		Eigen::Affine3d gripperPose = graspPoses.top().second;
+		graspPoses.pop();
 		gripperPose.linear() = gripperPose.linear() * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).matrix();
 		gripperPose.translation() -= PALM_DISTANCE*gripperPose.linear().col(2);
 		gripperPose.translation().z() = std::max(gripperPose.translation().z(), Z_SAFETY_HEIGHT);
@@ -1196,8 +1194,6 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 				std::cerr << "No solution to pick pose found." << std::endl;
 			}
 		}
-
-		graspPoses.pop();
 	}
 
 
