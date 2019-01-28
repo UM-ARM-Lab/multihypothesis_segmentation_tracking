@@ -179,15 +179,16 @@ bool Manipulator::cartesianPath(const PoseSequence& worldGoalPoses, const Eigen:
 
 	currentState.copyJointGroupPositions(arm, qHome);
 
+	trellis.resize(worldGoalPoses.size());
 	for (int i = 0; i < static_cast<int>(worldGoalPoses.size()); ++i)
 	{
 		times[i] = i;
-		std::vector<std::vector<double>> frameSolutions = IK(worldGoalPoses[i], robotTworld, currentState);
-		if (frameSolutions.empty())
+		trellis[i] = IK(worldGoalPoses[i], robotTworld, currentState);
+		if (trellis[i].empty())
 		{
+			ROS_ERROR_STREAM("Unable to compute Cartesian trajectory: IK solution found for (world frame):\n" << worldGoalPoses[i].matrix());
 			return false;
 		}
-		trellis.push_back(frameSolutions);
 	}
 
 	// Compute a reasonable cost threshold
@@ -198,7 +199,7 @@ bool Manipulator::cartesianPath(const PoseSequence& worldGoalPoses, const Eigen:
 	std::vector<int> cheapestPath = mps::viterbi(trellis, times, stateCostFn, transitionCostFn, maxCost);
 	if (cheapestPath.size() != worldGoalPoses.size())
 	{
-		ROS_ERROR_STREAM("Unable to compute Cartesian trajectory");
+		ROS_ERROR_STREAM("Unable to compute Cartesian trajectory: no path found through solution graph.");
 		return false;
 	}
 
@@ -216,6 +217,7 @@ bool Manipulator::cartesianPath(const PoseSequence& worldGoalPoses, const Eigen:
 //		return false;
 //	}
 
+	cmd.points.reserve(worldGoalPoses.size());
 	for (int i = 0; i < static_cast<int>(worldGoalPoses.size()); ++i)
 	{
 		int slnIdx = cheapestPath[i];

@@ -763,7 +763,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 
 	const int INTERPOLATE_STEPS = 25;
 	const int TRANSIT_INTERPOLATE_STEPS = 50;
-	const int SAMPLE_ATTEMPTS = 100;
+//	const int SAMPLE_ATTEMPTS = 100;
 	const double PALM_DISTANCE = 0.025;
 	const double APPROACH_DISTANCE = 0.15;
 	const double TABLE_BUFFER = 0.20;
@@ -817,7 +817,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 				}
 
 				Eigen::Affine3d goalPose;
-				for (int attempt = 0; attempt < SAMPLE_ATTEMPTS; ++attempt)
+//				for (int attempt = 0; attempt < SAMPLE_ATTEMPTS; ++attempt)
 				{
 					goalPose = Eigen::Affine3d::Identity();
 					goalPose.linear() = goalPose.linear() * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).matrix();

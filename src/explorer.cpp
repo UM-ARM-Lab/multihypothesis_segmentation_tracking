@@ -233,6 +233,8 @@ sensor_msgs::JointState::ConstPtr latestJoints;
 //std::map<std::string, std::shared_ptr<MotionModel>> motionModels;
 std::mutex joint_mtx;
 
+double planning_time = 60.0;
+int planning_samples = 25;
 std::string experiment_id;
 std::string experiment_dir;
 ros::ServiceClient externalVideoClient;
@@ -810,10 +812,12 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 //		MPS_ASSERT(scene->obstructions.find(*scene->targetObjectID) == scene->obstructions.end());
 	}
 
+	ros::Time planningDeadline = ros::Time::now() + ros::Duration(planning_time);
+
 	if (!motion)
 	{
 //		#pragma omp parallel for private(scene)
-		for (int i = 0; i<25; ++i)
+		for (int i = 0; i<planning_samples && ros::Time::now() < planningDeadline; ++i)
 		{
 			std::shared_ptr<Motion> motionSlide = planner->sampleSlide(rs);
 			if (motionSlide)
@@ -1023,6 +1027,8 @@ int main(int argc, char* argv[])
 	setIfMissing(pnh, "filter_speckles", true);
 	setIfMissing(pnh, "publish_free_space", false);
 	setIfMissing(pnh, "sensor_model/max_range", 8.0);
+	setIfMissing(pnh, "planning_samples", 25);
+	setIfMissing(pnh, "planning_time", 60.0);
 	setIfMissing(pnh, "track_color", "green");
 	setIfMissing(pnh, "use_memory", true);
 	setIfMissing(pnh, "use_completion", "optional");
@@ -1076,6 +1082,8 @@ int main(int argc, char* argv[])
 
 	bool use_memory;
 	gotParam = pnh.getParam("use_memory", use_memory); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("planning_samples", planning_samples); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("planning_time", planning_time); MPS_ASSERT(gotParam);
 
 	nh.getParam("/experiment/id", experiment_id);
 	nh.getParam("/experiment/directory", experiment_dir);
