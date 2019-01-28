@@ -91,153 +91,8 @@
 #endif
 
 
-struct SeedDistanceFunctor
-{
-	using Solution = std::vector<double>;
-	const Solution seed;
-	SeedDistanceFunctor(Solution _seed) : seed(std::move(_seed)) {}
-	static double distance(const Solution& a, const Solution& b)
-	{
-		MPS_ASSERT(a.size() == b.size());
-		double d = 0.0;
-		for (size_t i = 0; i < a.size(); ++i)
-		{
-			d += fabs(a[i]-b[i]);
-		}
-		return d;
-	}
-
-	// NB: priority_queue is a max-heap structure, so less() should actually return >
-	// "highest priority"
-	bool operator()(const Solution& a, const Solution& b) const
-	{
-		return distance(seed, a) > distance(seed, b);
-	}
-};
-
-//MotionModel* matchModel(std::shared_ptr<octomap::OcTree> subtree, std::map<std::string, std::unique_ptr<MotionModel>> motionModels)
-//{
-//
-//}
-/*
-double fitModels(const std::vector<std::pair<Tracker::Vector, Tracker::Vector>>& flow, const int K = 1)
-{
-	const int N = static_cast<int>(flow.size());
-	std::vector<RigidMotionModel> mms;
-	std::vector<MotionModel::MotionParameters> thetas;
-	std::vector<unsigned int> indices(N);
-	std::iota(indices.begin(), indices.end(), 0);
-	std::random_shuffle(indices.begin(), indices.end());
-	for (int s = 0; s < K; ++s)
-	{
-		RigidMotionModel mm;
-		auto v = flow[indices[s]].first;
-		mm.localTglobal.translation() = Eigen::Vector3d(v.x(), v.y(), v.z());
-		thetas.emplace_back(MotionModel::MotionParameters::Zero(RigidMotionModel::MOTION_PARAMETERS_DIMENSION));
-	}
-
-	Eigen::MatrixXd assignmentProbability(N, K); // Probability that element n belongs to model k
-	Eigen::VectorXi assignment(N);
-	for (int n = 0; n < N; ++n)
-	{
-		for (int k = 0; k < K; ++k)
-		{
-			Tracker::Vector vExpect = mms[k].expectedVelocity(flow[n].first, thetas[k]);
-			assignmentProbability(n, k) = mms[k].membershipLikelihood(flow[n].first);// + MotionModel::logLikelihood(exp(-(flow[n].second-vExpect).squaredNorm()));
-		}
-	}
-
-	double L = NAN;
-	for (int iter = 0; iter < 25; ++iter)
-	{
-		// Assign points to models
-		Eigen::VectorXi assignmentCount = Eigen::VectorXi::Zero(K);
-		double Lmax = 0.0;
-		for (int n = 0; n < N; ++n)
-		{
-			Eigen::MatrixXf::Index max_index;
-			assignmentProbability.row(n).maxCoeff(&max_index);
-			assignment(n) = (int)max_index;
-			assignmentCount((int)max_index)++;
-			Lmax += assignmentProbability(n, (int)max_index);
-		}
-
-		if (Lmax - L > 0.1)
-		{
-			return Lmax;
-		}
-		L = Lmax;
-
-		// M-Step
-		for (int k = 0; k < K; ++k)
-		{
-			Eigen::Matrix3Xd ptsA(3, assignmentCount(k));
-			Eigen::Matrix3Xd ptsB(3, assignmentCount(k));
-			int idx = 0;
-			for (int n = 0; n < N; ++n)
-			{
-				if (assignment(n) == k)
-				{
-					ptsA.col(idx) = flow[n].first;
-					ptsB.col(idx) = flow[n].first + flow[n].second;
-					++idx;
-				}
-			}
-
-			thetas[k] = estimateRigidTransform3D(ptsA, ptsB);
-		}
-
-		// E-Step
-		for (int n = 0; n < N; ++n)
-		{
-			for (int k = 0; k < K; ++k)
-			{
-				Tracker::Vector vExpect = mms[k].expectedVelocity(flow[n].first, thetas[k]);
-				assignmentProbability(n, k) = mms[k].membershipLikelihood(flow[n].first) + MotionModel::logLikelihood(exp(-(flow[n].second-vExpect).squaredNorm()));
-			}
-		}
-	}
-
-	std::cerr << "BIC: " << log(N)*K - L << std::endl;
-
-	return L;
-}
-*/
-
-
-using TrajectoryClient = actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>;
-
-std::shared_ptr<LocalOctreeServer> mapServer;
-std::shared_ptr<VoxelCompleter> completionClient;
-std::shared_ptr<RGBDSegmenter> segmentationClient;
-std::unique_ptr<Tracker> tracker;
-std::unique_ptr<TargetDetector> targetDetector;
-std::shared_ptr<TrajectoryClient> trajectoryClient;
-std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperLPub;
-std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperRPub;
-ros::Publisher octreePub;
-ros::Publisher displayPub;
-ros::Publisher pcPub;
-std::unique_ptr<image_transport::Publisher> segmentationPub;
-std::unique_ptr<image_transport::Publisher> targetPub;
-std::shared_ptr<tf::TransformListener> listener;
-std::shared_ptr<tf::TransformBroadcaster> broadcaster;
-robot_model::RobotModelPtr pModel;
-//std::vector<std::shared_ptr<Manipulator>> manipulators;
-std::shared_ptr<Scenario> scenario;
-std::unique_ptr<Scene> scene;
-std::unique_ptr<SceneProcessor> processor;
-std::shared_ptr<MotionPlanner> planner;
-std::map<std::string, std::shared_ptr<MotionModel>> selfModels;
 sensor_msgs::JointState::ConstPtr latestJoints;
-//std::map<std::string, std::shared_ptr<MotionModel>> motionModels;
 std::mutex joint_mtx;
-
-double planning_time = 60.0;
-int planning_samples = 25;
-std::string experiment_id;
-std::string experiment_dir;
-ros::ServiceClient externalVideoClient;
 
 void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 {
@@ -246,7 +101,61 @@ void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 	ROS_DEBUG_ONCE("Joint joints!");
 }
 
-robot_state::RobotState getCurrentRobotState()
+class SceneExplorer
+{
+public:
+	//using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::PointCloud2, sensor_msgs::CameraInfo>;
+	using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::Image, sensor_msgs::Image, sensor_msgs::CameraInfo>;
+	using TrajectoryClient = actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>;
+
+	std::shared_ptr<LocalOctreeServer> mapServer;
+	std::shared_ptr<VoxelCompleter> completionClient;
+	std::shared_ptr<RGBDSegmenter> segmentationClient;
+	std::unique_ptr<Tracker> tracker;
+	std::unique_ptr<TargetDetector> targetDetector;
+	std::unique_ptr<TrajectoryClient> trajectoryClient;
+	std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperLPub;
+	std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperRPub;
+	ros::Publisher octreePub;
+	ros::Publisher displayPub;
+	ros::Publisher pcPub;
+	std::unique_ptr<image_transport::Publisher> segmentationPub;
+	std::unique_ptr<image_transport::Publisher> targetPub;
+
+	std::unique_ptr<image_transport::SubscriberFilter> rgb_sub;
+	std::unique_ptr<image_transport::SubscriberFilter> depth_sub;
+	std::unique_ptr<message_filters::Subscriber<sensor_msgs::CameraInfo>> cam_sub;
+	std::unique_ptr<message_filters::Synchronizer<SyncPolicy>> sync;
+
+	std::unique_ptr<tf::TransformListener> listener;
+	std::unique_ptr<tf::TransformBroadcaster> broadcaster;
+
+	std::unique_ptr<robot_model_loader::RobotModelLoader> mpLoader;
+	robot_model::RobotModelPtr pModel;
+	std::shared_ptr<Scenario> scenario;
+	std::unique_ptr<Scene> scene;
+	std::unique_ptr<SceneProcessor> processor;
+	std::unique_ptr<MotionPlanner> planner;
+	std::map<std::string, std::shared_ptr<MotionModel>> selfModels;
+
+	double planning_time = 60.0;
+	int planning_samples = 25;
+	std::string experiment_id;
+	std::string experiment_dir;
+	ros::ServiceClient externalVideoClient;
+
+	SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh);
+
+	robot_state::RobotState getCurrentRobotState();
+	std::map<ObjectIndex, Eigen::Affine3d> followObjects(const std::shared_ptr<Motion>& motion, const Tracker* track);
+	bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::RobotState& recoveryState);
+
+	void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
+	               const sensor_msgs::ImageConstPtr& depth_msg,
+	               const sensor_msgs::CameraInfoConstPtr& cam_msg);
+};
+
+robot_state::RobotState SceneExplorer::getCurrentRobotState()
 {
 	robot_state::RobotState currentState(pModel);
 	currentState.setToDefaultValues();
@@ -262,7 +171,7 @@ robot_state::RobotState getCurrentRobotState()
 	return currentState;
 }
 
-std::map<ObjectIndex, Eigen::Affine3d> followObjects(const std::shared_ptr<Motion>& motion, const Tracker* track)
+std::map<ObjectIndex, Eigen::Affine3d> SceneExplorer::followObjects(const std::shared_ptr<Motion>& motion, const Tracker* track)
 {
 	Eigen::Affine3d worldTstart = Eigen::Affine3d::Identity();
 	Eigen::Affine3d worldTend = Eigen::Affine3d::Identity();
@@ -330,7 +239,7 @@ std::map<ObjectIndex, Eigen::Affine3d> followObjects(const std::shared_ptr<Motio
 	return trajs;
 }
 
-bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::RobotState& recoveryState)
+bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::RobotState& recoveryState)
 {
 	if (!ros::ok()) { return false; }
 	ros::Duration totalTime(0.0);
@@ -441,9 +350,9 @@ bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::Rob
 	return true;
 }
 
-void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
-               const sensor_msgs::ImageConstPtr& depth_msg,
-               const sensor_msgs::CameraInfoConstPtr& cam_msg)
+void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
+                             const sensor_msgs::ImageConstPtr& depth_msg,
+                             const sensor_msgs::CameraInfoConstPtr& cam_msg)
 {
 	std::cerr << "Got message." << std::endl;
 	if (!ros::ok()) { return; }
@@ -816,24 +725,36 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	if (!motion)
 	{
-//		#pragma omp parallel for private(scene)
-		for (int i = 0; i<planning_samples && ros::Time::now() < planningDeadline; ++i)
+//		#pragma omp parallel for private(SceneExplorer::scene) num_threads(omp_get_max_threads()/4)
+		for (int i = 0; i<planning_samples; ++i)
 		{
+			if (ros::Time::now() > planningDeadline)
+			{
+				ROS_WARN_STREAM("Planning timed out. (" << planning_time << "s).");
+				continue;
+			}
+
 			std::shared_ptr<Motion> motionSlide = planner->sampleSlide(rs);
 			if (motionSlide)
 			{
 				double reward = planner->reward(rs, motionSlide.get());
-//				#pragma omp critical
+				#pragma omp critical
 				{
 					motionQueue.push({reward, motionSlide});
 				}
+			}
+
+			if (ros::Time::now() > planningDeadline)
+			{
+				ROS_WARN_STREAM("Planning timed out. (" << planning_time << "s).");
+				continue;
 			}
 
 			std::shared_ptr<Motion> motionPush = planner->samplePush(rs);
 			if (motionPush)
 			{
 				double reward = planner->reward(rs, motionPush.get());
-//				#pragma omp critical
+				#pragma omp critical
 				{
 					motionQueue.push({reward, motionPush});
 				}
@@ -948,6 +869,12 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 					externalVideoClient.call(req, resp);
 				}
 
+//				sync.reset();
+//				planner.reset();
+//				processor.reset();
+//				listener.reset();
+//				broadcaster.reset();
+
 				ros::shutdown();
 				return;
 			}
@@ -1003,19 +930,13 @@ void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 }
 
 
-//using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::PointCloud2, sensor_msgs::CameraInfo>;
-using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::Image, sensor_msgs::Image, sensor_msgs::CameraInfo>;
 
-int main(int argc, char* argv[])
+SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 {
-	ros::init(argc, argv, "scene_explorer");
-	ros::NodeHandle nh, pnh("~");
-
 	ros::CallbackQueue sensor_queue;
 	ros::AsyncSpinner sensor_spinner(1, &sensor_queue);
-
-	listener = std::make_shared<tf::TransformListener>(ros::Duration(60.0));
-	broadcaster = std::make_shared<tf::TransformBroadcaster>();
+	listener = std::make_unique<tf::TransformListener>(ros::Duration(60.0));
+	broadcaster = std::make_unique<tf::TransformBroadcaster>();
 
 	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>("joint_states", 2, handleJointState, ros::VoidPtr(), &sensor_queue);
 	ros::Subscriber joint_sub = nh.subscribe(joint_sub_options);
@@ -1033,8 +954,8 @@ int main(int argc, char* argv[])
 	setIfMissing(pnh, "use_memory", true);
 	setIfMissing(pnh, "use_completion", "optional");
 
-	tracker = std::make_unique<CudaTracker>(500, listener);
-//	tracker = std::make_unique<Tracker>(500, listener);
+	tracker = std::make_unique<CudaTracker>(listener.get());
+//	tracker = std::make_unique<Tracker>(listener.get());
 	tracker->stopCapture();
 
 	bool gotParam = false;
@@ -1091,23 +1012,20 @@ int main(int argc, char* argv[])
 	octreePub = nh.advertise<visualization_msgs::MarkerArray>("occluded_points", 1, true);
 	gripperLPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/left_arm/gripper_command", 1, false);
 	gripperRPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/right_arm/gripper_command", 1, false);
-//	commandPub = nh.advertise<trajectory_msgs::JointTrajectory>("/joint_trajectory", 1, false);
 	displayPub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, false);
 	auto vizPub = nh.advertise<visualization_msgs::MarkerArray>("roi", 10, true);
 	pcPub = nh.advertise<pcl::PointCloud<PointT>>("segment_clouds", 1, true);
 	mapServer = std::make_shared<LocalOctreeServer>(pnh);
 	ros::Duration(1.0).sleep();
-//	mapClient = std::make_shared<OctreeRetriever>(nh);
 	completionClient = std::make_shared<VoxelCompleter>(nh);
 	segmentationClient = std::make_shared<RGBDSegmenter>(nh);
-	trajectoryClient = std::make_shared<TrajectoryClient>("follow_joint_trajectory", true);
+	trajectoryClient = std::make_unique<SceneExplorer::TrajectoryClient>("follow_joint_trajectory", true);
 	if (!trajectoryClient->waitForServer(ros::Duration(3.0)))
 	{
 		ROS_WARN("Trajectory server not connected.");
 	}
 
-	std::shared_ptr<robot_model_loader::RobotModelLoader> mpLoader
-		= std::make_shared<robot_model_loader::RobotModelLoader>();
+	mpLoader = std::make_unique<robot_model_loader::RobotModelLoader>();
 	pModel = mpLoader->getModel();
 
 	MPS_ASSERT(!pModel->getJointModelGroupNames().empty());
@@ -1118,20 +1036,22 @@ int main(int argc, char* argv[])
 	std::cerr << scenario->manipulators.front()->isGrasping(getCurrentRobotState()) << std::endl;
 	std::cerr << scenario->manipulators.back()->isGrasping(getCurrentRobotState()) << std::endl;
 
-	planner = std::make_shared<MotionPlanner>();
+	planner = std::make_unique<MotionPlanner>();
 
 	if (!loadLinkMotionModels(pModel.get(), selfModels))
 	{
 		ROS_ERROR("Model loading failed.");
-		return -1;
+		throw std::runtime_error("Model loading failed.");
 	}
 	selfModels.erase("victor_base_plate"); // HACK: camera always collides
 	selfModels.erase("victor_pedestal");
 	selfModels.erase("victor_left_arm_mount");
 	selfModels.erase("victor_right_arm_mount");
+	selfModels.erase("victor_left_arm_link_0");
+	selfModels.erase("victor_right_arm_link_0");
 
-	scenario->listener = listener;
-	scenario->broadcaster = broadcaster;
+	scenario->listener = listener.get();
+	scenario->broadcaster = broadcaster.get();
 	scenario->mapServer = mapServer;
 	scenario->completionClient = completionClient;
 	scenario->segmentationClient = segmentationClient;
@@ -1210,7 +1130,7 @@ int main(int argc, char* argv[])
 	if (!externalVideoClient.waitForExistence(ros::Duration(3)))
 	{
 		ROS_FATAL("External video server not connected.");
-		return -1;
+		throw std::runtime_error("External video server not connected.");
 	}
 	else
 	{
@@ -1246,28 +1166,28 @@ int main(int argc, char* argv[])
 	segmentationPub = std::make_unique<image_transport::Publisher>(it.advertise("segmentation", 1));
 	targetPub = std::make_unique<image_transport::Publisher>(it.advertise("target", 1));
 
-	auto rgb_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.rgb_topic, options.buffer, options.hints);
-	auto depth_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.depth_topic, options.buffer, options.hints);
-	auto cam_sub = std::make_unique<message_filters::Subscriber<sensor_msgs::CameraInfo>>(options.nh, options.cam_topic, options.buffer);
+	rgb_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.rgb_topic, options.buffer, options.hints);
+	depth_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.depth_topic, options.buffer, options.hints);
+	cam_sub = std::make_unique<message_filters::Subscriber<sensor_msgs::CameraInfo>>(options.nh, options.cam_topic, options.buffer);
 
-	auto sync = std::make_unique<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(options.buffer), *rgb_sub, *depth_sub, *cam_sub);
-	sync->registerCallback(cloud_cb);
+	sync = std::make_unique<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(options.buffer), *rgb_sub, *depth_sub, *cam_sub);
+	sync->registerCallback(boost::bind(&SceneExplorer::cloud_cb, this, _1, _2, _3));
 
-//	ros::Subscriber sub = nh.subscribe ("kinect2_roof/qhd/points", 1, cloud_cb);
+}
 
+int main(int argc, char* argv[])
+{
+	ros::init(argc, argv, "scene_explorer");
+	ros::NodeHandle nh, pnh("~");
 
-	//(new octomap::OcTree(d));
-
+	auto se = std::make_unique<SceneExplorer>(nh, pnh);
 
 	ros::spin();
-	sensor_spinner.stop();
+//	sensor_spinner.stop();
 
-//	spinner.spin();
+	se.reset();
 
-	listener.reset();
-	scenario.reset();
-	scene.reset();
-	planner.reset();
+	std::cerr << "Shutting down now." << std::endl;
 
 	return 0;
 }

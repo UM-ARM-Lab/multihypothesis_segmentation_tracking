@@ -25,9 +25,9 @@ void drawKeypoint(cv::Mat& display, const cv::KeyPoint& kp, const cv::Scalar& co
 	}
 }
 
-Tracker::Tracker(const size_t _buffer, std::shared_ptr<tf::TransformListener> _listener, SubscriptionOptions _options, TrackingOptions _track_options)
+Tracker::Tracker(tf::TransformListener* _listener, const size_t _buffer, SubscriptionOptions _options, TrackingOptions _track_options)
 	: MAX_BUFFER_LEN(_buffer), options(std::move(_options)), track_options(std::move(_track_options)),
-	  listener(std::move(_listener)),
+	  listener(_listener),
 	  callback_queue(),
 	  spinner(1, &callback_queue)
 {
@@ -39,10 +39,7 @@ Tracker::Tracker(const size_t _buffer, std::shared_ptr<tf::TransformListener> _l
 
 //	cv::namedWindow("Tracking", cv::WINDOW_GUI_NORMAL);
 
-	listener = std::make_shared<tf::TransformListener>();
-
 	vizPub = options.nh.advertise<visualization_msgs::MarkerArray>("flow", 10, true);
-
 
 	it = std::make_unique<image_transport::ImageTransport>(options.nh);
 	rgb_sub = std::make_unique<image_transport::SubscriberFilter>(*it, options.rgb_topic, options.buffer, options.hints);
@@ -53,6 +50,19 @@ Tracker::Tracker(const size_t _buffer, std::shared_ptr<tf::TransformListener> _l
 	sync->registerCallback(boost::bind(&Tracker::imageCb, this, _1, _2, _3));
 
 	spinner.start();
+}
+
+Tracker::~Tracker()
+{
+	stopCapture();
+	reset();
+
+	options.nh.shutdown();
+	options.pnh.shutdown();
+
+	spinner.stop();
+	callback_queue.disable();
+	callback_queue.clear();
 }
 
 void Tracker::startCapture()

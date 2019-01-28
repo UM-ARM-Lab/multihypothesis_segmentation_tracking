@@ -43,8 +43,8 @@ public:
 	using Pose = Eigen::Affine3d;
 	// Lifetime properties
 
-	std::shared_ptr<tf::TransformListener> listener;
-	std::shared_ptr<tf::TransformBroadcaster> broadcaster;
+	tf::TransformListener* listener;
+	tf::TransformBroadcaster* broadcaster;
 
 	std::shared_ptr<LocalOctreeServer> mapServer;
 	std::shared_ptr<VoxelCompleter> completionClient;

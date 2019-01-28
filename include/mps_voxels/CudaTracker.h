@@ -10,8 +10,8 @@
 class CudaTracker : public Tracker
 {
 public:
-	CudaTracker(const size_t _buffer = 500,
-	            std::shared_ptr<tf::TransformListener> _listener = std::make_shared<tf::TransformListener>(),
+	CudaTracker(tf::TransformListener* _listener,
+	            const size_t _buffer = 500,
 	            SubscriptionOptions _options = SubscriptionOptions(),
 	            TrackingOptions _track_options = TrackingOptions());
 

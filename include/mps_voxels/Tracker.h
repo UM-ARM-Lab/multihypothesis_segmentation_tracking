@@ -144,17 +144,19 @@ public:
 	SubscriptionOptions options;
 	TrackingOptions track_options;
 
-	std::shared_ptr<tf::TransformListener> listener;
+	tf::TransformListener* listener;
 	ros::Publisher vizPub;
 
 	ros::CallbackQueue callback_queue;
 	ros::AsyncSpinner spinner;
 
 	explicit
-	Tracker(const size_t _buffer = 500,
-	        std::shared_ptr<tf::TransformListener> _listener = std::make_shared<tf::TransformListener>(),
+	Tracker(tf::TransformListener* _listener,
+	        const size_t _buffer = 500,
 	        SubscriptionOptions _options = SubscriptionOptions(),
 	        TrackingOptions _track_options = TrackingOptions());
+
+	~Tracker();
 
 	void startCapture();
 

@@ -13,11 +13,11 @@
 
 #include <opencv2/highgui.hpp>
 
-CudaTracker::CudaTracker(const size_t _buffer,
-                         std::shared_ptr<tf::TransformListener> _listener,
+CudaTracker::CudaTracker(tf::TransformListener* _listener,
+                         const size_t _buffer,
                          SubscriptionOptions _options,
                          TrackingOptions _track_options)
-                         : Tracker(_buffer, std::move(_listener), std::move(_options), std::move(_track_options))
+                         : Tracker(_listener, _buffer, std::move(_options), std::move(_track_options))
 {
 
 }

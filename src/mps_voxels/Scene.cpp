@@ -212,7 +212,7 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 		if (!ros::ok()) { return false; }
 		std::vector<int> assignments(downsampled_cloud->size(), -1);
 		const int nPts = static_cast<int>(downsampled_cloud->size());
-		#pragma omp parallel for schedule(dynamic)
+		#pragma omp parallel for //schedule(dynamic)
 		for (int i = 0; i < nPts; ++i)
 		{
 			Eigen::Vector3d pt = (s.worldTcamera.cast<float>()*downsampled_cloud->points[i].getVector3fMap()).cast<double>();
