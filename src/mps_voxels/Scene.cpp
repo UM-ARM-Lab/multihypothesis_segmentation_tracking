@@ -25,6 +25,11 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/extract_indices.h>
 
+Object::Object(const ObjectIndex i, const std::shared_ptr<octomap::OcTree>& tree)
+ : index(i), occupancy(tree)
+{
+}
+
 bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 {
 	ros::NodeHandle nh;
@@ -80,6 +85,39 @@ bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 	}
 
 	return true;
+}
+
+
+collision_detection::WorldPtr
+Scene::computeCollisionWorld()
+{
+	auto world = std::make_shared<collision_detection::World>();
+
+	Pose robotTworld = worldTrobot.inverse(Eigen::Isometry);
+
+	for (const auto& obstacle : scenario->staticObstacles)
+	{
+		world->addToObject(CLUTTER_NAME, obstacle.first, robotTworld * obstacle.second);
+	}
+
+	// Use aliasing shared_ptr constructor
+//	world->addToObject(CLUTTER_NAME,
+//	                   std::make_shared<shapes::OcTree>(std::shared_ptr<octomap::OcTree>(std::shared_ptr<octomap::OcTree>{}, sceneOctree)),
+//	                   robotTworld);
+
+	for (const auto& obj : objects)
+	{
+		const std::shared_ptr<octomap::OcTree>& segment = obj.second->occupancy;
+		world->addToObject(std::to_string(obj.first.id), std::make_shared<shapes::OcTree>(segment), robotTworld);
+	}
+
+//	for (auto& approxSegment : approximateSegments)
+//	{
+//		world->addToObject(CLUTTER_NAME, approxSegment, robotTworld);
+//	}
+
+	collisionWorld = world;
+	return world;
 }
 
 bool Scene::convertImages(const sensor_msgs::ImageConstPtr& rgb_msg,
@@ -485,11 +523,10 @@ bool SceneProcessor::performSegmentation(Scene& s)
 	return true;
 }
 
-bool SceneProcessor::completeShapes(Scene& s)
+bool SceneProcessor::buildObjects(Scene& s)
 {
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-	s.approximateSegments.clear();
-	s.completedSegments.clear();
+	s.objects.clear();
 
 	bool completionIsAvailable = scenario->completionClient->completionClient.exists()
 		&& FEATURE_AVAILABILITY::FORBIDDEN != useShapeCompletion;
@@ -557,12 +594,13 @@ bool SceneProcessor::completeShapes(Scene& s)
 		setBBox(Eigen::Vector3f(-2, -2, -2), Eigen::Vector3f(2, 2, 2), subtree.get());
 
 
-		// Visualize approximate shape
+		// Compute approximate shape
 		auto approx = approximateShape(subtree.get());
 		if (approx)
 		{
-			s.completedSegments.insert({seg.first, subtree});
-			s.approximateSegments.insert({seg.first, approx});
+			auto res = s.objects.insert(std::make_pair(seg.first, std::make_unique<Object>(seg.first, subtree)));
+			res.first->second->approximation = approx;
+			res.first->second->points = getPoints(subtree.get());
 		}
 
 	}
@@ -579,6 +617,8 @@ bool SceneProcessor::completeShapes(Scene& s)
 		pcl::transformPointCloud (*s.cropped_cloud, *transformed_cloud, s.worldTcamera);
 		getAABB(*transformed_cloud, min, max);
 		s.minExtent.head<3>() = min; s.maxExtent.head<3>() = max;
+
+		s.minExtent.z() = 0.0;
 	}
 
 	std::tie(s.occludedPts, s.occlusionTree) = getOcclusionsInFOV(s.sceneOctree, s.cameraModel, s.worldTcamera.inverse(Eigen::Isometry), s.minExtent.head<3>(), s.maxExtent.head<3>());
@@ -601,11 +641,11 @@ bool SceneProcessor::completeShapes(Scene& s)
 		{
 //			#pragma omp single
 			{
-				for (const auto& seg : s.completedSegments)
+				for (const auto& obj : s.objects)
 				{
 //					#pragma omp task
 					{
-						const std::shared_ptr<octomap::OcTree>& segment = seg.second;
+						const std::shared_ptr<octomap::OcTree>& segment = obj.second->occupancy;
 						unsigned d = segment->getTreeDepth();
 						for (int i = 0; i<nPts; ++i)
 						{
@@ -633,6 +673,7 @@ bool SceneProcessor::completeShapes(Scene& s)
 		s.occludedPts.erase(std::remove_if(s.occludedPts.begin(), s.occludedPts.end(),
 		                                 [&](const octomath::Vector3& p){ return rejects.find(p) != rejects.end();}),
 		                  s.occludedPts.end());
+		MPS_ASSERT(!s.occludedPts.empty());
 	}
 
 	/////////////////////////////////////////////////////////////////
@@ -672,8 +713,49 @@ bool SceneProcessor::completeShapes(Scene& s)
 		s.occludedPts.erase(std::remove_if(s.occludedPts.begin(), s.occludedPts.end(),
 		                                 [&](const octomath::Vector3& p){ return assignments[&p - &*s.occludedPts.begin()] >= 0;}),
 		                  s.occludedPts.end());
+		MPS_ASSERT(!s.occludedPts.empty());
 	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+	/////////////////////////////////////////////////////////////////
+	// Compute the Most Occluding Segment
+	/////////////////////////////////////////////////////////////////
+	auto octree = s.sceneOctree;
+	for (const auto& seg : s.segments)
+	{
+		const pcl::PointCloud<PointT>::Ptr& pc = seg.second;
+		for (const PointT& pt : *pc)
+		{
+			Eigen::Vector3f worldPt = s.worldTcamera.cast<float>()*pt.getVector3fMap();
+			octomap::point3d coord = octree->keyToCoord(octree->coordToKey(octomap::point3d(worldPt.x(), worldPt.y(), worldPt.z())));
+			s.surfaceCoordToObject.insert({coord, seg.first});
+			s.coordToObject.insert({coord, seg.first});
+		}
+	}
+
+	octomap::point3d cameraOrigin((float)s.worldTcamera.translation().x(),
+	                              (float)s.worldTcamera.translation().y(),
+	                              (float)s.worldTcamera.translation().z());
+	#pragma omp parallel for
+	for (int i = 0; i < static_cast<int>(s.occludedPts.size()); ++i)
+	{
+		const auto& pt_world = s.occludedPts[i];
+		octomap::point3d collision;
+		bool hit = octree->castRay(cameraOrigin, pt_world-cameraOrigin, collision);
+		MPS_ASSERT(hit);
+		collision = octree->keyToCoord(octree->coordToKey(collision)); // regularize
+
+		const auto& iter = s.coordToObject.find(collision);
+		if (iter != s.coordToObject.end())
+		{
+			#pragma omp critical
+			{
+				s.occludedBySegmentCount[iter->second]++;
+				s.coordToObject.insert({pt_world, iter->second});
+				s.objects.at(iter->second)->shadow.push_back(pt_world);
+			}
+		}
+	}
 
 	return true;
 }

@@ -19,10 +19,21 @@
 #include <CGAL/Polygon_2.h>
 #include <CGAL/min_quadrilateral_2.h>
 #include <boost/heap/priority_queue.hpp>
+#include <mps_voxels/planning/MotionPlanner.h>
 
 #define _unused(x) ((void)(x))
 
 const std::string Scene::CLUTTER_NAME = "clutter";
+
+State stateFactory(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects)
+{
+	State objectState;
+	for (const auto& obj : objects)
+	{
+		objectState.poses.emplace_hint(objectState.poses.end(), std::make_pair(obj.first, State::Pose::Identity()));
+	}
+	return objectState;
+}
 
 bool arePointsInHandRegion(const octomap::OcTree* tree, const Eigen::Affine3d& palmTworld)
 {
@@ -137,40 +148,6 @@ std::priority_queue<MotionPlanner::RankedPose, std::vector<MotionPlanner::Ranked
 }
 
 
-
-collision_detection::WorldPtr
-Scene::computeCollisionWorld()
-{
-	auto world = std::make_shared<collision_detection::World>();
-
-	Pose robotTworld = worldTrobot.inverse(Eigen::Isometry);
-
-	for (const auto& obstacle : scenario->staticObstacles)
-	{
-		world->addToObject(CLUTTER_NAME, obstacle.first, robotTworld * obstacle.second);
-	}
-
-	// Use aliasing shared_ptr constructor
-//	world->addToObject(CLUTTER_NAME,
-//	                   std::make_shared<shapes::OcTree>(std::shared_ptr<octomap::OcTree>(std::shared_ptr<octomap::OcTree>{}, sceneOctree)),
-//	                   robotTworld);
-
-	for (const auto& s : completedSegments)
-	{
-		const std::shared_ptr<octomap::OcTree>& segment = completedSegments[s.first];
-		world->addToObject(std::to_string(s.first.id), std::make_shared<shapes::OcTree>(segment), robotTworld);
-	}
-
-//	for (auto& approxSegment : approximateSegments)
-//	{
-//		world->addToObject(CLUTTER_NAME, approxSegment, robotTworld);
-//	}
-
-	collisionWorld = world;
-	return world;
-}
-
-
 bool
 ObjectSampler::sampleObject(ObjectIndex& id, Pose& pushFrame) const
 {
@@ -200,7 +177,7 @@ ObjectSampler::sampleObject(ObjectIndex& id, Pose& pushFrame) const
 		id = *it;
 
 		// Set that object's shadow to use for remainder of algorithm
-		shadowPoints = &(env->objectToShadow[id]);
+		shadowPoints = &(env->objects.at(id)->shadow);
 		std::cerr << shadowPoints->size() << " Shadow points in cell " << id.id << std::endl;
 		if (shadowPoints->empty()) { throw std::runtime_error("No points shadowed by shape?!"); }
 	}
@@ -223,7 +200,7 @@ ObjectSampler::sampleObject(ObjectIndex& id, Pose& pushFrame) const
 		octomath::Vector3 ray = pt_original-cameraOrigin;
 		octomap::point3d collision;
 		bool hit = env->sceneOctree->castRay(cameraOrigin, ray, collision, true);
-		MPS_ASSERT(hit); _unused(hit);
+		MPS_ASSERT(hit);
 		collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision)); // regularize
 
 		Eigen::Vector3d gHat = -Eigen::Vector3d::UnitZ();
@@ -265,16 +242,15 @@ double
 MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* motion) const
 {
 	const size_t nClusters = motion->state->poses.size();
-	MPS_ASSERT(nClusters == env->completedSegments.size());
+	MPS_ASSERT(nClusters == env->objects.size());
 
 	Eigen::Matrix3Xd centroids(3, nClusters);
 	int colIndex = 0;
-	for (const auto& seg : env->completedSegments)
+	for (const auto& obj : env->objects)
 	{
-		auto obj = seg.first;
-		MPS_ASSERT(seg.second.get());
-		MPS_ASSERT(seg.second->size() > 0);
-		octomap::point3d_collection segmentPoints = getPoints(seg.second.get());
+		MPS_ASSERT(obj.second.get());
+		MPS_ASSERT(obj.second->occupancy->size() > 0);
+		octomap::point3d_collection segmentPoints = obj.second->points;
 		Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
 		for (const auto& pt : segmentPoints)
 		{
@@ -282,7 +258,7 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 		}
 		centroid /= static_cast<double>(segmentPoints.size());
 
-		centroids.col(colIndex) = motion->state->poses[obj] * centroid;
+		centroids.col(colIndex) = motion->state->poses[obj.first] * centroid;
 		++colIndex;
 	}
 
@@ -293,13 +269,13 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 	double changeScore = 0;
 
 	// Compute change in umbras
-	for (const auto& seg : env->completedSegments)
+	for (const auto& obj : env->objects)
 	{
-		auto objIdx = seg.first;
+		auto objIdx = obj.first;
 		const Pose& worldTobj_prime = motion->state->poses[objIdx];
 		if (worldTobj_prime.matrix().isIdentity(1e-6)) { continue; }
 
-		const std::shared_ptr<octomap::OcTree>& segment = seg.second;
+		const std::shared_ptr<octomap::OcTree>& segment = obj.second->occupancy;
 
 //		const Pose worldTobj_init = Pose::Identity();
 		const Pose worldTcamera_prime = /*worldTobj_init * */ worldTobj_prime.inverse(Eigen::Isometry) * env->worldTcamera;
@@ -316,7 +292,7 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 //		setBBox(min, max, segment);
 
 		// Check occlusion of points attached to body
-		const std::vector<octomap::point3d>& umbra = env->objectToShadow[objIdx];
+		const std::vector<octomap::point3d>& umbra = obj.second->shadow;
 		for (size_t i = 0; i < umbra.size(); ++i)
 		{
 			// Check occlusion of points attached to world
@@ -361,15 +337,14 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 			const auto& manipulator = env->scenario->jointToManipulator[jointTraj->cmd.joint_names.front()];
 			collision_detection::AllowedCollisionMatrix acm = gripperEnvironmentACM(manipulator);
 
-			if (motion->state->poses.size() != env->completedSegments.size()) { throw std::runtime_error("Whoopsie."); }
+			if (motion->state->poses.size() != env->objects.size()) { throw std::runtime_error("Whoopsie."); }
 
-			for (const auto& seg : env->completedSegments)
+			for (const auto& obj : env->objects)
 			{
-				auto s = seg.first;
 				// Since we're moving the objects, allow the gripper to touch moving objects
-				if (!motion->state->poses[s].matrix().isIdentity(1e-6))
+				if (!motion->state->poses[obj.first].matrix().isIdentity(1e-6))
 				{
-					acm.setEntry(std::to_string(s.id), manipulator->gripper->getLinkModelNames(), true);
+					acm.setEntry(std::to_string(obj.first.id), manipulator->gripper->getLinkModelNames(), true);
 				}
 			}
 
@@ -461,7 +436,7 @@ MotionPlanner::gripperEnvironmentACM(const std::shared_ptr<Manipulator>& manipul
 		}
 	}
 	acm.setEntry(env->CLUTTER_NAME, manipulator->gripper->getLinkModelNames(), false);
-	for (size_t s = 0; s < env->completedSegments.size(); ++s)
+	for (size_t s = 0; s < env->objects.size(); ++s)
 	{
 		acm.setEntry(std::to_string(s), manipulator->gripper->getLinkModelNames(), false);
 	}
@@ -501,6 +476,92 @@ MotionPlanner::gripperEnvironmentCollision(const std::shared_ptr<Manipulator>& m
 //	return false;
 }
 
+
+bool MotionPlanner::addPhysicalObstructions(const std::shared_ptr<Manipulator>& manipulator,
+                                            const robot_state::RobotState& collisionState,
+                                            std::set<ObjectIndex>& collisionObjects) const
+{
+	if (gripperEnvironmentCollision(manipulator, collisionState))
+	{
+		std::cerr << "Grasp collided with environment." << std::endl;
+		collision_detection::CollisionRequest collision_request;
+		collision_detection::CollisionResult collision_result;
+		collision_request.contacts = true;
+
+		collision_detection::AllowedCollisionMatrix acm = gripperEnvironmentACM(manipulator);
+		planningScene->checkCollision(collision_request, collision_result, collisionState, acm);
+
+		octomap::point3d cameraOrigin((float) env->worldTcamera.translation().x(),
+		                              (float) env->worldTcamera.translation().y(),
+		                              (float) env->worldTcamera.translation().z());
+		for (auto& cts : collision_result.contacts)
+		{
+			std::cerr << cts.second.size() << std::endl;
+
+			for (const auto& obj : env->objects)
+			{
+				auto objIdx = obj.first;
+				const auto& segmentOctree = obj.second->occupancy;
+
+				// For each contact point, cast ray from camera to point; see if it hits completed shape
+				for (auto& c : cts.second)
+				{
+					Eigen::Vector3d p = env->worldTrobot * c.pos;
+					std::cerr << p.transpose() << std::endl;
+
+					octomap::point3d collision = octomap::point3d((float)p.x(), (float)p.y(), (float)p.z());
+					//								collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision));
+
+					std::cerr << "raycasting" << std::endl;
+					octomath::Vector3 ray = collision-cameraOrigin;
+
+					bool hit = segmentOctree->castRay(cameraOrigin, ray, collision, true);
+					if (hit)
+					{
+						if (env->targetObjectID && env->targetObjectID->id == objIdx.id)
+						{
+							std::cerr << "Attempt to grasp object resulted in collision with object. (Are the grippers open?)" << std::endl;
+						}
+
+						collisionObjects.insert(objIdx);
+						std::cerr << "hit " << objIdx.id << std::endl;
+						break;
+					}
+				}
+			}
+		}
+		return true;
+	}
+	return false;
+}
+
+bool MotionPlanner::addVisualObstructions(const ObjectIndex target, std::set<ObjectIndex>& collisionObjects) const
+{
+	bool hasVisualObstruction = false;
+	for (const auto& targetPt : env->objects.at(target)->points)
+	{
+		octomap::point3d cameraOrigin((float) env->worldTcamera.translation().x(), (float) env->worldTcamera.translation().y(),
+		                              (float) env->worldTcamera.translation().z());
+		octomath::Vector3 ray = targetPt-cameraOrigin;
+		octomap::point3d collision;
+		bool hit = env->sceneOctree->castRay(cameraOrigin, ray, collision, true);
+		if (hit)
+		{
+			collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision));
+			const auto& iter = env->surfaceCoordToObject.find(collision);
+			if (iter!=env->surfaceCoordToObject.end())
+			{
+				if (iter->second.id!=target.id)
+				{
+					collisionObjects.insert(iter->second);
+					hasVisualObstruction = true;
+				}
+			}
+		}
+	}
+	return hasVisualObstruction;
+}
+
 std::shared_ptr<Motion>
 MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 {
@@ -516,11 +577,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 	}
 
 	Pose robotTworld = env->worldTrobot.inverse(Eigen::Isometry);
-	State objectState;
-	for (const auto& seg : env->completedSegments)
-	{
-		objectState.poses.insert({seg.first, State::Pose::Identity()});
-	}
+	State objectState = stateFactory(env->objects);
 
 	// Get an object to slide
 	ObjectIndex slideSegmentID{-1};
@@ -529,7 +586,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 	{
 		return std::shared_ptr<Motion>();
 	}
-	const octomap::OcTree* tree = env->completedSegments[slideSegmentID].get();
+	const octomap::OcTree* tree = env->objects.at(slideSegmentID)->occupancy.get();
 
 //	trajectory_msgs::JointTrajectory cmd;
 	PoseSequence pushGripperFrames(2, Eigen::Affine3d::Identity());
@@ -719,7 +776,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 
 				motion->targets.push_back(slideSegmentID);
 
-				MPS_ASSERT(motion->state->poses.size() == env->completedSegments.size());
+				MPS_ASSERT(motion->state->poses.size() == env->objects.size());
 				return motion;
 			}
 		}
@@ -743,11 +800,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 	}
 
 	Pose robotTworld = env->worldTrobot.inverse(Eigen::Isometry);
-	State objectState;
-	for (const auto& seg : env->completedSegments)
-	{
-		objectState.poses.insert({seg.first, State::Pose::Identity()});
-	}
+	State objectState = stateFactory(env->objects);
 
 	// Get an object to slide
 	ObjectIndex slideSegmentID{-1};
@@ -756,7 +809,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 	{
 		return std::shared_ptr<Motion>();
 	}
-	const octomap::OcTree* tree = env->completedSegments[slideSegmentID].get();
+	const octomap::OcTree* tree = env->objects.at(slideSegmentID)->occupancy.get();
 
 	// Get potential grasps
 	auto graspPoses = getGraspPoses(tree);
@@ -954,7 +1007,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 
 							motion->targets.push_back(slideSegmentID);
 
-							MPS_ASSERT(motion->state->poses.size() == env->completedSegments.size());
+							MPS_ASSERT(motion->state->poses.size() == env->objects.size());
 							return motion;
 						}
 					}
@@ -983,14 +1036,10 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 	}
 
 	Pose robotTworld = env->worldTrobot.inverse(Eigen::Isometry);
-	State objectState;
-	for (const auto& seg : env->completedSegments)
-	{
-		objectState.poses.insert({seg.first, State::Pose::Identity()});
-	}
+	State objectState = stateFactory(env->objects);
 
 	// Get an object to slide
-	const octomap::OcTree* tree = env->completedSegments[targetID].get();
+	const octomap::OcTree* tree = env->objects.at(targetID)->occupancy.get();
 
 	// Get potential grasps
 	auto graspPoses = getGraspPoses(tree);
@@ -1030,168 +1079,116 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 		{
 			auto& manipulator = env->scenario->manipulators[manip_idx];
 			std::vector<std::vector<double>> sln = manipulator->IK(gripperPose, robotTworld, robotState);
-			if (!sln.empty())
+			if (sln.empty()) { std::cerr << "No solution to pick pose found." << std::endl; }
+
+			// Check whether the hand collides with the scene
 			{
-				// Check whether the hand collides with the scene
+				robot_state::RobotState collisionState(robotState);
+				collisionState.setJointGroupPositions(manipulator->arm, sln.front());
+				collisionState.setJointGroupPositions(manipulator->gripper, manipulator->getGripperOpenJoints());
+				collisionState.update();
+
+				if (addPhysicalObstructions(manipulator, collisionState, collisionObjects))
 				{
-					robot_state::RobotState collisionState(robotState);
-					collisionState.setJointGroupPositions(manipulator->arm, sln.front());
-					collisionState.setJointGroupPositions(manipulator->gripper, manipulator->getGripperOpenJoints());
-					collisionState.update();
-					if (gripperEnvironmentCollision(manipulator, collisionState))
-					{
-						std::cerr << "Grasp collided with environment." << std::endl;
-						collision_detection::CollisionRequest collision_request;
-						collision_detection::CollisionResult collision_result;
-						collision_request.contacts = true;
-
-						collision_detection::AllowedCollisionMatrix acm = gripperEnvironmentACM(manipulator);
-						planningScene->checkCollision(collision_request, collision_result, collisionState, acm);
-
-						octomap::point3d cameraOrigin((float) env->worldTcamera.translation().x(),
-							                          (float) env->worldTcamera.translation().y(),
-						                              (float) env->worldTcamera.translation().z());
-						for (auto& cts : collision_result.contacts)
-						{
-							std::cerr << cts.second.size() << std::endl;
-
-							for (const auto& seg : env->completedSegments)
-							{
-								auto objIdx = seg.first;
-								const auto& segmentOctree = seg.second;
-
-								// For each contact point, cast ray from camera to point; see if it hits completed shape
-								for (auto& c : cts.second)
-								{
-									Eigen::Vector3d p = env->worldTrobot * c.pos;
-									std::cerr << p.transpose() << std::endl;
-
-									octomap::point3d collision = octomap::point3d((float)p.x(), (float)p.y(), (float)p.z());
-	//								collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision));
-
-									std::cerr << "raycasting" << std::endl;
-									octomath::Vector3 ray = collision-cameraOrigin;
-
-									bool hit = segmentOctree->castRay(cameraOrigin, ray, collision, true);
-									if (hit)
-									{
-										if (env->targetObjectID && env->targetObjectID->id == objIdx.id)
-										{
-											std::cerr << "Attempt to grasp object resulted in collision with object. (Are the grippers open?)" << std::endl;
-										}
-
-										collisionObjects.insert(objIdx);
-										std::cerr << "hit " << objIdx.id << std::endl;
-										break;
-									}
-								}
-							}
-						}
-
-						continue; // Continue checking possible poses and manipulators
-					}
-				}
-
-				// Allocate the action sequence needed for a slide
-				std::shared_ptr<CompositeAction> compositeAction = std::make_shared<CompositeAction>();
-				auto pregraspAction = std::make_shared<GripperCommandAction>();  compositeAction->actions.push_back(pregraspAction);
-				auto transitAction = std::make_shared<JointTrajectoryAction>();  compositeAction->actions.push_back(transitAction);
-				auto approachAction = std::make_shared<JointTrajectoryAction>(); compositeAction->actions.push_back(approachAction);
-				auto graspAction = std::make_shared<GripperCommandAction>();     compositeAction->actions.push_back(graspAction);
-				auto retractAction = std::make_shared<JointTrajectoryAction>();  compositeAction->actions.push_back(retractAction);
-				auto homeAction = std::make_shared<JointTrajectoryAction>();     compositeAction->actions.push_back(homeAction);
-				compositeAction->primaryAction = 3;
-
-				// Lay out the Cartesian Path
-				Eigen::Affine3d gripperApproachPose = gripperPose;
-				gripperApproachPose.translation() -= APPROACH_DISTANCE*gripperApproachPose.linear().col(2);
-
-				Eigen::Affine3d gripperRetractPose = gripperPose;
-				gripperRetractPose.translation() -= APPROACH_DISTANCE*gripperRetractPose.linear().col(2);
-
-				PoseSequence approachTrajectory, retractTrajectory, fullTrajectory;
-
-				manipulator->interpolate(gripperApproachPose, gripperPose, approachTrajectory, INTERPOLATE_STEPS/2);
-				manipulator->interpolate(gripperPose, gripperRetractPose, retractTrajectory, INTERPOLATE_STEPS/2);
-
-				fullTrajectory.reserve(approachTrajectory.size()+retractTrajectory.size());
-				fullTrajectory.insert(fullTrajectory.end(), approachTrajectory.begin(), approachTrajectory.end());
-				fullTrajectory.insert(fullTrajectory.end(), retractTrajectory.begin(), retractTrajectory.end());
-
-				trajectory_msgs::JointTrajectory cmd;
-				if (manipulator->cartesianPath(fullTrajectory, robotTworld, robotState, cmd))
-				{
-					std::shared_ptr<Motion> motion = std::make_shared<Motion>();
-					motion->state = std::make_shared<State>(objectState);
-					motion->action = compositeAction;
-
-					// Pregrasp
-					pregraspAction->grasp.finger_a_command.position = 0.0;
-					pregraspAction->grasp.finger_a_command.speed = 1.0;
-					pregraspAction->grasp.finger_a_command.force = 1.0;
-					pregraspAction->grasp.finger_b_command.position = 0.0;
-					pregraspAction->grasp.finger_b_command.speed = 1.0;
-					pregraspAction->grasp.finger_b_command.force = 1.0;
-					pregraspAction->grasp.finger_c_command.position = 0.0;
-					pregraspAction->grasp.finger_c_command.speed = 1.0;
-					pregraspAction->grasp.finger_c_command.force = 1.0;
-					pregraspAction->grasp.scissor_command.position = 0.5;
-					pregraspAction->grasp.scissor_command.speed = 1.0;
-					pregraspAction->grasp.scissor_command.force = 1.0;
-					pregraspAction->jointGroupName = manipulator->gripper->getName();
-
-					// Move to start
-					robot_state::RobotState approachState(robotState);
-					approachState.setJointGroupPositions(manipulator->arm, cmd.points.front().positions);
-					approachState.updateCollisionBodyTransforms();
-					if (!manipulator->interpolate(robotState, approachState, transitAction->cmd, TRANSIT_INTERPOLATE_STEPS, planningScene))
-					{
-						continue;
-					}
-
-					// Approach
-					approachAction->palm_trajectory = approachTrajectory;
-					approachAction->cmd.joint_names = cmd.joint_names;
-					approachAction->cmd.points.insert(approachAction->cmd.points.end(), cmd.points.begin(), cmd.points.begin()+approachTrajectory.size()+1);
-
-					// Grasp
-					graspAction->grasp.finger_a_command.position = 0.4;
-					graspAction->grasp.finger_a_command.speed = 1.0;
-					graspAction->grasp.finger_a_command.force = 1.0;
-					graspAction->grasp.finger_b_command.position = 0.4;
-					graspAction->grasp.finger_b_command.speed = 1.0;
-					graspAction->grasp.finger_b_command.force = 1.0;
-					graspAction->grasp.finger_c_command.position = 0.4;
-					graspAction->grasp.finger_c_command.speed = 1.0;
-					graspAction->grasp.finger_c_command.force = 1.0;
-					graspAction->grasp.scissor_command.position = 0.5;
-					graspAction->grasp.scissor_command.speed = 1.0;
-					graspAction->grasp.scissor_command.force = 1.0;
-					graspAction->jointGroupName = manipulator->gripper->getName();
-
-					// Retract
-					retractAction->palm_trajectory = retractTrajectory;
-					retractAction->cmd.joint_names = cmd.joint_names;
-					retractAction->cmd.points.insert(retractAction->cmd.points.end(), cmd.points.begin()+approachTrajectory.size(), cmd.points.end());
-
-					// Move to home
-					robot_state::RobotState retractState(robotState);
-					retractState.setJointGroupPositions(manipulator->arm, cmd.points.back().positions);
-					retractState.updateCollisionBodyTransforms();
-					if (!manipulator->interpolate(retractState, robotState, homeAction->cmd, TRANSIT_INTERPOLATE_STEPS, planningScene))
-					{
-						continue;
-					}
-
-					motion->targets.push_back(targetID);
-
-					MPS_ASSERT(motion->state->poses.size() == env->completedSegments.size());
-					return motion;
+					continue;
 				}
 			}
-			else
+
+			// Allocate the action sequence needed for a slide
+			std::shared_ptr<CompositeAction> compositeAction = std::make_shared<CompositeAction>();
+			auto pregraspAction = std::make_shared<GripperCommandAction>();  compositeAction->actions.push_back(pregraspAction);
+			auto transitAction = std::make_shared<JointTrajectoryAction>();  compositeAction->actions.push_back(transitAction);
+			auto approachAction = std::make_shared<JointTrajectoryAction>(); compositeAction->actions.push_back(approachAction);
+			auto graspAction = std::make_shared<GripperCommandAction>();     compositeAction->actions.push_back(graspAction);
+			auto retractAction = std::make_shared<JointTrajectoryAction>();  compositeAction->actions.push_back(retractAction);
+			auto homeAction = std::make_shared<JointTrajectoryAction>();     compositeAction->actions.push_back(homeAction);
+			compositeAction->primaryAction = 3;
+
+			// Lay out the Cartesian Path
+			Eigen::Affine3d gripperApproachPose = gripperPose;
+			gripperApproachPose.translation() -= APPROACH_DISTANCE*gripperApproachPose.linear().col(2);
+
+			Eigen::Affine3d gripperRetractPose = gripperPose;
+			gripperRetractPose.translation() -= APPROACH_DISTANCE*gripperRetractPose.linear().col(2);
+
+			PoseSequence approachTrajectory, retractTrajectory, fullTrajectory;
+
+			manipulator->interpolate(gripperApproachPose, gripperPose, approachTrajectory, INTERPOLATE_STEPS/2);
+			manipulator->interpolate(gripperPose, gripperRetractPose, retractTrajectory, INTERPOLATE_STEPS/2);
+
+			fullTrajectory.reserve(approachTrajectory.size()+retractTrajectory.size());
+			fullTrajectory.insert(fullTrajectory.end(), approachTrajectory.begin(), approachTrajectory.end());
+			fullTrajectory.insert(fullTrajectory.end(), retractTrajectory.begin(), retractTrajectory.end());
+
+			trajectory_msgs::JointTrajectory cmd;
+			if (manipulator->cartesianPath(fullTrajectory, robotTworld, robotState, cmd))
 			{
-				std::cerr << "No solution to pick pose found." << std::endl;
+				std::shared_ptr<Motion> motion = std::make_shared<Motion>();
+				motion->state = std::make_shared<State>(objectState);
+				motion->action = compositeAction;
+
+				// Pregrasp
+				pregraspAction->grasp.finger_a_command.position = 0.0;
+				pregraspAction->grasp.finger_a_command.speed = 1.0;
+				pregraspAction->grasp.finger_a_command.force = 1.0;
+				pregraspAction->grasp.finger_b_command.position = 0.0;
+				pregraspAction->grasp.finger_b_command.speed = 1.0;
+				pregraspAction->grasp.finger_b_command.force = 1.0;
+				pregraspAction->grasp.finger_c_command.position = 0.0;
+				pregraspAction->grasp.finger_c_command.speed = 1.0;
+				pregraspAction->grasp.finger_c_command.force = 1.0;
+				pregraspAction->grasp.scissor_command.position = 0.5;
+				pregraspAction->grasp.scissor_command.speed = 1.0;
+				pregraspAction->grasp.scissor_command.force = 1.0;
+				pregraspAction->jointGroupName = manipulator->gripper->getName();
+
+				// Move to start
+				robot_state::RobotState approachState(robotState);
+				approachState.setJointGroupPositions(manipulator->arm, cmd.points.front().positions);
+				approachState.updateCollisionBodyTransforms();
+				if (!manipulator->interpolate(robotState, approachState, transitAction->cmd, TRANSIT_INTERPOLATE_STEPS, planningScene))
+				{
+					continue;
+				}
+
+				// Approach
+				approachAction->palm_trajectory = approachTrajectory;
+				approachAction->cmd.joint_names = cmd.joint_names;
+				approachAction->cmd.points.insert(approachAction->cmd.points.end(), cmd.points.begin(), cmd.points.begin()+approachTrajectory.size()+1);
+
+				// Grasp
+				graspAction->grasp.finger_a_command.position = 0.4;
+				graspAction->grasp.finger_a_command.speed = 1.0;
+				graspAction->grasp.finger_a_command.force = 1.0;
+				graspAction->grasp.finger_b_command.position = 0.4;
+				graspAction->grasp.finger_b_command.speed = 1.0;
+				graspAction->grasp.finger_b_command.force = 1.0;
+				graspAction->grasp.finger_c_command.position = 0.4;
+				graspAction->grasp.finger_c_command.speed = 1.0;
+				graspAction->grasp.finger_c_command.force = 1.0;
+				graspAction->grasp.scissor_command.position = 0.5;
+				graspAction->grasp.scissor_command.speed = 1.0;
+				graspAction->grasp.scissor_command.force = 1.0;
+				graspAction->jointGroupName = manipulator->gripper->getName();
+
+				// Retract
+				retractAction->palm_trajectory = retractTrajectory;
+				retractAction->cmd.joint_names = cmd.joint_names;
+				retractAction->cmd.points.insert(retractAction->cmd.points.end(), cmd.points.begin()+approachTrajectory.size(), cmd.points.end());
+
+				// Move to home
+				robot_state::RobotState retractState(robotState);
+				retractState.setJointGroupPositions(manipulator->arm, cmd.points.back().positions);
+				retractState.updateCollisionBodyTransforms();
+				if (!manipulator->interpolate(retractState, robotState, homeAction->cmd, TRANSIT_INTERPOLATE_STEPS, planningScene))
+				{
+					continue;
+				}
+
+				motion->targets.push_back(targetID);
+
+				MPS_ASSERT(motion->state->poses.size() == env->objects.size());
+				return motion;
 			}
 		}
 	}
@@ -1292,11 +1289,7 @@ MotionPlanner::recoverCrash(const robot_state::RobotState& currentState,
 			continue;
 		}
 
-		State objectState;
-		for (const auto& seg : env->completedSegments)
-		{
-			objectState.poses.insert({seg.first, State::Pose::Identity()});
-		}
+		State objectState = stateFactory(env->objects);
 		std::shared_ptr<Motion> motion = std::make_shared<Motion>();
 		motion->state = std::make_shared<State>(objectState);
 		motion->action = compositeAction;

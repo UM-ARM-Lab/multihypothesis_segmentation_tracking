@@ -38,6 +38,8 @@ public:
 
 	collision_detection::AllowedCollisionMatrix gripperEnvironmentACM(const std::shared_ptr<Manipulator>& manipulator) const;
 	bool gripperEnvironmentCollision(const std::shared_ptr<Manipulator>& manipulator, const robot_state::RobotState& robotState) const;
+	bool addPhysicalObstructions(const std::shared_ptr<Manipulator>& manipulator, const robot_state::RobotState& robotState, std::set<ObjectIndex>& collisionObjects) const;
+	bool addVisualObstructions(const ObjectIndex target, std::set<ObjectIndex>& collisionObjects) const;
 
 	std::shared_ptr<Motion> samplePush(const robot_state::RobotState& robotState) const;
 	std::shared_ptr<Motion> sampleSlide(const robot_state::RobotState& robotState) const;

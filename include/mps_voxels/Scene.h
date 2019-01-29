@@ -37,6 +37,18 @@ enum class FEATURE_AVAILABILITY
 	FORBIDDEN,
 };
 
+class Object
+{
+public:
+	const ObjectIndex index;
+	std::shared_ptr<octomap::OcTree> occupancy;
+	std::shared_ptr<shapes::Mesh> approximation;
+	octomap::point3d_collection points;
+	octomap::point3d_collection shadow;
+
+	Object(const ObjectIndex i, const std::shared_ptr<octomap::OcTree>& tree);
+};
+
 class Scenario
 {
 public:
@@ -97,13 +109,15 @@ public:
 	std::map<uint16_t, ObjectIndex> labelToIndexLookup; ///< Carries body segmentation to object index in this scene
 
 	octomap::OcTree* sceneOctree;
-	std::map<ObjectIndex, octomap::point3d_collection> objectToShadow;
+	std::map<ObjectIndex, std::unique_ptr<Object>> objects;
+//	std::map<ObjectIndex, octomap::point3d_collection> objectToShadow;
+//	std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>> completedSegments;
+//	std::map<ObjectIndex, std::shared_ptr<shapes::Mesh>> approximateSegments;
 	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> coordToObject;
 	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> surfaceCoordToObject;
-	std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>> completedSegments;
-	std::map<ObjectIndex, std::shared_ptr<shapes::Mesh>> approximateSegments;
 	octomap::point3d_collection occludedPts;
 	std::shared_ptr<octomap::OcTree> occlusionTree;
+	std::map<ObjectIndex, int> occludedBySegmentCount;
 
 	std::set<ObjectIndex> obstructions;
 	std::shared_ptr<ObjectIndex> targetObjectID;
@@ -139,7 +153,7 @@ public:
 
 	bool performSegmentation(Scene& s);
 
-	bool completeShapes(Scene& s);
+	bool buildObjects(Scene& s);
 
 };
 

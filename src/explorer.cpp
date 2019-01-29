@@ -507,7 +507,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_START("Complete Scene");
 
-	bool getCompletion = processor->completeShapes(*scene);
+	bool getCompletion = processor->buildObjects(*scene);
 	if (!getCompletion)
 	{
 		return;
@@ -515,7 +515,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	std::cerr << "Completed segments: " << scene->completedSegments.size() << __FILE__ << ": " << __LINE__ << std::endl;
+	std::cerr << "Completed segments: " << scene->objects.size() << __FILE__ << ": " << __LINE__ << std::endl;
 
 //	{
 //
@@ -548,12 +548,12 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		}
 //	}
 
-	for (const auto& compSeg : scene->completedSegments)
+	for (const auto& obj : scene->objects)
 	{
-		MPS_ASSERT(scene->segments.find(compSeg.first) != scene->segments.end());
+		MPS_ASSERT(scene->segments.find(obj.first) != scene->segments.end());
 
 		if (!ros::ok()) { return; }
-		const auto& subtree = compSeg.second;
+		const auto& subtree = obj.second->occupancy;
 
 		std_msgs::ColorRGBA colorRGBA;
 		colorRGBA.a = 1.0f;
@@ -565,16 +565,16 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		{
 //			m.colors.clear();
 //			m.color = colorRGBA;
-			m.ns = "completed_"+std::to_string(std::abs(compSeg.first.id));
+			m.ns = "completed_"+std::to_string(std::abs(obj.first.id));
 			m.header.stamp = cam_msg->header.stamp;
 		}
 		octreePub.publish(occupiedNodesVis);
 
 		// Visualize approximate shape
 		visualization_msgs::Marker m;
-		auto approx = scene->approximateSegments.at(compSeg.first);//approximateShape(subtree.get());
+		auto approx = obj.second->approximation;
 		shapes::constructMarkerFromShape(approx.get(), m, true);
-		m.id = std::abs(compSeg.first.id);
+		m.id = std::abs(obj.first.id);
 		m.ns = "bounds";
 		m.header.frame_id = globalFrame;
 		m.header.stamp = cam_msg->header.stamp;
@@ -600,47 +600,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 		octreePub.publish(occupiedNodesVis);
 	}
-
-	/////////////////////////////////////////////////////////////////
-	// Compute the Most Occluding Segment
-	/////////////////////////////////////////////////////////////////
-	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> coordToSegment;
-	std::map<ObjectIndex, int> occludedBySegmentCount;
-	for (const auto& seg : scene->segments)
-	{
-		const pcl::PointCloud<PointT>::Ptr& pc = seg.second;
-		for (const PointT& pt : *pc)
-		{
-			Eigen::Vector3f worldPt = scene->worldTcamera.cast<float>()*pt.getVector3fMap();
-			octomap::point3d coord = octree->keyToCoord(octree->coordToKey(octomap::point3d(worldPt.x(), worldPt.y(), worldPt.z())));
-			coordToSegment.insert({coord, seg.first});
-		}
-	}
-
-	octomap::point3d cameraOrigin((float)scene->worldTcamera.translation().x(),
-		                          (float)scene->worldTcamera.translation().y(),
-		                          (float)scene->worldTcamera.translation().z());
-	#pragma omp parallel for
-	for (int i = 0; i < static_cast<int>(scene->occludedPts.size()); ++i)
-	{
-		const auto& pt_world = scene->occludedPts[i];
-		octomap::point3d collision;
-		bool hit = octree->castRay(cameraOrigin, pt_world-cameraOrigin, collision);
-		MPS_ASSERT(hit); _unused(hit);
-		collision = octree->keyToCoord(octree->coordToKey(collision)); // regularize
-
-		const auto& iter = coordToSegment.find(collision);
-		if (iter != coordToSegment.end())
-		{
-			#pragma omp critical
-			{
-				occludedBySegmentCount[iter->second]++;
-				scene->coordToObject.insert({pt_world, iter->second});
-				scene->objectToShadow[iter->second].push_back(pt_world);
-			}
-		}
-	}
-	scene->surfaceCoordToObject = coordToSegment;
 
 //	int mostOccludingSegmentIdx = std::advance(occludedBySegmentCount.begin(), (int)std::distance(occludedBySegmentCount.begin(),
 //		std::max_element(occludedBySegmentCount.begin(), occludedBySegmentCount.end()))).first;
@@ -719,6 +678,16 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			std::cerr << "Saw target object, but failed to compute grasp plan." << " (" << scene->obstructions.size() << " obstructions)" << std::endl;
 		}
 //		MPS_ASSERT(scene->obstructions.find(*scene->targetObjectID) == scene->obstructions.end());
+	}
+
+	if (scene->targetObjectID && !motion)
+	{
+		// We've seen the target, but can't pick it up
+		bool hasVisualObstructions = planner->addVisualObstructions(*scene->targetObjectID, scene->obstructions);
+		if (hasVisualObstructions)
+		{
+			ROS_INFO_STREAM("Added visual occlusion(s)");
+		}
 	}
 
 	ros::Time planningDeadline = ros::Time::now() + ros::Duration(planning_time);
@@ -896,7 +865,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 					tf::poseEigenToTF(action->palm_trajectory.back(), temp);
 					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, frameID+"back"));
 
-					visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(scene->completedSegments.at(p.first).get(), frameID);
+					visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(scene->objects.at(p.first)->occupancy.get(), frameID);
 					for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
 					{
 						m.ns = frameID;
