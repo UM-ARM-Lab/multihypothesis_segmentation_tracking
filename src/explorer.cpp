@@ -687,6 +687,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		if (hasVisualObstructions)
 		{
 			ROS_INFO_STREAM("Added visual occlusion(s)");
+			MPS_ASSERT(processor->useShapeCompletion != FEATURE_AVAILABILITY::FORBIDDEN);
 		}
 	}
 
@@ -819,8 +820,18 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			static int actionCount = 0;
 			std::cerr << "Actions: " << ++actionCount << std::endl;
 
-			const auto& action = std::dynamic_pointer_cast<JointTrajectoryAction>(compositeAction->actions[compositeAction->primaryAction]);
-			if (!action) // Not Joint Action
+			const auto& grasp = std::dynamic_pointer_cast<GripperCommandAction>(compositeAction->actions[compositeAction->primaryAction]);
+			bool isGraspingSomething = false;
+			for (const auto& manip : scenario->manipulators)
+			{
+				if (manip->isGrasping(getCurrentRobotState()))
+				{
+					isGraspingSomething = true;
+				}
+			}
+			std::cerr << "Is currently grasping: " << isGraspingSomething << std::endl;
+
+			if (grasp/* && isGraspingSomething*/) // Not Joint Action
 			{
 				PROFILE_RECORD("Execution");
 				PROFILE_START("Actions Required");
@@ -848,6 +859,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				return;
 			}
 
+			const auto& action = std::dynamic_pointer_cast<JointTrajectoryAction>(compositeAction->actions[compositeAction->primaryAction]);
 			std::map<ObjectIndex, Eigen::Affine3d> objTrajs = followObjects(motion, tracker.get());
 			for (int iter = 0; iter < 10; ++iter)
 			{
@@ -858,6 +870,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 					tf::poseEigenToTF(p.second, temp);
 					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, frameID));
 
+					if (!action) { continue; }
 
 					tf::poseEigenToTF(action->palm_trajectory.front(), temp);
 					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, frameID+"front"));

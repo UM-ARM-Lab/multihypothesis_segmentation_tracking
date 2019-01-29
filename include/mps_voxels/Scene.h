@@ -78,6 +78,7 @@ class Scene
 {
 public:
 	using Pose = Scenario::Pose;
+	using ObstructionList = std::map<ObjectIndex, double>;
 
 	// Per-instant properties
 
@@ -119,7 +120,7 @@ public:
 	std::shared_ptr<octomap::OcTree> occlusionTree;
 	std::map<ObjectIndex, int> occludedBySegmentCount;
 
-	std::set<ObjectIndex> obstructions;
+	ObstructionList obstructions; // std::set<ObjectIndex>
 	std::shared_ptr<ObjectIndex> targetObjectID;
 
 	static const std::string CLUTTER_NAME;

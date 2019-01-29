@@ -157,9 +157,9 @@ ObjectSampler::sampleObject(ObjectIndex& id, Pose& pushFrame) const
 	if (!env->obstructions.empty())
 	{
 		std::cerr << "Target is obstructed!" << std::endl;
-		for (const auto i : env->obstructions)
+		for (const auto& i : env->obstructions)
 		{
-			std::cerr << i.id << "\t";
+			std::cerr << i.first.id << "\t";
 		}
 		std::cerr << std::endl;
 	}
@@ -168,13 +168,18 @@ ObjectSampler::sampleObject(ObjectIndex& id, Pose& pushFrame) const
 	if (!env->obstructions.empty() && ((rand()/RAND_MAX) < 0.9))
 	{
 		// Select one obstructing object with uniform probability
-		std::uniform_int_distribution<size_t> distr(0, env->obstructions.size()-1);
-		auto it(env->obstructions.begin());
+//		std::uniform_int_distribution<size_t> distr(0, env->obstructions.size()-1)
+
+		// Select with weighted probability
+		std::vector<double> weights;
+		for (const auto& i : env->obstructions) { weights.push_back(i.second); }
+		std::discrete_distribution<size_t> distr(weights.begin(), weights.end());
 
 		size_t idx = distr(env->scenario->rng);
 
+		auto it(env->obstructions.begin());
 		std::advance(it, idx);
-		id = *it;
+		id = it->first;
 
 		// Set that object's shadow to use for remainder of algorithm
 		shadowPoints = &(env->objects.at(id)->shadow);
@@ -479,7 +484,7 @@ MotionPlanner::gripperEnvironmentCollision(const std::shared_ptr<Manipulator>& m
 
 bool MotionPlanner::addPhysicalObstructions(const std::shared_ptr<Manipulator>& manipulator,
                                             const robot_state::RobotState& collisionState,
-                                            std::set<ObjectIndex>& collisionObjects) const
+                                            Scene::ObstructionList& collisionObjects) const
 {
 	if (gripperEnvironmentCollision(manipulator, collisionState))
 	{
@@ -523,7 +528,8 @@ bool MotionPlanner::addPhysicalObstructions(const std::shared_ptr<Manipulator>& 
 							std::cerr << "Attempt to grasp object resulted in collision with object. (Are the grippers open?)" << std::endl;
 						}
 
-						collisionObjects.insert(objIdx);
+						collisionObjects[objIdx] += 1.0;
+//						collisionObjects.insert(objIdx);
 						std::cerr << "hit " << objIdx.id << std::endl;
 						break;
 					}
@@ -535,7 +541,7 @@ bool MotionPlanner::addPhysicalObstructions(const std::shared_ptr<Manipulator>& 
 	return false;
 }
 
-bool MotionPlanner::addVisualObstructions(const ObjectIndex target, std::set<ObjectIndex>& collisionObjects) const
+bool MotionPlanner::addVisualObstructions(const ObjectIndex target, Scene::ObstructionList& collisionObjects) const
 {
 	bool hasVisualObstruction = false;
 	for (const auto& targetPt : env->objects.at(target)->points)
@@ -544,7 +550,7 @@ bool MotionPlanner::addVisualObstructions(const ObjectIndex target, std::set<Obj
 		                              (float) env->worldTcamera.translation().z());
 		octomath::Vector3 ray = targetPt-cameraOrigin;
 		octomap::point3d collision;
-		bool hit = env->sceneOctree->castRay(cameraOrigin, ray, collision, true);
+		bool hit = env->sceneOctree->castRay(cameraOrigin, ray, collision);
 		if (hit)
 		{
 			collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision));
@@ -553,7 +559,7 @@ bool MotionPlanner::addVisualObstructions(const ObjectIndex target, std::set<Obj
 			{
 				if (iter->second.id!=target.id)
 				{
-					collisionObjects.insert(iter->second);
+					collisionObjects[iter->second] += 1.0;
 					hasVisualObstruction = true;
 				}
 			}
@@ -1022,7 +1028,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 
 
 std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robotState, const ObjectIndex targetID,
-                                            std::set<ObjectIndex>& collisionObjects) const
+                                            Scene::ObstructionList& collisionObjects) const
 {
 	MPS_ASSERT(targetID.id == env->targetObjectID->id);
 	// Check whether the hand collides with the scene
@@ -1079,7 +1085,11 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 		{
 			auto& manipulator = env->scenario->manipulators[manip_idx];
 			std::vector<std::vector<double>> sln = manipulator->IK(gripperPose, robotTworld, robotState);
-			if (sln.empty()) { std::cerr << "No solution to pick pose found." << std::endl; }
+			if (sln.empty())
+			{
+				std::cerr << "No solution to pick pose found." << std::endl;
+				continue;
+			}
 
 			// Check whether the hand collides with the scene
 			{
