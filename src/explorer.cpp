@@ -680,14 +680,13 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		MPS_ASSERT(scene->obstructions.find(*scene->targetObjectID) == scene->obstructions.end());
 	}
 
-	if (scene->targetObjectID && !motion)
+	if (scene->targetObjectID && !motion && processor->useShapeCompletion != FEATURE_AVAILABILITY::FORBIDDEN)
 	{
 		// We've seen the target, but can't pick it up
 		bool hasVisualObstructions = planner->addVisualObstructions(*scene->targetObjectID, scene->obstructions);
 		if (hasVisualObstructions)
 		{
 			ROS_INFO_STREAM("Added visual occlusion(s)");
-			MPS_ASSERT(processor->useShapeCompletion != FEATURE_AVAILABILITY::FORBIDDEN);
 		}
 	}
 
