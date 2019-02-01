@@ -617,8 +617,6 @@ bool SceneProcessor::buildObjects(Scene& s)
 		pcl::transformPointCloud (*s.cropped_cloud, *transformed_cloud, s.worldTcamera);
 		getAABB(*transformed_cloud, min, max);
 		s.minExtent.head<3>() = min; s.maxExtent.head<3>() = max;
-
-		s.minExtent.z() = 0.0;
 	}
 
 	std::tie(s.occludedPts, s.occlusionTree) = getOcclusionsInFOV(s.sceneOctree, s.cameraModel, s.worldTcamera.inverse(Eigen::Isometry), s.minExtent.head<3>(), s.maxExtent.head<3>());
@@ -723,6 +721,9 @@ bool SceneProcessor::buildObjects(Scene& s)
 	auto octree = s.sceneOctree;
 	for (const auto& seg : s.segments)
 	{
+		// PC may be rejected by object fitting
+		if (s.objects.find(seg.first) == s.objects.end()) { continue; }
+
 		const pcl::PointCloud<PointT>::Ptr& pc = seg.second;
 		for (const PointT& pt : *pc)
 		{
