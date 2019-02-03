@@ -41,6 +41,7 @@ class Object
 {
 public:
 	const ObjectIndex index;
+	pcl::PointCloud<PointT>::Ptr segment;
 	std::shared_ptr<octomap::OcTree> occupancy;
 	std::shared_ptr<shapes::Mesh> approximation;
 	octomap::point3d_collection points;

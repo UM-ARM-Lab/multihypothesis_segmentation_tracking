@@ -43,7 +43,11 @@ find_package(CGAL 4.12 REQUIRED COMPONENTS
 )
 include( ${CGAL_USE_FILE} )
 
-# find_package(Boost REQUIRED COMPONENTS system)
+find_package(Boost REQUIRED COMPONENTS
+  filesystem
+)
+include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
+link_directories(${Boost_LIBRARY_DIRS})
 
 find_package(CUDA REQUIRED)
 add_subdirectory(CudaSift)
@@ -62,6 +66,15 @@ find_package(OpenCV 3.4 REQUIRED COMPONENTS
 )
 include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 link_libraries(${OpenCV_LIBS})
+
+find_package(PCL REQUIRED COMPONENTS
+  common
+  io
+  filters
+)
+include_directories(SYSTEM ${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
 
 include_directories(SYSTEM COB/src/misc)
 
@@ -241,6 +254,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/graph_matrix_utils.cpp
   src/${PROJECT_NAME}/LocalOctreeServer.cpp
   src/${PROJECT_NAME}/Scene.cpp
+  src/${PROJECT_NAME}/ObjectLogger.cpp
   src/${PROJECT_NAME}/video_graph.cpp
   src/${PROJECT_NAME}/planning/State.cpp
   src/${PROJECT_NAME}/planning/Action.cpp
@@ -248,6 +262,9 @@ add_library(${PROJECT_NAME}
 )
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
+  ${PCL_IO_LIBRARIES}
+  ${Boost_LIBRARIES}
 )
 
 ## Add cmake target dependencies of the library

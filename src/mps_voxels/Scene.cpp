@@ -599,6 +599,7 @@ bool SceneProcessor::buildObjects(Scene& s)
 		if (approx)
 		{
 			auto res = s.objects.insert(std::make_pair(seg.first, std::make_unique<Object>(seg.first, subtree)));
+			res.first->second->segment = seg.second;
 			res.first->second->approximation = approx;
 			res.first->second->points = getPoints(subtree.get());
 		}

@@ -1,0 +1,24 @@
+<launch>
+	<arg name="recording_id"/>
+	<arg name="directory"/>
+	<arg name="fps" default="3.0"/>
+	<machine name="armor" address="armor.local" env-loader="~/catkin_ws/src/env.sh"/>
+	<machine name="loki" address="loki.local" env-loader="~/catkin_ws/src/env.sh" user="armlab"/>
+	<group ns="recording">
+		<node machine="loki" name="throttle_points" pkg="topic_tools" type="throttle" args="messages /kinect2_victor_head/qhd/points $(arg fps) /recording/points"/>
+		<node machine="loki" name="throttle_color" pkg="topic_tools" type="throttle" args="messages /kinect2_victor_head/hd/image_color_rect/compressed $(arg fps) /recording/image_color_rect/compressed"/>
+		<node machine="loki" name="throttle_depth" pkg="topic_tools" type="throttle" args="messages /kinect2_victor_head/hd/image_depth_rect/compressed $(arg fps) /recording/image_depth_rect/compressed"/>
+		<node machine="loki" name="throttle_info" pkg="topic_tools" type="throttle" args="messages /kinect2_victor_head/hd/camera_info $(arg fps) /recording/camera_info"/>
+		<node machine="loki" name="video_encoder" pkg="image_transport" type="republish" args="compressed in:=/kinect2_victor_head/hd/image_color theora out:=/recording/robot_pov"/>
+		<!-- elsewhere: rosrun image_transport republish compressed in:=/kinect2_victor_head/hd/image_color theora out:=/recording/image_color_rect -->
+		<node machine="armor" name="rosbag_recorder" pkg="rosbag" type="record" required="true" output="screen" args="--buffsize=2048 --duration=240 --output-prefix=$(arg directory)/data /clock /recording/points /recording/camera_info /recording/image_color_rect/compressed /recording/image_depth_rect/compressed /tf /tf_static /joint_states /occupied_cells_vis_array /visualization /roi /segmentation /target /visualization_marker_array"/>
+		<node machine="armor" name="external_video_recorder" pkg="arm_video_recorder" type="video_recording.py"/>
+		<!-- -->
+		<node machine="armor" name="pov_video_recorder" pkg="image_view" type="video_recorder">
+			<remap from="image" to="/recording/robot_pov"/>
+			<param name="image_transport" value="theora"/>
+			<param name="codec" value="H264"/>
+			<param name="filename" value="$(arg directory)/robot_pov.mp4"/>
+		</node>
+	</group>
+</launch>

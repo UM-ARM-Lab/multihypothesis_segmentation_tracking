@@ -15,6 +15,7 @@
 #include "mps_voxels/shape_utils.h"
 #include "mps_voxels/map_nearest.hpp"
 #include "mps_voxels/planning/MotionPlanner.h"
+#include "mps_voxels/ObjectLogger.h"
 #include "mps_voxels/assert.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
@@ -101,6 +102,17 @@ void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 	ROS_DEBUG_ONCE("Joint joints!");
 }
 
+void insertDirect(const octomap::point3d_collection& points, const Eigen::Affine3d& T, octomap::OcTree* tree)
+{
+	for (const auto& p : points)
+	{
+		const Eigen::Vector3d pt = T * Eigen::Vector3d(p.x(), p.y(), p.z());
+		tree->setNodeValue(pt.x(), pt.y(), pt.z(), tree->getOccupancyThresLog(), true);
+	}
+	tree->updateInnerOccupancy();
+	tree->prune();
+}
+
 class SceneExplorer
 {
 public:
@@ -143,6 +155,7 @@ public:
 	std::string experiment_id;
 	std::string experiment_dir;
 	ros::ServiceClient externalVideoClient;
+//	visualization_msgs::MarkerArray allMarkers;
 
 	SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 
@@ -362,6 +375,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		return;
 	}
 
+//	allMarkers.markers.clear();
+
 	scene = std::make_unique<Scene>();
 	scene->scenario = scenario;
 	scene->selfModels = selfModels;
@@ -422,6 +437,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			m.header.frame_id = globalFrame;
 			markers.markers.push_back(m);
 		}
+//		allMarkers.markers.insert(allMarkers.markers.begin(), markers.markers.begin(), markers.markers.end());
 		octreePub.publish(markers);
 	}
 
@@ -496,7 +512,12 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 
 	{
-		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(octree, globalFrame);
+		std_msgs::ColorRGBA color;
+		color.a = 1.0;
+		color.r = 1.0;
+		color.g = 1.0;
+		color.b = 0.0;
+		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(octree, globalFrame, &color);
 		for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
 		{
 			m.ns = "map";
@@ -552,6 +573,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	{
 		MPS_ASSERT(scene->segments.find(obj.first) != scene->segments.end());
 
+		ObjectLogger::logObject(obj.second.get(), experiment_dir, std::to_string(std::abs(obj.first.id)));
+
 		if (!ros::ok()) { return; }
 		const auto& subtree = obj.second->occupancy;
 
@@ -593,7 +616,12 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	{
-		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(octree, globalFrame);
+		std_msgs::ColorRGBA color;
+		color.a = 1.0;
+		color.r = 1.0;
+		color.g = 1.0;
+		color.b = 0.0;
+		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(octree, globalFrame, &color);
 		for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
 		{
 			m.ns = "map";
@@ -860,7 +888,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 			const auto& action = std::dynamic_pointer_cast<JointTrajectoryAction>(compositeAction->actions[compositeAction->primaryAction]);
 			std::map<ObjectIndex, Eigen::Affine3d> objTrajs = followObjects(motion, tracker.get());
-			for (int iter = 0; iter < 10; ++iter)
+			for (int iter = 0; iter < 1; ++iter)
 			{
 				tf::Transform temp;
 				for (const auto& p : objTrajs)
@@ -877,7 +905,13 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 					tf::poseEigenToTF(action->palm_trajectory.back(), temp);
 					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, frameID+"back"));
 
-					visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(scene->objects.at(p.first)->occupancy.get(), frameID);
+					insertDirect(scene->objects.at(p.first)->points, p.second, scene->sceneOctree);
+					std_msgs::ColorRGBA positiveMemoryColor;
+					positiveMemoryColor.a = 1.0;
+					positiveMemoryColor.r = 20/255.0f;
+					positiveMemoryColor.g = 90/255.0f;
+					positiveMemoryColor.b = 200/255.0f;
+					visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(scene->objects.at(p.first)->occupancy.get(), frameID, &positiveMemoryColor);
 					for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
 					{
 						m.ns = frameID;
@@ -990,7 +1024,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	nh.getParam("/experiment/id", experiment_id);
 	nh.getParam("/experiment/directory", experiment_dir);
 
-	octreePub = nh.advertise<visualization_msgs::MarkerArray>("occluded_points", 1, true);
+	octreePub = nh.advertise<visualization_msgs::MarkerArray>("visualization", 1, true);
 	gripperLPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/left_arm/gripper_command", 1, false);
 	gripperRPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/right_arm/gripper_command", 1, false);
 	displayPub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, false);
@@ -1107,7 +1141,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	}
 
 
-	externalVideoClient = nh.serviceClient<arm_video_recorder::TriggerVideoRecording>("video_recorder");
+	externalVideoClient = nh.serviceClient<arm_video_recorder::TriggerVideoRecording>("recording/video_recorder");
 	if (!externalVideoClient.waitForExistence(ros::Duration(3)))
 	{
 		ROS_FATAL("External video server not connected.");
