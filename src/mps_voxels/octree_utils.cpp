@@ -379,7 +379,7 @@ visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std
 	for (octomap::OcTree::iterator it = tree->begin(tree->getTreeDepth()),
 		     end = tree->end(); it != end; ++it)
 	{
-		if ((!base_color && tree->isNodeOccupied(*it)) || (base_color && it->getOccupancy() > 0.25))
+		if ((!base_color && tree->isNodeOccupied(*it)) || (base_color && it->getOccupancy() > tree->getOccupancyThres()))
 		{
 			unsigned idx = it.getDepth();
 
@@ -402,7 +402,7 @@ visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std
 			}
 			else
 			{
-				colormap(igl::parula_cm, (float)((it->getOccupancy()-0.5)*2.0), color.r, color.g, color.b);
+				colormap(igl::parula_cm, (float)((it->getOccupancy()-tree->getOccupancyThres())*2.0), color.r, color.g, color.b);
 			}
 			occupiedNodesVis.markers[idx].colors.push_back(color);
 		}

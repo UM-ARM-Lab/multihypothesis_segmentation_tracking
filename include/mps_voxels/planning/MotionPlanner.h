@@ -15,9 +15,16 @@ class ObjectSampler
 public:
 	using Pose = typename Scene::Pose;
 
-	Scene* env;
+	bool succeeded = false;
+	ObjectIndex id;
+	octomap::point3d samplePoint; ///< Sampled shadow point in world coordinates
+	octomap::point3d cameraOrigin; ///< Camera origin in world coordinates
+	octomath::Vector3 ray;
+	octomap::point3d collision; ///< Center of collision voxel in world coordinates
 
-	bool sampleObject(ObjectIndex& id, Pose& pushFrame) const;
+	ObjectSampler() = default;
+	explicit ObjectSampler(const Scene* scene);
+	explicit operator bool() const { return succeeded; }
 };
 
 class MotionPlanner
@@ -27,9 +34,12 @@ public:
 	using PoseSequence = std::vector<Pose, Eigen::aligned_allocator<Pose>>;
 	using RankedPose = std::pair<double, MotionPlanner::Pose>;
 
-	Scene* env;
+	struct Introspection
+	{
+		ObjectSampler objectSampleInfo;
+	};
 
-	ObjectSampler objectSampler;
+	Scene* env;
 
 	planning_scene::PlanningSceneConstPtr planningScene;
 	planning_scene::PlanningSceneConstPtr computePlanningScene(bool useCollisionObjects = true);
@@ -41,8 +51,8 @@ public:
 	bool addPhysicalObstructions(const std::shared_ptr<Manipulator>& manipulator, const robot_state::RobotState& robotState, Scene::ObstructionList& collisionObjects) const;
 	bool addVisualObstructions(const ObjectIndex target, Scene::ObstructionList& collisionObjects) const;
 
-	std::shared_ptr<Motion> samplePush(const robot_state::RobotState& robotState) const;
-	std::shared_ptr<Motion> sampleSlide(const robot_state::RobotState& robotState) const;
+	std::shared_ptr<Motion> samplePush(const robot_state::RobotState& robotState, Introspection* = nullptr) const;
+	std::shared_ptr<Motion> sampleSlide(const robot_state::RobotState& robotState, Introspection* = nullptr) const;
 	std::shared_ptr<Motion> pick(const robot_state::RobotState& robotState, const ObjectIndex target, Scene::ObstructionList& collisionObjects) const;
 
 	std::shared_ptr<Motion> recoverCrash(const robot_state::RobotState& robotState, const robot_state::RobotState& recoveryState) const;

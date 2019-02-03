@@ -102,15 +102,48 @@ void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 	ROS_DEBUG_ONCE("Joint joints!");
 }
 
+template <typename T>
+void operator+=(std::vector<T> &v1, const std::vector<T> &v2)
+{
+	v1.insert(v1.end(), v2.begin(), v2.end());
+}
+
 void insertDirect(const octomap::point3d_collection& points, const Eigen::Affine3d& T, octomap::OcTree* tree)
 {
 	for (const auto& p : points)
 	{
 		const Eigen::Vector3d pt = T * Eigen::Vector3d(p.x(), p.y(), p.z());
-		tree->setNodeValue(pt.x(), pt.y(), pt.z(), tree->getOccupancyThresLog(), true);
+		tree->setNodeValue(pt.x(), pt.y(), pt.z(), tree->getProbHitLog(), true);
 	}
 	tree->updateInnerOccupancy();
 	tree->prune();
+}
+
+struct MarkerSet
+{
+	std::map<std::string, visualization_msgs::MarkerArray> arrays;
+	visualization_msgs::MarkerArray& operator[](const std::string& s) { return arrays[s]; }
+	visualization_msgs::MarkerArray flatten() const
+	{
+		visualization_msgs::MarkerArray ma;
+		for (const auto& a : arrays)
+		{
+			ma.markers += a.second.markers;
+		}
+		return ma;
+	}
+};
+
+void setAlpha(visualization_msgs::MarkerArray& ma, const float alpha)
+{
+	for (auto& ms : ma.markers)
+	{
+		ms.color.a = alpha;
+		for (auto& c : ms.colors)
+		{
+			c.a = ms.color.a;
+		}
+	}
 }
 
 class SceneExplorer
@@ -155,7 +188,9 @@ public:
 	std::string experiment_id;
 	std::string experiment_dir;
 	ros::ServiceClient externalVideoClient;
-//	visualization_msgs::MarkerArray allMarkers;
+	MarkerSet allMarkers;
+
+	std_msgs::ColorRGBA mapColor;
 
 	SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 
@@ -375,14 +410,13 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		return;
 	}
 
-//	allMarkers.markers.clear();
+	allMarkers.arrays.clear();
 
 	scene = std::make_unique<Scene>();
 	scene->scenario = scenario;
 	scene->selfModels = selfModels;
 
 	planner->env = scene.get();
-	planner->objectSampler.env = scene.get();
 	scene->worldFrame = mapServer->getWorldFrame();
 	scene->visualize = true;
 
@@ -437,8 +471,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			m.header.frame_id = globalFrame;
 			markers.markers.push_back(m);
 		}
-//		allMarkers.markers.insert(allMarkers.markers.begin(), markers.markers.begin(), markers.markers.end());
-		octreePub.publish(markers);
+		allMarkers["collision"] = markers;
+		octreePub.publish(allMarkers.flatten());
 	}
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
@@ -512,17 +546,13 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 
 	{
-		std_msgs::ColorRGBA color;
-		color.a = 1.0;
-		color.r = 1.0;
-		color.g = 1.0;
-		color.b = 0.0;
-		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(octree, globalFrame, &color);
-		for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
+		visualization_msgs::MarkerArray ma = visualizeOctree(octree, globalFrame, &mapColor);
+		for (visualization_msgs::Marker& m : ma.markers)
 		{
 			m.ns = "map";
 		}
-		octreePub.publish(occupiedNodesVis);
+		allMarkers["map"] = ma;
+		octreePub.publish(allMarkers.flatten());
 	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
@@ -569,6 +599,23 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		}
 //	}
 
+	// Remove objects from "map" tree visualization
+	for (const auto& obj : scene->objects)
+	{
+		auto& mapPts = allMarkers["map"];
+		for (auto& m : mapPts.markers)
+		{
+			m.color = mapColor;
+			m.colors.clear();
+			m.points.erase(std::remove_if(m.points.begin(), m.points.end(),
+			                              [&](const geometry_msgs::Point& p)
+			                              {
+				                              auto* v = obj.second->occupancy->search(p.x, p.y, p.z);
+				                              return (v && v->getOccupancy() >= obj.second->occupancy->getOccupancyThres());
+			                              }), m.points.end());
+		}
+	}
+
 	for (const auto& obj : scene->objects)
 	{
 		MPS_ASSERT(scene->segments.find(obj.first) != scene->segments.end());
@@ -583,15 +630,16 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		colorRGBA.r = rand()/(float)RAND_MAX;
 		colorRGBA.g = rand()/(float)RAND_MAX;
 		colorRGBA.b = rand()/(float)RAND_MAX;
-		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(subtree.get(), globalFrame, &colorRGBA);
-		for (auto& m : occupiedNodesVis.markers)
+		visualization_msgs::MarkerArray ma = visualizeOctree(subtree.get(), globalFrame, &colorRGBA);
+		const std::string name = "completed_"+std::to_string(std::abs(obj.first.id));
+		for (auto& m : ma.markers)
 		{
 //			m.colors.clear();
 //			m.color = colorRGBA;
-			m.ns = "completed_"+std::to_string(std::abs(obj.first.id));
+			m.ns = name;
 			m.header.stamp = cam_msg->header.stamp;
 		}
-		octreePub.publish(occupiedNodesVis);
+		allMarkers["completed_"+std::to_string(std::abs(obj.first.id))].markers += ma.markers;
 
 		// Visualize approximate shape
 		visualization_msgs::Marker m;
@@ -606,28 +654,16 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		m.frame_locked = true;
 		visualization_msgs::MarkerArray ms;
 		ms.markers.push_back(m);
-		octreePub.publish(ms);
-		waitKey(10);
+
+		allMarkers["bounds"] = ms;
+		octreePub.publish(allMarkers.flatten());
+		waitKey(200);
 
 	}
 
 	PROFILE_RECORD("Complete Scene");
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-
-	{
-		std_msgs::ColorRGBA color;
-		color.a = 1.0;
-		color.r = 1.0;
-		color.g = 1.0;
-		color.b = 0.0;
-		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(octree, globalFrame, &color);
-		for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
-		{
-			m.ns = "map";
-		}
-		octreePub.publish(occupiedNodesVis);
-	}
 
 //	int mostOccludingSegmentIdx = std::advance(occludedBySegmentCount.begin(), (int)std::distance(occludedBySegmentCount.begin(),
 //		std::max_element(occludedBySegmentCount.begin(), occludedBySegmentCount.end()))).first;
@@ -648,17 +684,18 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	std::mt19937 g(rd());
 
 	{
-		visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(scene->occlusionTree.get(), globalFrame);
-		for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
+		std_msgs::ColorRGBA shadowColor;
+		shadowColor.a = 1.0f;
+		shadowColor.r = 0.5f;
+		shadowColor.g = 0.5f;
+		shadowColor.b = 0.5f;
+		visualization_msgs::MarkerArray ma = visualizeOctree(scene->occlusionTree.get(), globalFrame, &shadowColor);
+		for (visualization_msgs::Marker& m : ma.markers)
 		{
 			m.ns = "hidden";
-			m.colors.clear();
-			m.color.a = 1.0f;
-			m.color.r = 0.5f;
-			m.color.g = 0.5f;
-			m.color.b = 0.5f;
 		}
-		octreePub.publish(occupiedNodesVis);
+		allMarkers["hidden"] = ma;
+		octreePub.publish(allMarkers.flatten());
 	}
 	std::cerr << "Published " << scene->occludedPts.size() << " points." << std::endl;
 
@@ -686,7 +723,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_START("Planning");
 
-	using RankedMotion = std::pair<double, std::shared_ptr<Motion>>;
+	using RankedMotion = std::pair<double, std::pair<std::shared_ptr<Motion>, MotionPlanner::Introspection> >;
 	auto comp = [](const RankedMotion& a, const RankedMotion& b ) { return a.first < b.first; };
 	std::priority_queue<RankedMotion, std::vector<RankedMotion>, decltype(comp)> motionQueue(comp);
 
@@ -731,13 +768,14 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				continue;
 			}
 
-			std::shared_ptr<Motion> motionSlide = planner->sampleSlide(rs);
+			MotionPlanner::Introspection slideInfo;
+			std::shared_ptr<Motion> motionSlide = planner->sampleSlide(rs, &slideInfo);
 			if (motionSlide)
 			{
 				double reward = planner->reward(rs, motionSlide.get());
 				#pragma omp critical
 				{
-					motionQueue.push({reward, motionSlide});
+					motionQueue.push({reward, {motionSlide, slideInfo}});
 				}
 			}
 
@@ -747,13 +785,14 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				continue;
 			}
 
-			std::shared_ptr<Motion> motionPush = planner->samplePush(rs);
+			MotionPlanner::Introspection pushInfo;
+			std::shared_ptr<Motion> motionPush = planner->samplePush(rs, &pushInfo);
 			if (motionPush)
 			{
 				double reward = planner->reward(rs, motionPush.get());
 				#pragma omp critical
 				{
-					motionQueue.push({reward, motionPush});
+					motionQueue.push({reward, {motionPush, pushInfo}});
 				}
 			}
 		}
@@ -767,10 +806,82 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		{
 			std::cerr << "Found " << motionQueue.size() << " viable solutions." << std::endl;
 		}
-		motion = motionQueue.top().second;
+		motion = motionQueue.top().second.first;
 	}
 
 	PROFILE_RECORD("Planning");
+
+	{
+		const ObjectSampler& sample = motionQueue.top().second.second.objectSampleInfo;
+
+		visualization_msgs::MarkerArray ma;
+		visualization_msgs::Marker m;
+		m.header.frame_id = globalFrame;
+		m.header.stamp = ros::Time::now();
+		m.action = visualization_msgs::Marker::ADD;
+		m.frame_locked = true;
+		m.id = 1;
+		m.pose.orientation.w = 1.0;
+
+		// Display sample point
+		m.type = visualization_msgs::Marker::CUBE;
+		m.ns = "sample_point";
+		m.scale.x = m.scale.y = m.scale.z = octree->getResolution();
+		m.pose.position.x = sample.samplePoint.x();
+		m.pose.position.y = sample.samplePoint.y();
+		m.pose.position.z = sample.samplePoint.z();
+		m.color.r = 1.0;
+		m.color.g = 0.0;
+		m.color.b = 1.0;
+		m.color.a = 1.0;
+
+
+		ma.markers.push_back(m);
+		for (auto& a : allMarkers.arrays)
+		{
+			float alpha = 0.05;
+			if ("map" == a.first) { alpha = 0.2; }
+			if (std::string::npos != a.first.find("completed")) { alpha = 0.2; }
+			setAlpha(a.second, alpha);
+		}
+		allMarkers[m.ns] = ma;
+		octreePub.publish(allMarkers.flatten());
+		sleep(1);
+
+		// Display sample ray
+		m.type = visualization_msgs::Marker::ARROW;
+		m.ns = "sample_ray";
+		m.points.resize(2);
+		m.points[1] = m.pose.position; // Copy target location to head
+		m.points[0].x = sample.cameraOrigin.x();
+		m.points[0].y = sample.cameraOrigin.y();
+		m.points[0].z = sample.cameraOrigin.z();
+		m.pose.position.x =  m.pose.position.y = m.pose.position.z = 0.0f;
+		m.scale.x /= 2.0;
+		m.scale.y *= 2.0;
+		m.scale.z = 0.1;
+		ma.markers.front() = m;
+
+		allMarkers[m.ns] = ma;
+		octreePub.publish(allMarkers.flatten());
+		sleep(1);
+
+		// Display sample object
+		setAlpha(allMarkers["completed_"+std::to_string(std::abs(sample.id.id))], 1.0);
+		octreePub.publish(allMarkers.flatten());
+		sleep(1);
+//		ma.markers.push_back(m);
+
+
+		for (auto& a : allMarkers.arrays)
+		{
+			setAlpha(a.second, 1.0);
+		}
+
+//		139  69  19
+
+		// Display move(s?)
+	}
 
 	moveit_msgs::DisplayTrajectory dt;
 	moveit::core::robotStateToRobotStateMsg(getCurrentRobotState(), dt.trajectory_start);
@@ -906,17 +1017,19 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, frameID+"back"));
 
 					insertDirect(scene->objects.at(p.first)->points, p.second, scene->sceneOctree);
+
 					std_msgs::ColorRGBA positiveMemoryColor;
 					positiveMemoryColor.a = 1.0;
 					positiveMemoryColor.r = 20/255.0f;
 					positiveMemoryColor.g = 90/255.0f;
 					positiveMemoryColor.b = 200/255.0f;
-					visualization_msgs::MarkerArray occupiedNodesVis = visualizeOctree(scene->objects.at(p.first)->occupancy.get(), frameID, &positiveMemoryColor);
-					for (visualization_msgs::Marker& m : occupiedNodesVis.markers)
+					visualization_msgs::MarkerArray ma = visualizeOctree(scene->objects.at(p.first)->occupancy.get(), frameID, &positiveMemoryColor);
+					for (visualization_msgs::Marker& m : ma.markers)
 					{
 						m.ns = frameID;
 					}
-					octreePub.publish(occupiedNodesVis);
+					allMarkers[frameID] = ma;
+					octreePub.publish(allMarkers.flatten());
 					ros::Duration(0.5).sleep();
 				}
 			}
@@ -1145,7 +1258,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	if (!externalVideoClient.waitForExistence(ros::Duration(3)))
 	{
 		ROS_FATAL("External video server not connected.");
-		throw std::runtime_error("External video server not connected.");
+//		throw std::runtime_error("External video server not connected.");
 	}
 	else
 	{
@@ -1156,6 +1269,11 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 		arm_video_recorder::TriggerVideoRecordingResponse resp;
 		externalVideoClient.call(req, resp);
 	}
+
+	mapColor.a = 1.0;
+	mapColor.r = 1.0;
+	mapColor.g = 1.0;
+	mapColor.b = 0.0;
 
 	std::string topic_prefix = "/kinect2_victor_head/hd";
 //	ros::Subscriber camInfoSub = nh.subscribe("kinect2_victor_head/qhd/camera_info", 1, camera_cb);

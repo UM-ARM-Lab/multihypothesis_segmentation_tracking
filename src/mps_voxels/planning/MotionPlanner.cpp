@@ -148,11 +148,11 @@ std::priority_queue<MotionPlanner::RankedPose, std::vector<MotionPlanner::Ranked
 }
 
 
-bool
-ObjectSampler::sampleObject(ObjectIndex& id, Pose& pushFrame) const
+ObjectSampler::ObjectSampler(const Scene* env)
+	: succeeded(false)
 {
 	// By default, search through all shadow points
-	octomap::point3d_collection* shadowPoints = &env->occludedPts;
+	const octomap::point3d_collection* shadowPoints = &env->occludedPts;
 
 	if (!env->obstructions.empty())
 	{
@@ -192,44 +192,34 @@ ObjectSampler::sampleObject(ObjectIndex& id, Pose& pushFrame) const
 	std::iota(indices.begin(), indices.end(), 0);
 	std::shuffle(indices.begin(), indices.end(), env->scenario->rng);
 
+	cameraOrigin = octomap::point3d((float) env->worldTcamera.translation().x(),
+	                                (float) env->worldTcamera.translation().y(),
+	                                (float) env->worldTcamera.translation().z());
+
 	for (const unsigned int index : indices)
 	{
-		const auto& pt_original = (*shadowPoints)[index];
+		samplePoint = (*shadowPoints)[index];
 
 		// Get a randomly selected shadowed point
-		Eigen::Vector3d pt(pt_original.x(), pt_original.y(), pt_original.z());
-		if (pt.z()<0.05) { continue; }
-
-		octomap::point3d cameraOrigin((float) env->worldTcamera.translation().x(), (float) env->worldTcamera.translation().y(),
-		                              (float) env->worldTcamera.translation().z());
-		octomath::Vector3 ray = pt_original-cameraOrigin;
-		octomap::point3d collision;
+		if (samplePoint.z()<0.05) { continue; }
+		ray = samplePoint-cameraOrigin;
 		bool hit = env->sceneOctree->castRay(cameraOrigin, ray, collision, true);
 		MPS_ASSERT(hit);
 		collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision)); // regularize
 
-		Eigen::Vector3d gHat = -Eigen::Vector3d::UnitZ();
-		Eigen::Vector3d pHat = -Eigen::Map<const Eigen::Vector3f>(&ray(0)).cast<double>().cross(gHat).normalized();
-		Eigen::Vector3d nHat = gHat.cross(pHat).normalized();
-
-		pushFrame.linear() << pHat.normalized(), nHat.normalized(), gHat.normalized();
-		pushFrame.translation() = Eigen::Map<const Eigen::Vector3f>(&collision(0)).cast<double>();
-
 		if (env->visualize)
 		{
 			// Display occluded point and push frame
+			Eigen::Vector3d pt(samplePoint.x(), samplePoint.y(), samplePoint.z());
 			tf::Transform t = tf::Transform::getIdentity();
 			Eigen::Vector3d pt_camera = env->worldTcamera.inverse(Eigen::Isometry)*pt;
 			t.setOrigin({pt_camera.x(), pt_camera.y(), pt_camera.z()});
 			env->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->cameraFrame, "occluded_point"));
-
-			tf::poseEigenToTF(pushFrame, t);
-			env->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->worldFrame, "push_frame"));
 		}
 
 		if (!env->obstructions.empty())
 		{
-			return true;
+			return;
 		}
 
 		const auto& iter = env->surfaceCoordToObject.find(collision);
@@ -237,10 +227,9 @@ ObjectSampler::sampleObject(ObjectIndex& id, Pose& pushFrame) const
 		ObjectIndex pushSegmentID = iter->second;
 
 		id = pushSegmentID;
-		return true;
+		succeeded = true;
+		return;
 	}
-
-	return false;
 }
 
 double
@@ -358,6 +347,7 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 				jointTraj->cmd.points[stepIdx].positions;
 				robot_state::RobotState collisionState(robotState);
 				collisionState.setJointGroupPositions(manipulator->arm, jointTraj->cmd.points[stepIdx].positions);
+				collisionState.setJointGroupPositions(manipulator->gripper, manipulator->getGripperOpenJoints());
 				collisionState.update();
 				planningScene->checkCollision(collision_request, collision_result, collisionState, acm);
 				if (collision_result.collision)
@@ -569,7 +559,7 @@ bool MotionPlanner::addVisualObstructions(const ObjectIndex target, Scene::Obstr
 }
 
 std::shared_ptr<Motion>
-MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
+MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspection* info) const
 {
 	// TODO: Set hand posture before planning
 	// Check whether the hand collides with the scene
@@ -586,17 +576,24 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 	State objectState = stateFactory(env->objects);
 
 	// Get an object to slide
-	ObjectIndex slideSegmentID{-1};
-	Pose pushFrame;
-	if (!objectSampler.sampleObject(slideSegmentID, pushFrame))
+	const ObjectSampler sampleInfo(env); if (info) { info->objectSampleInfo = sampleInfo; }
+	if (!sampleInfo)
 	{
 		return std::shared_ptr<Motion>();
 	}
-	const octomap::OcTree* tree = env->objects.at(slideSegmentID)->occupancy.get();
+	const octomap::OcTree* tree = env->objects.at(sampleInfo.id)->occupancy.get();
+
+	Pose pushFrame;
+	Eigen::Vector3d gHat = -Eigen::Vector3d::UnitZ();
+	Eigen::Vector3d pHat = -Eigen::Map<const Eigen::Vector3f>(&sampleInfo.ray(0)).cast<double>().cross(gHat).normalized();
+	Eigen::Vector3d nHat = gHat.cross(pHat).normalized();
+
+	pushFrame.linear() << pHat.normalized(), nHat.normalized(), gHat.normalized();
+	pushFrame.translation() = Eigen::Map<const Eigen::Vector3f>(&sampleInfo.collision(0)).cast<double>();
 
 //	trajectory_msgs::JointTrajectory cmd;
 	PoseSequence pushGripperFrames(2, Eigen::Affine3d::Identity());
-	octomap::point3d_collection segmentPoints = getPoints(tree);
+	const octomap::point3d_collection& segmentPoints = env->objects.at(sampleInfo.id)->points;
 
 	Eigen::Vector3d minProj = Eigen::Vector3d::Ones() * std::numeric_limits<float>::max();
 	Eigen::Vector3d maxProj = Eigen::Vector3d::Ones() * std::numeric_limits<float>::lowest();
@@ -626,6 +623,8 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 	if (env->visualize)
 	{
 		tf::Transform t = tf::Transform::getIdentity();
+		tf::poseEigenToTF(pushFrame, t);
+		env->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->worldFrame, "push_frame"));
 		tf::poseEigenToTF(pushGripperFrames[0], t);
 		env->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->worldFrame, "push_gripper_frame_0"));
 		tf::poseEigenToTF(pushGripperFrames[1], t);
@@ -689,6 +688,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 			{
 				robot_state::RobotState collisionState(robotState);
 				collisionState.setJointGroupPositions(manipulator->arm, sln.front());
+				collisionState.setJointGroupPositions(manipulator->gripper, manipulator->getGripperOpenJoints());
 				collisionState.update();
 				if (gripperEnvironmentCollision(manipulator, collisionState))
 				{
@@ -764,7 +764,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 				slideAction->palm_trajectory = slideTrajectory;
 				slideAction->cmd.joint_names = cmd.joint_names;
 				slideAction->cmd.points.insert(slideAction->cmd.points.end(), cmd.points.begin()+approachTrajectory.size(), cmd.points.begin()+approachTrajectory.size()+slideTrajectory.size()+1);
-				motion->state->poses[slideSegmentID] = pushTrajectory.front().inverse(Eigen::Isometry) * pushTrajectory.back();
+				motion->state->poses[sampleInfo.id] = pushTrajectory.front().inverse(Eigen::Isometry) * pushTrajectory.back();
 
 				// Retract
 				retractAction->palm_trajectory = retractTrajectory;
@@ -780,7 +780,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 					continue;
 				}
 
-				motion->targets.push_back(slideSegmentID);
+				motion->targets.push_back(sampleInfo.id);
 
 				MPS_ASSERT(motion->state->poses.size() == env->objects.size());
 				return motion;
@@ -792,7 +792,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState) const
 }
 
 std::shared_ptr<Motion>
-MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
+MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspection* info) const
 {
 	// TODO: Set hand posture before planning
 	// Check whether the hand collides with the scene
@@ -809,13 +809,12 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 	State objectState = stateFactory(env->objects);
 
 	// Get an object to slide
-	ObjectIndex slideSegmentID{-1};
-	Pose pushFrame;
-	if (!objectSampler.sampleObject(slideSegmentID, pushFrame))
+	const ObjectSampler sampleInfo(env); if (info) { info->objectSampleInfo = sampleInfo; }
+	if (!sampleInfo)
 	{
 		return std::shared_ptr<Motion>();
 	}
-	const octomap::OcTree* tree = env->objects.at(slideSegmentID)->occupancy.get();
+	const octomap::OcTree* tree = env->objects.at(sampleInfo.id)->occupancy.get();
 
 	// Get potential grasps
 	auto graspPoses = getGraspPoses(tree);
@@ -868,6 +867,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 				{
 					robot_state::RobotState collisionState(robotState);
 					collisionState.setJointGroupPositions(manipulator->arm, sln.front());
+					collisionState.setJointGroupPositions(manipulator->gripper, manipulator->getGripperOpenJoints());
 					collisionState.update();
 					if (gripperEnvironmentCollision(manipulator, collisionState))
 					{
@@ -979,7 +979,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 							slideAction->palm_trajectory = slideTrajectory;
 							slideAction->cmd.joint_names = cmd.joint_names;
 							slideAction->cmd.points.insert(slideAction->cmd.points.end(), cmd.points.begin()+approachTrajectory.size(), cmd.points.begin()+approachTrajectory.size()+slideTrajectory.size()+1);
-							motion->state->poses[slideSegmentID] = gripperPose.inverse(Eigen::Isometry) * goalPose;
+							motion->state->poses[sampleInfo.id] = gripperPose.inverse(Eigen::Isometry) * goalPose;
 
 
 							// Release
@@ -1011,7 +1011,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState) const
 								continue;
 							}
 
-							motion->targets.push_back(slideSegmentID);
+							motion->targets.push_back(sampleInfo.id);
 
 							MPS_ASSERT(motion->state->poses.size() == env->objects.size());
 							return motion;
