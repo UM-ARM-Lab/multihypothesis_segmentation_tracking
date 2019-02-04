@@ -165,7 +165,7 @@ ObjectSampler::ObjectSampler(const Scene* env)
 	}
 
 	// If the target object grasp is obstructed somehow
-	if (!env->obstructions.empty() && ((rand()/RAND_MAX) < 0.9))
+	if (!env->obstructions.empty() && ((rand()/RAND_MAX) < 0.8))
 	{
 		// Select one obstructing object with uniform probability
 //		std::uniform_int_distribution<size_t> distr(0, env->obstructions.size()-1)
@@ -217,10 +217,10 @@ ObjectSampler::ObjectSampler(const Scene* env)
 			env->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->cameraFrame, "occluded_point"));
 		}
 
-		if (!env->obstructions.empty())
-		{
-			return;
-		}
+//		if (!env->obstructions.empty())
+//		{
+//			return;
+//		}
 
 		const auto& iter = env->surfaceCoordToObject.find(collision);
 		if (iter==env->surfaceCoordToObject.end()) { continue; }
@@ -242,7 +242,7 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 	int colIndex = 0;
 	for (const auto& obj : env->objects)
 	{
-		MPS_ASSERT(obj.second.get());
+		MPS_ASSERT(obj.second);
 		MPS_ASSERT(obj.second->occupancy->size() > 0);
 		octomap::point3d_collection segmentPoints = obj.second->points;
 		Eigen::Vector3d centroid = Eigen::Vector3d::Zero();

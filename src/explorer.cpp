@@ -201,6 +201,8 @@ public:
 	void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	               const sensor_msgs::ImageConstPtr& depth_msg,
 	               const sensor_msgs::CameraInfoConstPtr& cam_msg);
+
+	moveit_msgs::DisplayTrajectory visualize(const std::shared_ptr<Motion>& motion, const bool primaryOnly = false);
 };
 
 robot_state::RobotState SceneExplorer::getCurrentRobotState()
@@ -811,8 +813,11 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_RECORD("Planning");
 
+	for (int i = 0; i < std::min(6, (int)motionQueue.size()/3); ++i)
 	{
-		const ObjectSampler& sample = motionQueue.top().second.second.objectSampleInfo;
+		const auto res = motionQueue.top().second;
+		const ObjectSampler sample = motionQueue.top().second.second.objectSampleInfo;
+		motionQueue.pop(); motionQueue.pop(); motionQueue.pop();
 
 		visualization_msgs::MarkerArray ma;
 		visualization_msgs::Marker m;
@@ -881,52 +886,9 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		139  69  19
 
 		// Display move(s?)
+		displayPub.publish(visualize(res.first, true));
+		sleep(3);
 	}
-
-	moveit_msgs::DisplayTrajectory dt;
-	moveit::core::robotStateToRobotStateMsg(getCurrentRobotState(), dt.trajectory_start);
-	dt.model_id = pModel->getName();
-	ros::Duration totalTime(0.0);
-
-	if (!ros::ok()) { return; }
-
-	if (motion && motion->action && std::dynamic_pointer_cast<CompositeAction>(motion->action))
-	{
-		auto actions = std::dynamic_pointer_cast<CompositeAction>(motion->action);
-		for (size_t idx = 0; idx < actions->actions.size(); ++idx)
-		{
-			auto subTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[idx]);
-			if (subTraj)// && actions->primaryAction == static_cast<int>(idx))
-			{
-				moveit_msgs::RobotTrajectory drt;
-				drt.joint_trajectory.joint_names = subTraj->cmd.joint_names;
-				drt.joint_trajectory.points.insert(drt.joint_trajectory.points.end(), subTraj->cmd.points.begin(), subTraj->cmd.points.end());
-				dt.trajectory.push_back(drt);
-				totalTime += subTraj->cmd.points.back().time_from_start-subTraj->cmd.points.front().time_from_start;
-			}
-		}
-
-		if (actions->primaryAction >= 0)
-		{
-			auto jointTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[actions->primaryAction]);
-			if (jointTraj)
-			{
-				int i = 0;
-				for (const auto& interpPose : jointTraj->palm_trajectory)
-				{
-					tf::Transform temp; tf::poseEigenToTF(interpPose, temp);
-					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, "slide_"+std::to_string(i++)));
-				}
-			}
-		}
-	}
-	else
-	{
-		ROS_WARN("Unable to find a solution to any occluded point from any arm.");
-		return;
-	}
-
-	displayPub.publish(dt);
 
 	waitKey(10);
 
@@ -1055,6 +1017,56 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	waitKey(10);
 
+}
+
+moveit_msgs::DisplayTrajectory SceneExplorer::visualize(const std::shared_ptr<Motion>& motion, const bool primaryOnly)
+{
+	moveit_msgs::DisplayTrajectory dt;
+	moveit::core::robotStateToRobotStateMsg(getCurrentRobotState(), dt.trajectory_start);
+	dt.model_id = pModel->getName();
+	ros::Duration totalTime(0.0);
+
+
+
+	if (motion && motion->action && std::dynamic_pointer_cast<CompositeAction>(motion->action))
+	{
+		auto actions = std::dynamic_pointer_cast<CompositeAction>(motion->action);
+		for (size_t idx = 0; idx < actions->actions.size(); ++idx)
+		{
+			if (primaryOnly && idx != actions->primaryAction) {continue;}
+
+			auto subTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[idx]);
+			if (subTraj)// && actions->primaryAction == static_cast<int>(idx))
+			{
+				moveit_msgs::RobotTrajectory drt;
+				drt.joint_trajectory.joint_names = subTraj->cmd.joint_names;
+				drt.joint_trajectory.points.insert(drt.joint_trajectory.points.end(), subTraj->cmd.points.begin(), subTraj->cmd.points.end());
+				dt.trajectory.push_back(drt);
+				totalTime += subTraj->cmd.points.back().time_from_start-subTraj->cmd.points.front().time_from_start;
+			}
+		}
+
+		if (actions->primaryAction >= 0)
+		{
+			auto jointTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[actions->primaryAction]);
+			if (jointTraj)
+			{
+				int i = 0;
+				for (const auto& interpPose : jointTraj->palm_trajectory)
+				{
+					tf::Transform temp; tf::poseEigenToTF(interpPose, temp);
+					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), scene->worldFrame, "slide_"+std::to_string(i++)));
+				}
+			}
+		}
+	}
+	else
+	{
+		ROS_WARN("Unable to find a solution to any occluded point from any arm.");
+		return dt;
+	}
+
+	return dt;
 }
 
 

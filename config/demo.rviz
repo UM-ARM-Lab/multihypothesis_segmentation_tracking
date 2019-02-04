@@ -8,6 +8,7 @@ Panels:
         - /MarkerArray2
         - /MarkerArray2/Namespaces1
         - /Trajectory1
+        - /Trajectory1/Links1
         - /MarkerArray3/Namespaces1
       Splitter Ratio: 0.575581372
     Tree Height: 889
@@ -455,7 +456,7 @@ Visualization Manager:
       Enabled: true
       Interrupt Display: true
       Links:
-        All Links Enabled: true
+        All Links Enabled: false
         Expand Joint Details: false
         Expand Link Details: false
         Expand Tree: false
@@ -464,7 +465,7 @@ Visualization Manager:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-          Value: true
+          Value: false
         victor_base_plate_mount:
           Alpha: 1
           Show Axes: false
@@ -753,11 +754,11 @@ Visualization Manager:
       Robot Alpha: 0.5
       Robot Color: 150; 50; 150
       Robot Description: robot_description
-      Show Robot Collision: false
-      Show Robot Visual: true
+      Show Robot Collision: true
+      Show Robot Visual: false
       Show Trail: false
-      State Display Time: 0.02 s
-      Trail Step Size: 3
+      State Display Time: 0.001 s
+      Trail Step Size: 5
       Trajectory Topic: /move_group/display_planned_path
       Value: true
     - Alpha: 1
@@ -1171,25 +1172,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 1.54938543
+      Distance: 1.73531175
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.0599999987
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.42243436
-        Y: 0.00757135823
+        X: -0.511949658
+        Y: 0.0443256982
         Z: -1.78809998e-07
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.0500000007
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.100000001
-      Pitch: 0.940204024
+      Pitch: 0.995203793
       Target Frame: table_surface
       Value: XYOrbit (rviz)
-      Yaw: 2.8658011
+      Yaw: 2.8858006
     Saved: ~
 Window Geometry:
   Displays:
