@@ -30,3 +30,59 @@ Finally, play back some recorded data:
     rosbag play --clock -d 3 -r 0.3 $(rospack find ap_umich_data)/ycb_separate_head_2018-07-09-19-56-40.bag
 
 In this case we're playing data from https://gitlab.eecs.umich.edu/pricear/ap_umich_data/ at a rate slower than realtime (`-r 0.3`)
+
+## Demo Setup
+
+### Important Commands
+
+In the following, we assume that we are running the ROS Master from `armflare` with an IP address of `10.10.10.190`.
+
+```
+roscore
+```
+
+```
+ssh armlab@realtime.local
+export ROS_MASTER_URI=http://armflare.local:11311
+roslaunch victor_hardware_interface dual_arm_lcm_bridge.launch
+```
+
+```
+ssh armlab@loki.local
+export ROS_MASTER_URI=http://armflare.local:11311
+roslaunch mps_launch_files kinect_vicon_real_robot.launch pov:=victor_head
+```
+
+```
+roslaunch victor_moveit_config planning_context.launch load_robot_description:=true
+rviz -d $(rospack find mps_voxels)/config/demo.rviz
+```
+
+```
+ssh -X shapereconstruction@odin
+export ROS_MASTER_URI=http://10.10.10.190:11311
+export ROS_IP=10.10.11.99
+matlab -nodesktop
+start_segmentation
+```
+
+```
+ssh armtyphoon.local
+source setup.bash
+roscd mps_voxels/Shape-completion/
+rosrun mps_voxels shape_completion_node.py
+```
+
+```
+rosrun mps_voxels matlab_action_wrapper.py __name:=segment_rgbd _pkg:=mps_msgs _action:=SegmentRGBD _request:=/segment_rgbd/request _response:=/segment_rgbd/response
+```
+
+```
+rosrun or_victor ros_trajectory_forwarder.py tf:=or_tf tf_static:=or_tf_static
+```
+
+### Other Commands of Note
+
+```
+rosrun or_victor move_to_impedance_switch.py
+```
