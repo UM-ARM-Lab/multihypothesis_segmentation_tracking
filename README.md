@@ -68,9 +68,9 @@ start_segmentation
 
 ```
 ssh armtyphoon.local
-source setup.bash
-roscd mps_voxels/Shape-completion/
-rosrun mps_voxels shape_completion_node.py
+export ROS_MASTER_URI=http://armflare.local:11311
+cd ~/catkin_ws/src/Shape-Completion-API
+./shape_completion_node.py
 ```
 
 ```
