@@ -9,7 +9,7 @@
 
 	<!-- Startup simulation world -->
 	<include file="$(find gazebo_ros)/launch/empty_world.launch">
-		<arg name="world_name" value="$(find gazebo_victor)/worlds/victor_table.world"/>
+		<arg name="world_name" value="$(find mps_interactive_segmentation)/worlds/victor_table.world"/>
 		<arg name="paused" value="false"/>
 		<arg name="gui" value="$(arg gui)"/>
 	</include>
