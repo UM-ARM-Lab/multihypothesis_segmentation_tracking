@@ -365,37 +365,8 @@
         <kinematic>0</kinematic>
         <gravity>1</gravity>
       </link>
-      <pose frame=''>1.36943 -0.103198 -0.2 0 0 0</pose>
+      <pose frame=''>0.8 0.0 -0.2 0 0 -1.57079632679</pose>
     </model>
-    <state world_name='default'>
-      <sim_time>150 580000000</sim_time>
-      <real_time>46 619948157</real_time>
-      <wall_time>1518910514 672414046</wall_time>
-      <iterations>43856</iterations>
-      <model name='ground_plane'>
-        <pose frame=''>0 0 0 0 -0 0</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose frame=''>0 0 0 0 -0 0</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 0 0 -0 0</acceleration>
-          <wrench>0 0 0 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='table'>
-        <pose frame=''>0.970146 0.041673 -7e-06 0 4e-06 -1.55557</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose frame=''>0.970146 0.041673 -7e-06 0 4e-06 -1.55557</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 -9.8 0 -0 0</acceleration>
-          <wrench>0 0 -9.8 0 -0 0</wrench>
-        </link>
-      </model>
-      <light name='sun'>
-        <pose frame=''>0 0 10 0 -0 0</pose>
-      </light>
-    </state>
     <gui fullscreen='0'>
       <camera name='user_camera'>
         <pose frame=''>5.06653 -4.91361 2.04967 0 0.275643 2.35619</pose>
