@@ -9,7 +9,7 @@
 
 	<!-- Startup simulation world -->
 	<include file="$(find gazebo_ros)/launch/empty_world.launch">
-		<arg name="world_name" value="$(find camera_robot_calibration)/test/system/worlds/multi_camera.world"/>
+		<arg name="world_name" value="$(find gazebo_victor)/worlds/victor_table.world"/>
 		<arg name="paused" value="false"/>
 		<arg name="gui" value="$(arg gui)"/>
 	</include>
@@ -22,6 +22,9 @@
 		<param name="publish_frequency" type="double" value="120.0" />
 		<param name="tf_prefix" type="string" value="" />
 	</node>
+
+	<node name="camera_body_transform" pkg="tf" type="static_transform_publisher" args="0 0 1.5 0 0.15 0 /victor_root /kinect2_victor_head 10"/>
+	<node name="camera_optical_transform" pkg="tf" type="static_transform_publisher" args="0 0 0 -1.57079632679 0 -1.57079632679 /kinect2_victor_head /kinect2_victor_head_optical_frame 10"/>
 
 	<!-- joint_state_controller -->
 	<rosparam file="$(find mps_interactive_segmentation)/test/system/config/gazebo_joint_state_controller.yaml" command="load"/>
