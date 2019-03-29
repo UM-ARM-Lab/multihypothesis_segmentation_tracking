@@ -3,7 +3,7 @@
 	url = git@github.com:UM-ARM-Lab/Shape-completion.git
 [submodule "CudaSift"]
 	path = CudaSift
-	url = git@github.com:svenevs/CudaSift.git
+	url = git@github.com:UM-ARM-Lab/CudaSift.git
 [submodule "COB"]
 	path = COB
 	url = git@github.com:jinlinyi/COB.git
