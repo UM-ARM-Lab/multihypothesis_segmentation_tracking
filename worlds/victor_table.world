@@ -81,9 +81,8 @@
       <heading_deg>0</heading_deg>
     </spherical_coordinates>
     <model name='kinect2_victor_head'>
-      <!--<pose>1.5 0 1.5 0 0.3 3.1415927</pose>-->
-      <pose>0 0 1.5 0 0.15 0</pose>
-      <static>true</static>
+      <pose frame=''>0 0 1.5 0 0.25 0</pose>
+      <static>1</static>
       <link name='kinect2_victor_head'>
         <inertial>
           <mass>1</mass>
@@ -110,6 +109,9 @@
             <bounce/>
             <friction>
               <ode/>
+              <torsional>
+                <ode/>
+              </torsional>
             </friction>
           </surface>
         </collision>
@@ -132,17 +134,19 @@
               <near>0.05</near>
               <far>2.5</far>
             </clip>
-            <depth_camera output="depths"/>
+            <depth_camera>
+              <output>depths</output>
+            </depth_camera>
           </camera>
-          <plugin name="kinect2_victor_head_plugin" filename="libgazebo_ros_depth_camera.so">
-            <cameraName>camera1</cameraName>
+          <plugin name='kinect2_victor_head_plugin' filename='libgazebo_ros_openni_kinect.so'>
+            <cameraName>kinect2_victor_head</cameraName>
             <alwaysOn>true</alwaysOn>
             <updateRate>10</updateRate>
-            <imageTopicName>rgb/image_raw</imageTopicName>
-            <depthImageTopicName>depth/image_raw</depthImageTopicName>
-            <pointCloudTopicName>depth/points</pointCloudTopicName>
-            <cameraInfoTopicName>rgb/camera_info</cameraInfoTopicName>
-            <depthImageCameraInfoTopicName>depth/camera_info</depthImageCameraInfoTopicName>
+            <imageTopicName>hd/image_color_rect</imageTopicName>
+            <depthImageTopicName>hd/image_depth_rect</depthImageTopicName>
+            <pointCloudTopicName>hd/points</pointCloudTopicName>
+            <cameraInfoTopicName>hd/camera_info</cameraInfoTopicName>
+            <depthImageCameraInfoTopicName>hd/camera_info</depthImageCameraInfoTopicName>
             <frameName>kinect2_victor_head_optical_frame</frameName>
             <baseline>0.07</baseline>
             <distortion_k1>0.0</distortion_k1>
@@ -150,11 +154,11 @@
             <distortion_k3>0.0</distortion_k3>
             <distortion_t1>0.0</distortion_t1>
             <distortion_t2>0.0</distortion_t2>
-            <pointCloudCutoff>0.4</pointCloudCutoff>
+            <pointCloudCutoff>2.5</pointCloudCutoff>
             <robotNamespace>/</robotNamespace>
           </plugin>
-          <always_on>true</always_on>
-          <update_rate>10.0</update_rate>
+          <always_on>1</always_on>
+          <update_rate>10</update_rate>
         </sensor>
         <self_collide>0</self_collide>
         <kinematic>0</kinematic>
@@ -365,14 +369,216 @@
         <kinematic>0</kinematic>
         <gravity>1</gravity>
       </link>
-      <pose frame=''>0.8 0.0 -0.2 0 0 -1.57079632679</pose>
+      <pose frame=''>0.8 0 -0.2 0 0 -1.5708</pose>
     </model>
     <gui fullscreen='0'>
       <camera name='user_camera'>
-        <pose frame=''>5.06653 -4.91361 2.04967 0 0.275643 2.35619</pose>
+        <pose frame=''>3.26054 -0.122293 1.55454 0 0.279643 -3.07581</pose>
         <view_controller>orbit</view_controller>
         <projection_type>perspective</projection_type>
       </camera>
     </gui>
+    <model name='bowl'>
+      <link name='link'>
+        <inertial>
+          <mass>0.1</mass>
+          <inertia>
+            <ixx>1</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>1</iyy>
+            <iyz>0</iyz>
+            <izz>1</izz>
+          </inertia>
+        </inertial>
+        <collision name='collision'>
+          <geometry>
+            <cylinder>
+              <radius>0.098</radius>
+              <length>0.035</length>
+            </cylinder>
+          </geometry>
+          <max_contacts>10</max_contacts>
+          <surface>
+            <contact>
+              <ode/>
+            </contact>
+            <bounce/>
+            <friction>
+              <torsional>
+                <ode/>
+              </torsional>
+              <ode/>
+            </friction>
+          </surface>
+        </collision>
+        <visual name='visual'>
+          <geometry>
+            <mesh>
+              <uri>model://bowl/meshes/bowl.dae</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+        </visual>
+        <self_collide>0</self_collide>
+        <kinematic>0</kinematic>
+        <gravity>1</gravity>
+      </link>
+      <pose frame=''>0.763588 0.491233 1.1 0 -0 0</pose>
+    </model>
+    <model name='coke_can'>
+      <link name='link'>
+        <inertial>
+          <mass>0.39</mass>
+          <inertia>
+            <ixx>0.00055575</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>0.00055575</iyy>
+            <iyz>0</iyz>
+            <izz>0.0001755</izz>
+          </inertia>
+        </inertial>
+        <collision name='collision'>
+          <pose frame=''>0.003937 0.004724 -0.18 0 -0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://coke_can/meshes/coke_can.dae</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+          <max_contacts>10</max_contacts>
+          <surface>
+            <contact>
+              <ode/>
+            </contact>
+            <bounce/>
+            <friction>
+              <torsional>
+                <ode/>
+              </torsional>
+              <ode/>
+            </friction>
+          </surface>
+        </collision>
+        <visual name='visual'>
+          <pose frame=''>0.003937 0.004724 -0.18 0 -0 0</pose>
+          <geometry>
+            <mesh>
+              <uri>model://coke_can/meshes/coke_can.dae</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+        </visual>
+        <self_collide>0</self_collide>
+        <kinematic>0</kinematic>
+        <gravity>1</gravity>
+      </link>
+      <pose frame=''>0.568187 0.275589 1.1 0 -0 0</pose>
+    </model>
+    <model name='bowl_0'>
+      <link name='link'>
+        <inertial>
+          <mass>0.1</mass>
+          <inertia>
+            <ixx>1</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>1</iyy>
+            <iyz>0</iyz>
+            <izz>1</izz>
+          </inertia>
+        </inertial>
+        <collision name='collision'>
+          <geometry>
+            <cylinder>
+              <radius>0.098</radius>
+              <length>0.035</length>
+            </cylinder>
+          </geometry>
+          <max_contacts>10</max_contacts>
+          <surface>
+            <contact>
+              <ode/>
+            </contact>
+            <bounce/>
+            <friction>
+              <torsional>
+                <ode/>
+              </torsional>
+              <ode/>
+            </friction>
+          </surface>
+        </collision>
+        <visual name='visual'>
+          <geometry>
+            <mesh>
+              <uri>model://bowl/meshes/bowl.dae</uri>
+              <scale>1 1 1</scale>
+            </mesh>
+          </geometry>
+        </visual>
+        <self_collide>0</self_collide>
+        <kinematic>0</kinematic>
+        <gravity>1</gravity>
+      </link>
+      <pose frame=''>0.684459 -0.145657 1.1 0 -0 0</pose>
+    </model>
+    <model name='beer'>
+      <link name='link'>
+        <pose frame=''>0 0 0.115 0 -0 0</pose>
+        <inertial>
+          <mass>0.39</mass>
+          <inertia>
+            <ixx>0.00058</ixx>
+            <ixy>0</ixy>
+            <ixz>0</ixz>
+            <iyy>0.00058</iyy>
+            <iyz>0</iyz>
+            <izz>0.00019</izz>
+          </inertia>
+        </inertial>
+        <collision name='collision'>
+          <geometry>
+            <cylinder>
+              <radius>0.055</radius>
+              <length>0.23</length>
+            </cylinder>
+          </geometry>
+          <max_contacts>10</max_contacts>
+          <surface>
+            <contact>
+              <ode/>
+            </contact>
+            <bounce/>
+            <friction>
+              <torsional>
+                <ode/>
+              </torsional>
+              <ode/>
+            </friction>
+          </surface>
+        </collision>
+        <visual name='visual'>
+          <geometry>
+            <cylinder>
+              <radius>0.055</radius>
+              <length>0.23</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <script>
+              <uri>model://beer/materials/scripts</uri>
+              <uri>model://beer/materials/textures</uri>
+              <name>Beer/Diffuse</name>
+            </script>
+          </material>
+        </visual>
+        <self_collide>0</self_collide>
+        <kinematic>0</kinematic>
+        <gravity>1</gravity>
+      </link>
+      <pose frame=''>0.889416 0.004944 1.1 0 -0 0</pose>
+    </model>
   </world>
 </sdf>

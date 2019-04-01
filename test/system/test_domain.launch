@@ -23,8 +23,12 @@
 		<param name="tf_prefix" type="string" value="" />
 	</node>
 
-	<node name="camera_body_transform" pkg="tf" type="static_transform_publisher" args="0 0 1.5 0 0.15 0 /victor_root /kinect2_victor_head 10"/>
+	<!--<node name="camera_body_transform" pkg="tf" type="static_transform_publisher" args="0 0 1.5 0 0.15 0 /victor_root /kinect2_victor_head 10"/>-->
+	<node name="gazebo_mocap" pkg="mps_interactive_segmentation" type="gazebo_mocap"/>
+	<node name="camera_body_transform" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 1 /mocap_kinect2_victor_head /kinect2_victor_head 10"/>
 	<node name="camera_optical_transform" pkg="tf" type="static_transform_publisher" args="0 0 0 -1.57079632679 0 -1.57079632679 /kinect2_victor_head /kinect2_victor_head_optical_frame 10"/>
+	<node name="table_transform" pkg="tf" type="static_transform_publisher" args="0 0 1 0 0 0 1 mocap_table table_surface 10"/>
+	<node name="world_transform" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 1 world world_origin 10"/>
 
 	<!-- joint_state_controller -->
 	<rosparam file="$(find mps_interactive_segmentation)/test/system/config/gazebo_joint_state_controller.yaml" command="load"/>
