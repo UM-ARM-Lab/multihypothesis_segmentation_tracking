@@ -187,7 +187,18 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 	octree->setProbMiss(missProb);
 	octree->setProbHit(1.0-missProb);
 
+	if (cv::countNonZero(s.cv_depth_ptr->image) < 1)
+	{
+		ROS_ERROR("Depth image is all zeros!");
+		return false;
+	}
+
 	s.cloud = imagesToCloud(s.cv_rgb_ptr->image, s.cv_depth_ptr->image, s.cameraModel);
+	if (s.cloud->empty())
+	{
+		ROS_ERROR("Initial cloud contains no points.");
+		return false;
+	}
 
 	/////////////////////////////////////////////////////////////////
 	// Crop to bounding box
