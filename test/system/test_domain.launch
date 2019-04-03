@@ -54,8 +54,9 @@
 	</include>
 
 	<!-- Load the motion planner gui -->
-	<include file="$(find victor_moveit_config)/launch/moveit_rviz.launch" if="$(arg gui)">
-		<arg name="config" value="true"/>
-	</include>
+	<node name="$(anon rviz)" pkg="rviz" type="rviz" respawn="false"
+        args="-d $(find mps_interactive_segmentation)/config/manip.rviz" output="screen">
+        <rosparam command="load" file="$(find victor_moveit_config)/config/kinematics.yaml"/>
+    </node>
 
 </launch>
