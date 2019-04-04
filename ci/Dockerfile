@@ -8,6 +8,7 @@
 # Begin with a base build
 ARG ROS_VERSION=kinetic
 ARG CUDA_VERSION=9.1-devel-ubuntu16.04
+ARG PACKAGE_NAME=mps_voxels
 FROM ros:${ROS_VERSION} as getter
 
 # Install missing debian packages
@@ -49,6 +50,7 @@ FROM nvidia/cuda:${CUDA_VERSION}
 # Initial ARG is outside of build stage, so inherit here
 # https://docs.docker.com/engine/reference/builder/#understand-how-arg-and-from-interact
 ARG ROS_VERSION
+ARG PACKAGE_NAME
 
 LABEL maintainer="Andrew Price<pricear@umich.edu>"
 
@@ -86,8 +88,8 @@ RUN cd && \
 # Copy over the cloned source dependencies and package for rosdep
 # * This keeps the apt stuff from getting called every time any file in this repo is changed.
 COPY --from=getter /root/catkin_ws/src /root/catkin_ws/src/
-RUN mkdir -p ~/catkin_ws/src/mps_voxels/
-ADD ./package.xml /root/catkin_ws/src/mps_voxels/
+RUN mkdir -p ~/catkin_ws/src/${PACKAGE_NAME}/
+ADD ./package.xml /root/catkin_ws/src/${PACKAGE_NAME}/
 
 # Pre-load the set of apt files to prevent rosdep from running one-at-a-time
 ADD ci/apt.txt /
@@ -128,9 +130,13 @@ ENV CGAL_DIR=~/local/lib/cmake/CGAL/
 ENV OCTOMAP_DIR=~/local/share/octomap/
 ENV OpenCV_DIR=~/local/share/OpenCV/
 
+# Hack for annoying dependency layout
+RUN cd ~/catkin_ws/src/mps_core/mps_launch_files && \
+    touch CATKIN_IGNORE
+
 # Build and test the prerequisites
 RUN cd ~/catkin_ws && \
-    rm ~/catkin_ws/src/mps_voxels/package.xml && \
+    rm ~/catkin_ws/src/${PACKAGE_NAME}/package.xml && \
     source ~/.bashrc && \
     source /opt/ros/`rosversion -d`/setup.bash && \
     catkin_make && \
@@ -138,14 +144,14 @@ RUN cd ~/catkin_ws && \
     catkin_make run_tests && \
     catkin_test_results
 
-ADD ./ /root/catkin_ws/src/mps_voxels
+# ADD ./ /root/catkin_ws/src/${PACKAGE_NAME}
 
-# Build and test the project
-RUN cd ~/catkin_ws && \
-    source ~/.bashrc && \
-    source /opt/ros/`rosversion -d`/setup.bash && \
-    catkin_make && \
-    source ~/catkin_ws/devel/setup.bash && \
-    catkin_make run_tests && \
-    catkin_test_results
+# # Build and test the project
+# RUN cd ~/catkin_ws && \
+#     source ~/.bashrc && \
+#     source /opt/ros/`rosversion -d`/setup.bash && \
+#     catkin_make && \
+#     source ~/catkin_ws/devel/setup.bash && \
+#     catkin_make run_tests && \
+#     catkin_test_results
 
