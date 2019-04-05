@@ -81,7 +81,7 @@
       <heading_deg>0</heading_deg>
     </spherical_coordinates>
     <model name='kinect2_victor_head'>
-      <pose frame=''>0 0 1.5 0 0.25 0</pose>
+      <pose frame=''>0.07 0 1.5 0 0.5 0</pose>
       <static>1</static>
       <link name='kinect2_victor_head'>
         <inertial>
@@ -141,7 +141,7 @@
           <plugin name='kinect2_victor_head_plugin' filename='libgazebo_ros_openni_kinect.so'>
             <cameraName>kinect2_victor_head</cameraName>
             <alwaysOn>true</alwaysOn>
-            <updateRate>10</updateRate>
+            <updateRate>3</updateRate>
             <imageTopicName>hd/image_color_rect</imageTopicName>
             <depthImageTopicName>hd/image_depth_rect</depthImageTopicName>
             <pointCloudTopicName>hd/points</pointCloudTopicName>
@@ -154,11 +154,11 @@
             <distortion_k3>0.0</distortion_k3>
             <distortion_t1>0.0</distortion_t1>
             <distortion_t2>0.0</distortion_t2>
-            <pointCloudCutoff>2.5</pointCloudCutoff>
+            <pointCloudCutoff>0.05</pointCloudCutoff>
             <robotNamespace>/</robotNamespace>
           </plugin>
           <always_on>1</always_on>
-          <update_rate>10</update_rate>
+          <update_rate>3</update_rate>
         </sensor>
         <self_collide>0</self_collide>
         <kinematic>0</kinematic>
