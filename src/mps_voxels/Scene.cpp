@@ -134,14 +134,49 @@ bool Scene::convertImages(const sensor_msgs::ImageConstPtr& rgb_msg,
 		return false;
 	}
 
-	try
+	// TODO: Right now everything assumes the depth image is in uint16_t, but it probably makes more sense to normalize
+	//  to float, as that's what's needed in imagesToCloud() anyway.
+	if ("16UC1" == depth_msg->encoding)
 	{
-		cv_depth_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_16UC1); // MONO16?
+		try
+		{
+			cv_depth_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_16UC1); // MONO16?
+		}
+		catch (cv_bridge::Exception& e)
+		{
+			ROS_ERROR("cv_bridge exception: %s", e.what());
+			return false;
+		}
 	}
-	catch (cv_bridge::Exception& e)
+	else if ("32FC1" == depth_msg->encoding)
 	{
-		ROS_ERROR("cv_bridge exception: %s", e.what());
-		return false;
+		try
+		{
+			cv_depth_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_32FC1);
+		}
+		catch (cv_bridge::Exception& e)
+		{
+			ROS_ERROR("cv_bridge exception: %s", e.what());
+			return false;
+		}
+
+		cv::Mat convertedDepthImg(cv_depth_ptr->image.size(), CV_16UC1);
+
+		const int V = cv_depth_ptr->image.size().height;
+		const int U = cv_depth_ptr->image.size().width;
+
+		#pragma omp parallel for
+		for (int v = 0; v < V; ++v)
+		{
+			for (int u = 0; u < U; ++u)
+			{
+				convertedDepthImg.at<uint16_t>(v, u)
+					= depth_image_proc::DepthTraits<uint16_t>::fromMeters(cv_depth_ptr->image.at<float>(v, u));
+			}
+		}
+
+		cv_depth_ptr->encoding = "16UC1";
+		cv_depth_ptr->image = convertedDepthImg;
 	}
 
 	cameraModel.fromCameraInfo(cam_msg);
