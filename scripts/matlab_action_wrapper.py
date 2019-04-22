@@ -42,8 +42,9 @@ class ActionForwarder(object):
         self.got_response = False
         self.pub.publish(goal)
         start_time = rospy.Time.now()
+        polling = rospy.Rate(10, reset=True)
         while not self.got_response and not rospy.is_shutdown():
-            time.sleep(0.1)
+            polling.sleep()
             if rospy.Time.now() - start_time > rospy.Duration(20):
                 print('Failure.')
                 self.server.set_aborted(result=None, text='Response timed out.')
