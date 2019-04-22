@@ -39,6 +39,12 @@
 #include <pcl_ros/transforms.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/segmentation/extract_clusters.h>
+#include <pcl/ModelCoefficients.h>
+#include <pcl/kdtree/kdtree.h>
+#include <pcl/filters/extract_indices.h>
+#include <boost/core/null_deleter.hpp>
+
 //#include <pcl/visualization/cloud_viewer.h>
 
 #include <geometric_shapes/shape_operations.h>
@@ -685,7 +691,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	std::random_device rd;
 	std::mt19937 g(rd());
 
-	{
+	{//visualize the shadow
 		std_msgs::ColorRGBA shadowColor;
 		shadowColor.a = 1.0f;
 		shadowColor.r = 0.5f;
@@ -695,11 +701,85 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		for (visualization_msgs::Marker& m : ma.markers)
 		{
 			m.ns = "hidden";
-		}
+//			m.colors.clear();
+//			m.color.a=1.0f;
+//			m.color.r
+        }
 		allMarkers["hidden"] = ma;
 		octreePub.publish(allMarkers.flatten());
 	}
-	std::cerr << "Published " << scene->occludedPts.size() << " points." << std::endl;
+    std::cerr << "Published " << scene->occludedPts.size() << " points." << std::endl;
+
+    {
+        //visualize shadows with different colors
+//        scene->occlusionTree->expand();
+//        const auto shadow_pts = getPoints(scene->occlusionTree.get());
+        pcl::PointCloud<PointT>::Ptr all_shadow_points (new pcl::PointCloud<PointT>);
+        for (const auto & pt_octo : scene->occludedPts){
+            PointT pt;
+            pt.x=pt_octo.x();
+            pt.y=pt_octo.y();
+            pt.z=pt_octo.z();
+            all_shadow_points->points.push_back(pt);
+        }
+
+        std::vector<pcl::PointCloud<PointT>::Ptr> segments;
+
+        pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
+        tree->setInputCloud(all_shadow_points);
+
+        std::vector<pcl::PointIndices> clusters;
+        pcl::EuclideanClusterExtraction<PointT> ec;
+        ec.setClusterTolerance (0.03); // 3cm
+        ec.setMinClusterSize (100);
+        ec.setMaxClusterSize (25000);
+        ec.setSearchMethod (tree);
+        ec.setInputCloud (all_shadow_points);
+        ec.extract (clusters);
+
+        for (const pcl::PointIndices& cluster : clusters)
+        {
+            pcl::ExtractIndices<PointT> cluster_extractor;
+            cluster_extractor.setInputCloud(all_shadow_points);
+            cluster_extractor.setIndices(pcl::PointIndices::ConstPtr(&cluster, boost::null_deleter()));
+            cluster_extractor.setNegative(false);
+
+            pcl::PointCloud<PointT>::Ptr cluster_cloud(new pcl::PointCloud<PointT>());
+            cluster_extractor.filter(*cluster_cloud);
+
+            segments.push_back(cluster_cloud);
+        }
+        int count=0;
+        visualization_msgs::MarkerArray ma;
+        for (const auto & segment : segments){
+            visualization_msgs::Marker shadow_mk;
+            for(const auto & pt : *segment){
+                geometry_msgs::Point geo_pt;
+                geo_pt.x=pt.x;
+                geo_pt.y=pt.y;
+                geo_pt.z=pt.z;
+                shadow_mk.points.emplace_back(geo_pt);
+            }
+            double size = octree->getResolution();
+
+            shadow_mk.header.frame_id=globalFrame;
+            shadow_mk.header.stamp=ros::Time::now();
+            shadow_mk.ns="shadow" ;
+            shadow_mk.id=count;
+            shadow_mk.type=visualization_msgs::Marker::CUBE_LIST;
+            shadow_mk.scale.x=size;
+            shadow_mk.scale.y=size;
+            shadow_mk.scale.z=size;
+            shadow_mk.color.a=1;
+            shadow_mk.color.r=rand()/(float)RAND_MAX;
+            shadow_mk.color.g=rand()/(float)RAND_MAX;
+            shadow_mk.color.b=rand()/(float)RAND_MAX;
+            count++;
+            ma.markers.push_back(shadow_mk);
+        }
+        octreePub.publish(ma);
+    }
+
 
 	// Reach out and touch target
 
