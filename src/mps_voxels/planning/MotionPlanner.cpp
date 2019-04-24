@@ -456,7 +456,9 @@ MotionPlanner::gripperEnvironmentCollision(const std::shared_ptr<Manipulator>& m
 //	{
 //		for (size_t i = 0; i < manipulator->gripper->getVariableCount(); ++i)
 //		{
-//			std::cerr << manipulator->gripper->getVariableNames()[i] << ": " << gripperJoints[i] << std::endl;
+//			const auto& name = manipulator->gripper->getVariableNames()[i];
+//			Eigen::Map<const Eigen::VectorXd> pos(collisionState.getJointPositions(name), manipulator->gripper->getJointModel(name)->getVariableCount());
+//			std::cerr << name << ": " << pos.transpose() << std::endl;
 //		}
 //		for (const auto& p : collision_result.contacts)
 //		{
