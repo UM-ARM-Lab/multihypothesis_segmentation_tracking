@@ -1,13 +1,14 @@
 Panels:
   - Class: rviz/Displays
-    Help Height: 84
+    Help Height: 0
     Name: Displays
     Property Tree Widget:
       Expanded:
         - /MotionPlanning1
         - /MarkerArray1
+        - /MarkerArray2/Namespaces1
       Splitter Ratio: 0.742560029
-    Tree Height: 421
+    Tree Height: 505
   - Class: rviz/Help
     Name: Help
   - Class: rviz/Views
@@ -15,6 +16,8 @@ Panels:
       - /Current View1
     Name: Views
     Splitter Ratio: 0.5
+Toolbars:
+  toolButtonStyle: 2
 Visualization Manager:
   Class: ""
   Displays:
@@ -704,13 +707,13 @@ Visualization Manager:
       Value: true
       Velocity_Scaling_Factor: 1
     - Class: rviz/MarkerArray
-      Enabled: true
+      Enabled: false
       Marker Topic: /roi
       Name: MarkerArray
       Namespaces:
-        aabb: true
-      Queue Size: 10
-      Value: true
+        {}
+      Queue Size: 1
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -997,6 +1000,20 @@ Visualization Manager:
             {}
       Update Interval: 0
       Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /visualization
+      Name: MarkerArray
+      Namespaces:
+        bounds: true
+        collision: false
+        completed_100: true
+        completed_98: true
+        completed_99: true
+        hidden: true
+        map: true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -1013,25 +1030,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 3.70468259
+      Distance: 3.3470006
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.0599999987
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0.404245377
-        Y: -0.0318175107
+        X: 0.804676473
+        Y: 0.00113146007
         Z: 2.23518001e-07
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.0500000007
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.00999999978
-      Pitch: 0.574796975
+      Pitch: 0.779797196
       Target Frame: victor_root
       Value: XYOrbit (rviz)
-      Yaw: 0.556764424
+      Yaw: 5.211761
     Saved: ~
 Window Geometry:
   Displays:

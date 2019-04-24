@@ -10,12 +10,14 @@
 	<!-- Startup simulation world -->
 	<include file="$(find gazebo_ros)/launch/empty_world.launch">
 		<arg name="world_name" value="$(find mps_interactive_segmentation)/worlds/victor_table.world"/>
-		<arg name="paused" value="false"/>
+		<arg name="paused" value="true"/>
 		<arg name="gui" value="$(arg gui)"/>
+		<arg name="physics" value="ode"/>
+		<arg name="verbose" value="true"/>
 	</include>
 
 	<!-- Push robot_description to factory and spawn robot in gazebo -->
-	<node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" args="-urdf -param robot_description -model victor" respawn="false" output="screen" />
+	<node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" args="-urdf -param robot_description -model victor -J victor_left_arm_joint_4 -1.0 -J victor_right_arm_joint_4 -1.0 -unpause" respawn="false" output="screen" />
 
 	<!-- Robot state publisher -->
 	<node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
@@ -43,8 +45,10 @@
 	<param name="move_group/moveit_controller_manager" value="moveit_simple_controller_manager/MoveItSimpleControllerManager"/>
 	<rosparam file="$(find mps_interactive_segmentation)/test/system/config/gazebo_controllers.yaml" command="load"/>
 	<rosparam file="$(find mps_interactive_segmentation)/test/system/config/moveit_controllers.yaml" command="load"/>
-	<node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
-	      output="screen" args="right_arm_controller right_gripper_controller left_arm_controller left_gripper_controller "/>
+	<node name="independent_controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+	      output="screen" args="--stopped right_arm_controller left_arm_controller "/>
+    <node name="dual_controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+          output="screen" args="dual_arm_controller"/>
 
 	<!-- Load the motion planner -->
 	<include file="$(find victor_moveit_config)/launch/move_group.launch">
