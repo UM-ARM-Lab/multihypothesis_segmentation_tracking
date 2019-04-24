@@ -6,6 +6,7 @@ import rospy
 import actionlib
 import importlib
 # from mps_msgs.msg import ClusterRigidMotionsAction
+from actionlib_msgs.msg import GoalStatus
 
 
 class ActionForwarder(object):
@@ -46,10 +47,14 @@ class ActionForwarder(object):
         while not self.got_response and not rospy.is_shutdown():
             polling.sleep()
             if rospy.Time.now() - start_time > rospy.Duration(20):
-                print('Failure.')
-                self.server.set_aborted(result=None, text='Response timed out.')
-        print('Success!')
-        self.server.set_succeeded(self.response)
+                print('Timeout Failure.')
+                status = self.server.current_goal.get_goal_status()
+                if status == GoalStatus.ACTIVE or status == GoalStatus.PENDING:
+                    self.server.set_aborted(result=None, text='Response timed out.')
+                    break
+        if self.got_response:
+            print('Success!')
+            self.server.set_succeeded(self.response)
 
     def response_cb(self, response):
         self.response = response
