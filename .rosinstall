@@ -2,11 +2,18 @@
     local-name: arc_utilities
     uri: git@github.com:UM-ARM-Lab/arc_utilities.git
 - git:
+    local-name: arm_video_recorder
+    uri: git@github.com:UM-ARM-Lab/arm_video_recorder.git
+- git:
     local-name: kuka_iiwa_interface
     uri: git@github.com:UM-ARM-Lab/kuka_iiwa_interface.git
 - git:
     local-name: lightweight_vicon_bridge
     uri: git@github.com:UM-ARM-Lab/lightweight_vicon_bridge.git
+- git:
+    local-name: mps_core
+    uri: git@github.com:UM-ARM-Lab/mps_core.git
+    version: develop
 - git:
     local-name: openrave_catkin
     uri: git@github.com:UM-ARM-Lab/openrave_catkin.git

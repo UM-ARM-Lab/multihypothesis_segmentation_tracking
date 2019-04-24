@@ -1,3 +1,7 @@
 *.swp
 *.avi
 scripts/.ipynb_checkpoints/
+build/
+_build/
+.vscode/
+Dockerfile_*
