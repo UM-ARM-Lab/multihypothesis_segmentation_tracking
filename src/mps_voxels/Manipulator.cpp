@@ -186,7 +186,8 @@ bool Manipulator::cartesianPath(const PoseSequence& worldGoalPoses, const Eigen:
 		trellis[i] = IK(worldGoalPoses[i], robotTworld, currentState);
 		if (trellis[i].empty())
 		{
-			ROS_WARN_STREAM("Unable to compute Cartesian trajectory: no IK solution found for (world frame):\n" << worldGoalPoses[i].matrix());
+			ROS_WARN_STREAM("Unable to compute Cartesian trajectory: no IK solution found for (world frame):\n"
+			<< worldGoalPoses[i].translation().transpose() << "\t" << Eigen::Quaterniond(worldGoalPoses[i].linear()).coeffs().transpose());
 			return false;
 		}
 	}

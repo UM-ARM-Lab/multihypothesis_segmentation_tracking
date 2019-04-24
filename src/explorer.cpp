@@ -146,6 +146,8 @@ void setAlpha(visualization_msgs::MarkerArray& ma, const float alpha)
 	}
 }
 
+const std::string DEFAULT_TRAJECTORY_SERVER = "follow_joint_trajectory";
+
 class SceneExplorer
 {
 public:
@@ -195,6 +197,7 @@ public:
 	SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 
 	robot_state::RobotState getCurrentRobotState();
+	trajectory_msgs::JointTrajectory fillMissingJointTrajectories(const trajectory_msgs::JointTrajectory& trajIn);
 	std::map<ObjectIndex, Eigen::Affine3d> followObjects(const std::shared_ptr<Motion>& motion, const Tracker* track);
 	bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::RobotState& recoveryState);
 
@@ -219,6 +222,57 @@ robot_state::RobotState SceneExplorer::getCurrentRobotState()
 	currentState.update();
 
 	return currentState;
+}
+
+trajectory_msgs::JointTrajectory SceneExplorer::fillMissingJointTrajectories(const trajectory_msgs::JointTrajectory& trajIn)
+{
+	trajectory_msgs::JointTrajectory trajOut = trajIn;
+	std::string executor_name = ros::names::resolve(DEFAULT_TRAJECTORY_SERVER, true);
+	const std::size_t found = executor_name.find_last_of('/');
+	if (found == std::string::npos)
+	{
+		// Unable to lookup list of joints
+		return trajOut;
+	}
+
+	std::string executor_ns = executor_name.substr(0, found);
+	std::vector<std::string> controller_joint_names;
+	ros::NodeHandle nh;
+	nh.param(executor_ns + "/" + "joints", controller_joint_names, controller_joint_names);
+	if (controller_joint_names.empty())
+	{
+		return trajOut;
+	}
+
+	for (const auto& jName : trajOut.joint_names)
+	{
+		if (std::find(controller_joint_names.begin(), controller_joint_names.end(), jName) == controller_joint_names.end())
+		{
+			ROS_ERROR_STREAM("Joint '" << jName << "' is not listed as controlled by '" << executor_ns << "'.");
+			return trajOut;
+		}
+	}
+
+	robot_state::RobotState currentState = getCurrentRobotState();
+
+	for (const auto& jName : controller_joint_names)
+	{
+		if (std::find(trajOut.joint_names.begin(), trajOut.joint_names.end(), jName) == trajOut.joint_names.end())
+		{
+			double pos = currentState.getJointPositions(jName)[0];
+			trajOut.joint_names.push_back(jName);
+
+			for (auto& pt : trajOut.points)
+			{
+				if (!pt.positions.empty()) { pt.positions.push_back(pos); }
+				if (!pt.velocities.empty()) { pt.velocities.push_back(0); }
+				if (!pt.accelerations.empty()) { pt.accelerations.push_back(0); }
+//				if (!pt.effort.empty()) { pt.effort.push_back(0); }
+			}
+		}
+	}
+
+	return trajOut;
 }
 
 std::map<ObjectIndex, Eigen::Affine3d> SceneExplorer::followObjects(const std::shared_ptr<Motion>& motion, const Tracker* track)
@@ -326,7 +380,17 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		if (armAction)
 		{
 			control_msgs::FollowJointTrajectoryGoal goal;
-			goal.trajectory = armAction->cmd;
+			goal.trajectory = fillMissingJointTrajectories(armAction->cmd);
+			for (const auto& jName : goal.trajectory.joint_names)
+			{
+				control_msgs::JointTolerance tol;
+				tol.name = jName;
+				tol.position = 0.1;
+				tol.velocity = 0.5;
+				tol.acceleration = 1.0;
+				goal.goal_tolerance.push_back(tol);
+			}
+			goal.goal_time_tolerance = ros::Duration(30.0);
 
 			std::cerr << "Sending joint trajectory." << std::endl;
 
@@ -339,7 +403,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 				}
 				else if (res.state_!=actionlib::SimpleClientGoalState::SUCCEEDED)
 				{
-					ROS_ERROR_STREAM("Trajectory following failed: " << res.text_);
+					ROS_ERROR_STREAM("Trajectory following failed: " << res.toString() << " '" << res.text_ << "'; " << trajectoryClient->getResult()->error_code << trajectoryClient->getResult()->error_string);
 				}
 
 				planner->computePlanningScene(false);
@@ -372,7 +436,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			}
 			else
 			{
-				throw std::runtime_error("Unknown gripper.");
+				throw std::logic_error("Unknown gripper.");
 			}
 
 
@@ -886,8 +950,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		139  69  19
 
 		// Display move(s?)
-		displayPub.publish(visualize(res.first, true));
-		sleep(3);
+//		displayPub.publish(visualize(res.first, true));
+//		sleep(3);
 	}
 
 	waitKey(10);
@@ -1159,7 +1223,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	ros::Duration(1.0).sleep();
 	completionClient = std::make_shared<VoxelCompleter>(nh);
 	segmentationClient = std::make_shared<RGBDSegmenter>(nh);
-	trajectoryClient = std::make_unique<SceneExplorer::TrajectoryClient>("follow_joint_trajectory", true);
+	trajectoryClient = std::make_unique<SceneExplorer::TrajectoryClient>(DEFAULT_TRAJECTORY_SERVER, true);
 	if (!trajectoryClient->waitForServer(ros::Duration(3.0)))
 	{
 		ROS_WARN("Trajectory server not connected.");
