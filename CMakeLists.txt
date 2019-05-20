@@ -9,7 +9,6 @@ add_compile_options(-std=c++14)
 find_package(catkin REQUIRED COMPONENTS
   gazebo_msgs
   moveit_core
-  mps_voxels
   tf_conversions
 )
 
@@ -105,7 +104,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES mps_interactive_segmentation
-#  CATKIN_DEPENDS moveit_core mps_voxels
+#  CATKIN_DEPENDS moveit_core
 #  DEPENDS system_lib
 )
 

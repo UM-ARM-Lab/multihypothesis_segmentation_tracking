@@ -51,7 +51,6 @@
   <buildtool_depend>catkin</buildtool_depend>
   <depend>gazebo_msgs</depend>
   <depend>moveit_core</depend>
-  <depend>mps_voxels</depend>
   <depend>tf_conversions</depend>
 
   <test_depend>controller_manager</test_depend>
