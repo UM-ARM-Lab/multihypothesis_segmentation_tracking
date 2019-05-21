@@ -1144,6 +1144,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	else
 	{
 		ros::Duration(5).sleep();
+		ROS_WARN_ONCE("Trajectory action server is not connected. No trajectory will be executed.");
 	}
 
 	PROFILE_RECORD("Execution");
@@ -1367,7 +1368,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 			wall->size[2] = 3;
 			Eigen::Affine3d pose = Eigen::Affine3d::Identity();
 			pose.translation() = Eigen::Vector3d(2.0, 1.0, ((0==i)?1.0:-1.0));
-			scenario->staticObstacles.push_back({wall, tableTmocap*pose});
+//			scenario->staticObstacles.push_back({wall, tableTmocap*pose});  //Kun: in Gazebo, we don't need to consider the monitors.
 		}
 		auto table = std::make_shared<shapes::Box>();
 		table->size[0] = 0.8;
