@@ -469,10 +469,10 @@
         <kinematic>0</kinematic>
         <gravity>1</gravity>
       </link>
-      <pose frame=''>0.889416 0.004944 1.1 0 -0 0</pose>
+        <pose frame=''>0.885023 0.00441 0.814993 6e-06 5.5e-05 0.021482</pose>
     </model>
     <light name='user_spot_light_0' type='spot'>
-      <pose frame=''>0.522747 0.050043 1 0 -0 0</pose>
+        <pose frame=''>0 0 20 0 -0 0</pose>
       <diffuse>0.5 0.5 0.5 1</diffuse>
       <specular>0.1 0.1 0.1 1</specular>
       <direction>0 0 -1</direction>
@@ -709,7 +709,7 @@
         <kinematic>0</kinematic>
         <gravity>1</gravity>
       </link>
-      <pose frame=''>0.89487 0.221298 0 0 -0 0</pose>
+        <pose frame=''>0.894866 0.221007 0.813987 0 -0 0.000157</pose>
     </model>
     <model name='wood_cube_7_5cm'>
       <link name='link'>
@@ -772,7 +772,7 @@
         <kinematic>0</kinematic>
         <gravity>1</gravity>
       </link>
-      <pose frame=''>0.824481 0.018756 0 0 -0 0</pose>
+        <pose frame=''>0.636134 0.143221 0.851495 -1.5708 -0 -1.25089</pose>
     </model>
     <model name='plastic_cup'>
       <link name='link'>
@@ -837,7 +837,7 @@
         <kinematic>0</kinematic>
         <gravity>1</gravity>
       </link>
-      <pose frame=''>0.822758 0.402399 0 0 -0 0</pose>
+        <pose frame=''>0.512577 0.107329 0.833828 1.49593 0.182468 2.48771</pose>
     </model>
     <model name='coke_can_0'>
       <link name='link'>
@@ -887,7 +887,7 @@
         <kinematic>0</kinematic>
         <gravity>1</gravity>
       </link>
-      <pose frame=''>0.918411 0.357101 0 0 -0 0</pose>
+        <pose frame=''>0.764882 0.239238 0.812594 -0.008978 -0.031792 1.57438</pose>
     </model>
     <model name='beer_0'>
       <link name='link'>
@@ -943,7 +943,7 @@
         <kinematic>0</kinematic>
         <gravity>1</gravity>
       </link>
-      <pose frame=''>0.966711 0.471729 0 0 -0 0</pose>
+        <pose frame=''>0.966704 0.471795 0.814995 2.4e-05 8.9e-05 -0.000691</pose>
     </model>
     <model name='tube_2_25cm'>
       <link name='link'>
@@ -1002,7 +1002,7 @@
         <kinematic>0</kinematic>
         <gravity>1</gravity>
       </link>
-      <pose frame=''>0.92514 0.186547 0 0 -0 0</pose>
+        <pose frame=''>1.05718 0.136511 0.826258 -1.56028 -0.588961 0.959383</pose>
     </model>
     <model name='wood_cube_5cm'>
       <link name='link'>
@@ -1065,7 +1065,7 @@
         <kinematic>0</kinematic>
         <gravity>1</gravity>
       </link>
-      <pose frame=''>0.845477 -0.199466 0 0 -0 0</pose>
+        <pose frame=''>0.845935 -0.19949 0.813999 0 0 -0.002461</pose>
     </model>
     <model name='beer_1'>
       <link name='link'>
@@ -1121,7 +1121,7 @@
         <kinematic>0</kinematic>
         <gravity>1</gravity>
       </link>
-      <pose frame=''>0.608107 -0.065343 0 0 -0 0</pose>
+        <pose frame=''>0.77922 -0.029438 0.87 -1.5708 1.44617 3.04051</pose>
     </model>
     <model name='cinder_block_2'>
       <link name='link'>
@@ -1284,7 +1284,7 @@
         <kinematic>0</kinematic>
         <gravity>1</gravity>
       </link>
-      <pose frame=''>1.39833 0.238285 0 0 -0 0</pose>
+        <pose frame=''>0.756867 0.278892 0.926668 -0.598568 0.000168 0.203423</pose>
     </model>
     <model name='coke_can_1'>
       <link name='link'>
@@ -1334,7 +1334,7 @@
         <kinematic>0</kinematic>
         <gravity>1</gravity>
       </link>
-      <pose frame=''>1.10858 -0.225651 0 0 -0 0</pose>
+        <pose frame=''>1.10858 -0.225661 0.812425 -0.011211 0.004041 0.003462</pose>
     </model>
   </world>
 </sdf>
