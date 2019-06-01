@@ -51,6 +51,7 @@
 
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
+#include <std_msgs/Int64.h>
 
 #include <control_msgs/FollowJointTrajectoryAction.h>
 #include <actionlib/client/simple_action_client.h>
@@ -100,6 +101,13 @@
 
 sensor_msgs::JointState::ConstPtr latestJoints;
 std::mutex joint_mtx;
+
+int mostAmbNode;
+void manCallback(const std_msgs::Int64::ConstPtr& msg)
+{
+    mostAmbNode = msg->data;
+    ROS_DEBUG_ONCE("Most Amb Node callback!");
+}
 
 void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 {
@@ -172,6 +180,7 @@ public:
 	ros::Publisher octreePub;
 	ros::Publisher displayPub;
 	ros::Publisher pcPub;
+	ros::Subscriber indexofinterestSub;
 	std::unique_ptr<image_transport::Publisher> segmentationPub;
 	std::unique_ptr<image_transport::Publisher> targetPub;
 
@@ -180,6 +189,8 @@ public:
 	std::unique_ptr<message_filters::Subscriber<sensor_msgs::CameraInfo>> cam_sub;
 	std::unique_ptr<message_filters::Synchronizer<SyncPolicy>> sync;
 
+    std::unique_ptr<ros::CallbackQueue> sensor_queue;
+    std::unique_ptr<ros::AsyncSpinner> sensor_spinner;
 	std::unique_ptr<tf::TransformListener> listener;
 	std::unique_ptr<tf::TransformBroadcaster> broadcaster;
 
@@ -193,6 +204,7 @@ public:
 
 	double planning_time = 60.0;
 	int planning_samples = 25;
+//	int mostAmbNode = -1;
 	std::string experiment_id;
 	std::string experiment_dir;
 	ros::ServiceClient externalVideoClient;
@@ -210,7 +222,7 @@ public:
 	void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	               const sensor_msgs::ImageConstPtr& depth_msg,
 	               const sensor_msgs::CameraInfoConstPtr& cam_msg);
-
+//    void manCallback(const std_msgs::Int64& msg);
 	moveit_msgs::DisplayTrajectory visualize(const std::shared_ptr<Motion>& motion, const bool primaryOnly = false);
 };
 
@@ -374,13 +386,20 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 
 		std::unique_ptr<CaptureGuard> captureGuard; ///< RAII-style stopCapture() for various exit paths
 
-		if (isPrimaryAction)
-		{
-			captureGuard = std::make_unique<CaptureGuard>(tracker.get());
-			auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
-			if (cache) { cache->cache.clear(); }
-			tracker->startCapture();
-		}
+//		if (isPrimaryAction)
+//		{
+//			captureGuard = std::make_unique<CaptureGuard>(tracker.get());
+//			auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
+//			if (cache) { cache->cache.clear(); }
+//			tracker->startCapture();
+//		}
+        if (a == 1)
+        {
+            captureGuard = std::make_unique<CaptureGuard>(tracker.get());
+            auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
+            if (cache) { cache->cache.clear(); }
+            tracker->startCapture();
+        }
 
 		auto armAction = std::dynamic_pointer_cast<JointTrajectoryAction>(action);
 		if (armAction)
@@ -454,18 +473,30 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			ros::Duration(2.0).sleep();
 		}
 
-		if (isPrimaryAction)
-		{
-			tracker->stopCapture();
-
-			std::vector<ros::Time> steps;
-			for (auto iter = tracker->rgb_buffer.begin(); iter != tracker->rgb_buffer.end(); std::advance(iter, 5))
-			{
-				steps.push_back(iter->first);
-			}
-
+//		if (isPrimaryAction)
+//		{
+//			tracker->stopCapture();
+//
+//			std::vector<ros::Time> steps;
+//			for (auto iter = tracker->rgb_buffer.begin(); iter != tracker->rgb_buffer.end(); std::advance(iter, 5))
+//			{
+//				steps.push_back(iter->first);
+//			}
+//
 //			tracker->track(steps);
-		}
+//		}
+        if (a == compositeAction->actions.size())
+        {
+            tracker->stopCapture();
+
+            std::vector<ros::Time> steps;
+            for (auto iter = tracker->rgb_buffer.begin(); iter != tracker->rgb_buffer.end(); std::advance(iter, 5))
+            {
+                steps.push_back(iter->first);
+            }
+
+            tracker->track(steps);
+        }
 	}
 	return true;
 }
@@ -497,6 +528,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.020f, 1);
 	scene->minExtent = minExtent;//.head<3>().cast<double>();
 	scene->maxExtent = maxExtent;//.head<3>().cast<double>();
+
+	mostAmbNode = -1;
 
 	PROFILE_START("Preprocess Scene");
 
@@ -591,15 +624,38 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 
 
-		int matchID = -1;
-		matchID = targetDetector->matchGoalSegment(targetMask, scene->segInfo->objectness_segmentation->image);
-		if (matchID >= 0)
-		{
-			scene->targetObjectID = std::make_shared<ObjectIndex>(scene->labelToIndexLookup.at((unsigned)matchID));
-			std::cerr << "**************************" << std::endl;
-			std::cerr << "Found target: " << matchID << " -> " << scene->targetObjectID->id << std::endl;
-			std::cerr << "**************************" << std::endl;
-		}
+//		int matchID = -1;
+//		matchID = targetDetector->matchGoalSegment(targetMask, scene->segInfo->objectness_segmentation->image);
+//		if (matchID >= 0)
+//		{
+//			scene->targetObjectID = std::make_shared<ObjectIndex>(scene->labelToIndexLookup.at((unsigned)matchID));
+//			std::cerr << "**************************" << std::endl;
+//			std::cerr << "Found target: " << matchID << " -> " << scene->targetObjectID->id << std::endl;
+//			std::cerr << "**************************" << std::endl;
+//		}
+//        if (mostAmbNode >= 0)
+//        {
+//            ObjectIndex manidx;
+//            manidx.id=(unsigned)mostAmbNode;
+//            scene->targetObjectID = std::make_shared<ObjectIndex>(manidx);
+//        }
+        if (mostAmbNode >= 0)
+        {
+            auto res = scene->labelToIndexLookup.find((unsigned)mostAmbNode);
+            if (res == scene->labelToIndexLookup.end())
+            {
+                ROS_ERROR_STREAM("Most ambiguous node '" << mostAmbNode << "' is not in the label to object map.");
+            }
+            else
+            {
+                //scene->targetObjectID = std::make_shared<ObjectIndex>(res->second);
+//                std::cerr<<"Target is set to '"<< (scene->targetObjectID)->id << "' successfully. (label: "<<mostAmbNode <<")"<<std::endl;
+            }
+        }
+        else
+        {
+            ROS_ERROR_STREAM("Most ambiguous node '" << mostAmbNode << "' not received.");
+        }
 
 		if (targetPub->getNumSubscribers() > 0)
 		{
@@ -957,82 +1013,82 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_RECORD("Planning");
 
-	for (int i = 0; i < std::min(6, (int)motionQueue.size()/3); ++i)
-	{
-		const auto res = motionQueue.top().second;
-		const ObjectSampler sample = motionQueue.top().second.second.objectSampleInfo;
-		motionQueue.pop(); motionQueue.pop(); motionQueue.pop();
-
-		visualization_msgs::MarkerArray ma;
-		visualization_msgs::Marker m;
-		m.header.frame_id = globalFrame;
-		m.header.stamp = ros::Time::now();
-		m.action = visualization_msgs::Marker::ADD;
-		m.frame_locked = true;
-		m.id = 1;
-		m.pose.orientation.w = 1.0;
-
-		// Display sample point
-		m.type = visualization_msgs::Marker::CUBE;
-		m.ns = "sample_point";
-		m.scale.x = m.scale.y = m.scale.z = octree->getResolution();
-		m.pose.position.x = sample.samplePoint.x();
-		m.pose.position.y = sample.samplePoint.y();
-		m.pose.position.z = sample.samplePoint.z();
-		m.color.r = 1.0;
-		m.color.g = 0.0;
-		m.color.b = 1.0;
-		m.color.a = 1.0;
-
-
-		ma.markers.push_back(m);
-		for (auto& a : allMarkers.arrays)
-		{
-			float alpha = 0.05;
-			if ("map" == a.first) { alpha = 0.2; }
-			if (std::string::npos != a.first.find("completed")) { alpha = 0.2; }
-			setAlpha(a.second, alpha);
-		}
-		allMarkers[m.ns] = ma;
-		octreePub.publish(allMarkers.flatten());
-		sleep(1);
-
-		// Display sample ray
-		m.type = visualization_msgs::Marker::ARROW;
-		m.ns = "sample_ray";
-		m.points.resize(2);
-		m.points[1] = m.pose.position; // Copy target location to head
-		m.points[0].x = sample.cameraOrigin.x();
-		m.points[0].y = sample.cameraOrigin.y();
-		m.points[0].z = sample.cameraOrigin.z();
-		m.pose.position.x =  m.pose.position.y = m.pose.position.z = 0.0f;
-		m.scale.x /= 2.0;
-		m.scale.y *= 2.0;
-		m.scale.z = 0.1;
-		ma.markers.front() = m;
-
-		allMarkers[m.ns] = ma;
-		octreePub.publish(allMarkers.flatten());
-		sleep(1);
-
-		// Display sample object
-		setAlpha(allMarkers["completed_"+std::to_string(std::abs(sample.id.id))], 1.0);
-		octreePub.publish(allMarkers.flatten());
-		sleep(1);
+//	for (int i = 0; i < std::min(6, (int)motionQueue.size()/3); ++i)
+//	{
+//		const auto res = motionQueue.top().second;
+//		const ObjectSampler sample = motionQueue.top().second.second.objectSampleInfo;
+//		motionQueue.pop(); motionQueue.pop(); motionQueue.pop();
+//
+//		visualization_msgs::MarkerArray ma;
+//		visualization_msgs::Marker m;
+//		m.header.frame_id = globalFrame;
+//		m.header.stamp = ros::Time::now();
+//		m.action = visualization_msgs::Marker::ADD;
+//		m.frame_locked = true;
+//		m.id = 1;
+//		m.pose.orientation.w = 1.0;
+//
+//		// Display sample point
+//		m.type = visualization_msgs::Marker::CUBE;
+//		m.ns = "sample_point";
+//		m.scale.x = m.scale.y = m.scale.z = octree->getResolution();
+//		m.pose.position.x = sample.samplePoint.x();
+//		m.pose.position.y = sample.samplePoint.y();
+//		m.pose.position.z = sample.samplePoint.z();
+//		m.color.r = 1.0;
+//		m.color.g = 0.0;
+//		m.color.b = 1.0;
+//		m.color.a = 1.0;
+//
+//
 //		ma.markers.push_back(m);
-
-
-		for (auto& a : allMarkers.arrays)
-		{
-			setAlpha(a.second, 1.0);
-		}
-
-//		139  69  19
-
-		// Display move(s?)
-//		displayPub.publish(visualize(res.first, true));
-//		sleep(3);
-	}
+//		for (auto& a : allMarkers.arrays)
+//		{
+//			float alpha = 0.05;
+//			if ("map" == a.first) { alpha = 0.2; }
+//			if (std::string::npos != a.first.find("completed")) { alpha = 0.2; }
+//			setAlpha(a.second, alpha);
+//		}
+//		allMarkers[m.ns] = ma;
+//		octreePub.publish(allMarkers.flatten());
+//		sleep(1);
+//
+//		// Display sample ray
+//		m.type = visualization_msgs::Marker::ARROW;
+//		m.ns = "sample_ray";
+//		m.points.resize(2);
+//		m.points[1] = m.pose.position; // Copy target location to head
+//		m.points[0].x = sample.cameraOrigin.x();
+//		m.points[0].y = sample.cameraOrigin.y();
+//		m.points[0].z = sample.cameraOrigin.z();
+//		m.pose.position.x =  m.pose.position.y = m.pose.position.z = 0.0f;
+//		m.scale.x /= 2.0;
+//		m.scale.y *= 2.0;
+//		m.scale.z = 0.1;
+//		ma.markers.front() = m;
+//
+//		allMarkers[m.ns] = ma;
+//		octreePub.publish(allMarkers.flatten());
+//		sleep(1);
+//
+//		// Display sample object
+//		setAlpha(allMarkers["completed_"+std::to_string(std::abs(sample.id.id))], 1.0);
+//		octreePub.publish(allMarkers.flatten());
+//		sleep(1);
+////		ma.markers.push_back(m);
+//
+//
+//		for (auto& a : allMarkers.arrays)
+//		{
+//			setAlpha(a.second, 1.0);
+//		}
+//
+////		139  69  19
+//
+//		// Display move(s?)
+////		displayPub.publish(visualize(res.first, true));
+////		sleep(3);
+//	}
 
 	waitKey(10);
 
@@ -1164,6 +1220,12 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 }
 
+
+//void SceneExplorer::manCallback(const std_msgs::Int64& msg)
+//{
+//    this->mostAmbNode = msg.data;
+//}
+
 moveit_msgs::DisplayTrajectory SceneExplorer::visualize(const std::shared_ptr<Motion>& motion, const bool primaryOnly)
 {
 	moveit_msgs::DisplayTrajectory dt;
@@ -1178,7 +1240,7 @@ moveit_msgs::DisplayTrajectory SceneExplorer::visualize(const std::shared_ptr<Mo
 		auto actions = std::dynamic_pointer_cast<CompositeAction>(motion->action);
 		for (size_t idx = 0; idx < actions->actions.size(); ++idx)
 		{
-			if (primaryOnly && idx != actions->primaryAction) {continue;}
+			if (primaryOnly && static_cast<int>(idx) != actions->primaryAction) {continue;}
 
 			auto subTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[idx]);
 			if (subTraj)// && actions->primaryAction == static_cast<int>(idx))
@@ -1218,12 +1280,12 @@ moveit_msgs::DisplayTrajectory SceneExplorer::visualize(const std::shared_ptr<Mo
 
 SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 {
-	ros::CallbackQueue sensor_queue;
-	ros::AsyncSpinner sensor_spinner(1, &sensor_queue);
+    sensor_queue = std::make_unique<ros::CallbackQueue>();
+	sensor_spinner = std::make_unique<ros::AsyncSpinner>(1, sensor_queue.get());
 	listener = std::make_unique<tf::TransformListener>(ros::Duration(60.0));
 	broadcaster = std::make_unique<tf::TransformBroadcaster>();
 
-	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>("joint_states", 2, handleJointState, ros::VoidPtr(), &sensor_queue);
+	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>("joint_states", 2, handleJointState, ros::VoidPtr(), sensor_queue.get());
 	ros::Subscriber joint_sub = nh.subscribe(joint_sub_options);
 
 	setIfMissing(pnh, "frame_id", "table_surface");
@@ -1344,7 +1406,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	processor = std::make_unique<SceneProcessor>(scenario, use_memory, useShapeCompletion);
 
 	// Wait for joints, then set the current state as the return state
-	sensor_spinner.start();
+	sensor_spinner->start();
 	while(ros::ok())
 	{
 		usleep(100000);
@@ -1368,7 +1430,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 			wall->size[2] = 3;
 			Eigen::Affine3d pose = Eigen::Affine3d::Identity();
 			pose.translation() = Eigen::Vector3d(2.0, 1.0, ((0==i)?1.0:-1.0));
-//			scenario->staticObstacles.push_back({wall, tableTmocap*pose});  //Kun: in Gazebo, we don't need to consider the monitors.
+//			scenario->staticObstacles.push_back({wall, tableTmocap*pose});  // In Gazebo, we don't need to consider the monitors.
 		}
 		auto table = std::make_shared<shapes::Box>();
 		table->size[0] = 0.8;
@@ -1459,6 +1521,12 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	rgb_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.rgb_topic, options.buffer, options.hints);
 	depth_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.depth_topic, options.buffer, options.hints);
 	cam_sub = std::make_unique<message_filters::Subscriber<sensor_msgs::CameraInfo>>(options.nh, options.cam_topic, options.buffer);
+
+    auto man_sub_options = ros::SubscribeOptions::create<std_msgs::Int64>("/segment_rgbd/man", 2, manCallback, ros::VoidPtr(), sensor_queue.get());
+//    ros::SubscribeOptions man_sub_options;
+//    man_sub_options.init<std_msgs::Int64>("/segment_rgbd/man", 1, &SceneExplorer::manCallback);
+    indexofinterestSub = nh.subscribe(man_sub_options);
+//    indexofinterestSub = nh.subscribe("/segment_rgbd/man", 1, &SceneExplorer::manCallback, this);
 
 	sync = std::make_unique<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(options.buffer), *rgb_sub, *depth_sub, *cam_sub);
 	sync->registerCallback(boost::bind(&SceneExplorer::cloud_cb, this, _1, _2, _3));

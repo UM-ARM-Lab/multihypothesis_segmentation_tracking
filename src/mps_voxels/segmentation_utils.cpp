@@ -174,7 +174,7 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 				auto res = labelToIndexLookup->insert({pair.first, objID}); MPS_ASSERT(res.second);
 			}
 		}
-		else { std::cerr << "Rejected object " << pair.second << ": " << percentFilled*100.0 << "%." << std::endl; }
+		else { std::cerr << "Rejected object " << pair.first << ": " << percentFilled*100.0 << "%." << std::endl; }
 	}
 
 	return retVal;

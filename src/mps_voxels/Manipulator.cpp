@@ -171,7 +171,7 @@ bool Manipulator::cartesianPath(const PoseSequence& worldGoalPoses, const Eigen:
 	const auto stateCostFn = [&](const std::vector<double>& q){ return this->stateCost(q); };
 	const auto transitionCostFn = [&](const std::vector<double>& q1, const double t1, const std::vector<double>& q2, const double t2){ return this->transitionCost(q1, t1, q2, t2); };
 
-	std::vector<std::vector<std::vector<double>>> trellis;
+	std::vector<std::vector<std::vector<double>>> trellis;// 3d grid
 	std::vector<double> times(worldGoalPoses.size());
 //	double discretization = arm->getSolverInstance()->getSearchDiscretization();
 //	if (0 == discretization) { discretization = 1; }
