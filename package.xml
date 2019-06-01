@@ -60,6 +60,7 @@
   <test_depend>joint_trajectory_controller</test_depend>
   <test_depend>moveit_resources</test_depend>
   <test_depend>moveit_ros_visualization</test_depend>
+  <test_depend>moveit_simple_controller_manager</test_depend>
   <test_depend>position_controllers</test_depend>
   <test_depend>robot_state_publisher</test_depend>
   <test_depend>roslaunch</test_depend>
