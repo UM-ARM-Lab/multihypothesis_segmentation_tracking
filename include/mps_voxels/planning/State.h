@@ -7,6 +7,7 @@
 
 #include "mps_voxels/MotionModel.h"
 #include "mps_voxels/ObjectIndex.h"
+#include "mps_voxels/moveit_pose_type.h"
 
 #include <Eigen/StdVector>
 #include <Eigen/Geometry>
@@ -18,7 +19,7 @@
 class State
 {
 public:
-	using Pose = Eigen::Affine3d;
+	using Pose = moveit::Pose;
 	using Poses = std::map<ObjectIndex, Pose, std::less<>, Eigen::aligned_allocator<Pose>>;
 	Poses poses;
 };

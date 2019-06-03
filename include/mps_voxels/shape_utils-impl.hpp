@@ -27,6 +27,7 @@
 #include <octomap/OcTree.h>
 
 #include <vector>
+#include <type_traits>
 
 
 using K =            CGAL::Exact_predicates_inexact_constructions_kernel;

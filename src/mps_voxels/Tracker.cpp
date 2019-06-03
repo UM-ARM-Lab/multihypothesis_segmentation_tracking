@@ -11,6 +11,8 @@
 
 #include <tf/transform_listener.h>
 
+#include <numeric>
+
 void drawKeypoint(cv::Mat& display, const cv::KeyPoint& kp, const cv::Scalar& color)
 {
 	int radius = cvRound(kp.size/2); // KeyPoint::size is a diameter

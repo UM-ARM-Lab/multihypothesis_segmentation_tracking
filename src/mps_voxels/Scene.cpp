@@ -661,7 +661,7 @@ bool SceneProcessor::buildObjects(Scene& s)
 		Eigen::Vector3f min, max;
 		pcl::PointCloud<PointT>::Ptr transformed_cloud (new pcl::PointCloud<PointT>());
 		// You can either apply transform_1 or transform_2; they are the same
-		pcl::transformPointCloud (*s.cropped_cloud, *transformed_cloud, s.worldTcamera);
+		pcl::transformPointCloud (*s.cropped_cloud, *transformed_cloud, Eigen::Affine3d(s.worldTcamera));
 		getAABB(*transformed_cloud, min, max);
 		s.minExtent.head<3>() = min; s.maxExtent.head<3>() = max;
 	}

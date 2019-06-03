@@ -5,6 +5,8 @@
 #ifndef MPS_MANIPULATOR_H
 #define MPS_MANIPULATOR_H
 
+#include <mps_voxels/moveit_pose_type.h>
+
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/robot_state/robot_state.h>
 #include <moveit/robot_state/conversions.h>
@@ -20,7 +22,7 @@
 class Manipulator
 {
 public:
-	using Pose = Eigen::Affine3d;
+	using Pose = moveit::Pose;
 	using PoseSequence = std::vector<Pose, Eigen::aligned_allocator<Pose>>;
 
 	robot_model::RobotModelPtr pModel;
@@ -47,9 +49,9 @@ public:
 	                 trajectory_msgs::JointTrajectory& cmd, const int INTERPOLATE_STEPS = 15,
 	                 planning_scene::PlanningSceneConstPtr world = planning_scene::PlanningSceneConstPtr()) const;
 
-	std::vector<std::vector<double>> IK(const Eigen::Affine3d& worldGoalPose, const Eigen::Affine3d& robotTworld, const robot_state::RobotState& currentState) const;
+	std::vector<std::vector<double>> IK(const moveit::Pose& worldGoalPose, const moveit::Pose& robotTworld, const robot_state::RobotState& currentState) const;
 
-	bool cartesianPath(const PoseSequence& worldGoalPoses, const Eigen::Affine3d& robotTworld,
+	bool cartesianPath(const PoseSequence& worldGoalPoses, const moveit::Pose& robotTworld,
 	                   const robot_state::RobotState& currentState, trajectory_msgs::JointTrajectory& cmd) const;
 
 	bool grasp(const robot_state::RobotState& currentState, moveit_msgs::Grasp& grasp) const;

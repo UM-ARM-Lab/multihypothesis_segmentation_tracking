@@ -8,6 +8,8 @@
 
 #include <moveit/planning_scene/planning_scene.h>
 
+#include <memory>
+
 Manipulator::Manipulator(robot_model::RobotModelPtr _pModel,
                          robot_model::JointModelGroup* _arm,
                          robot_model::JointModelGroup* _gripper,
@@ -69,7 +71,7 @@ bool Manipulator::interpolate(const Pose& from, const Pose& to, PoseSequence& se
 	for (int i = 0; i<INTERPOLATE_STEPS; ++i)
 	{
 		double t = i/static_cast<double>(INTERPOLATE_STEPS-1);
-		Eigen::Affine3d interpPose = Eigen::Affine3d::Identity();
+		moveit::Pose interpPose = moveit::Pose::Identity();
 		interpPose.translation() = ((1.0-t)*from.translation())+(t*to.translation());
 		interpPose.linear() = qStart.slerp(t, qEnd).matrix();
 		sequence.push_back(interpPose);
@@ -127,21 +129,21 @@ bool Manipulator::interpolate(const robot_state::RobotState& currentState, const
 	return true;
 }
 
-std::vector<std::vector<double>> Manipulator::IK(const Eigen::Affine3d& worldGoalPose, const Eigen::Affine3d& robotTworld, const robot_state::RobotState& currentState) const
+std::vector<std::vector<double>> Manipulator::IK(const moveit::Pose& worldGoalPose, const moveit::Pose& robotTworld, const robot_state::RobotState& currentState) const
 {
 	std::vector<std::vector<double>> solutions;
 	const kinematics::KinematicsBaseConstPtr& solver = arm->getSolverInstance();
 	MPS_ASSERT(solver.get());
 
 	// NB: The (possibly dirty) frames in RobotState are not marked mutable, hence the const casting.
-	Eigen::Affine3d solverbaseTrobot = Eigen::Affine3d::Identity();
+	moveit::Pose solverbaseTrobot = moveit::Pose::Identity();
 	const_cast<robot_state::RobotState&>(currentState).updateLinkTransforms();
 	const_cast<robot_state::RobotState&>(currentState).setToIKSolverFrame(solverbaseTrobot, solver);
 
-	Eigen::Affine3d solvertipTgoal = currentState.getFrameTransform(solver->getTipFrame()).inverse(Eigen::Isometry) * currentState.getFrameTransform(this->palmName);
+	moveit::Pose solvertipTgoal = currentState.getFrameTransform(solver->getTipFrame()).inverse(Eigen::Isometry) * currentState.getFrameTransform(this->palmName);
 
 	// Convert to solver frame
-	Eigen::Affine3d pt_solver = solverbaseTrobot * robotTworld * worldGoalPose * solvertipTgoal.inverse(Eigen::Isometry);
+	moveit::Pose pt_solver = solverbaseTrobot * robotTworld * worldGoalPose * solvertipTgoal.inverse(Eigen::Isometry);
 
 	std::vector<geometry_msgs::Pose> targetPoses;
 	Eigen::Quaterniond q(pt_solver.linear());
@@ -157,7 +159,7 @@ std::vector<std::vector<double>> Manipulator::IK(const Eigen::Affine3d& worldGoa
 
 	std::vector<double> seed(arm->getVariableCount(), 0.0);
 	currentState.copyJointGroupPositions(arm, seed);
-	kinematics::KinematicsResult result;
+	kinematics::KinematicsResult result; // NOLINT(cppcoreguidelines-pro-type-member-init)
 	kinematics::KinematicsQueryOptions options;
 	options.discretization_method = kinematics::DiscretizationMethod::ALL_DISCRETIZED;
 	solver->getPositionIK(targetPoses, seed, solutions, result, options);
@@ -165,7 +167,7 @@ std::vector<std::vector<double>> Manipulator::IK(const Eigen::Affine3d& worldGoa
 	return solutions;
 }
 
-bool Manipulator::cartesianPath(const PoseSequence& worldGoalPoses, const Eigen::Affine3d& robotTworld,
+bool Manipulator::cartesianPath(const PoseSequence& worldGoalPoses, const moveit::Pose& robotTworld,
                                 const robot_state::RobotState& currentState, trajectory_msgs::JointTrajectory& cmd) const
 {
 	const auto stateCostFn = [&](const std::vector<double>& q){ return this->stateCost(q); };
