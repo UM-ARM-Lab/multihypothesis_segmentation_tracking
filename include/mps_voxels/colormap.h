@@ -13,6 +13,7 @@
 #define MPS_COLORMAP_H
 
 #include <algorithm>
+#include <cmath>
 
 namespace igl
 {

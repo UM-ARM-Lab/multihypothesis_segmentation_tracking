@@ -8,6 +8,8 @@
 #include <boost/graph/dijkstra_shortest_paths.hpp>
 #include <boost/property_map/transform_value_property_map.hpp>
 
+#include <deque>
+
 
 struct found_goal {}; // exception for termination
 

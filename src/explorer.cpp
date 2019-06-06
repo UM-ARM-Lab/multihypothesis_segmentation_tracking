@@ -122,7 +122,7 @@ void operator+=(std::vector<T> &v1, const std::vector<T> &v2)
 	v1.insert(v1.end(), v2.begin(), v2.end());
 }
 
-void insertDirect(const octomap::point3d_collection& points, const Eigen::Affine3d& T, octomap::OcTree* tree)
+void insertDirect(const octomap::point3d_collection& points, const moveit::Pose& T, octomap::OcTree* tree)
 {
 	for (const auto& p : points)
 	{
@@ -216,7 +216,7 @@ public:
 
 	robot_state::RobotState getCurrentRobotState();
 	trajectory_msgs::JointTrajectory fillMissingJointTrajectories(const trajectory_msgs::JointTrajectory& trajIn);
-	std::map<ObjectIndex, Eigen::Affine3d> followObjects(const std::shared_ptr<Motion>& motion, const Tracker* track);
+	std::map<ObjectIndex, moveit::Pose> followObjects(const std::shared_ptr<Motion>& motion, const Tracker* track);
 	bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::RobotState& recoveryState);
 
 	void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
@@ -293,11 +293,11 @@ trajectory_msgs::JointTrajectory SceneExplorer::fillMissingJointTrajectories(con
 	return trajOut;
 }
 
-std::map<ObjectIndex, Eigen::Affine3d> SceneExplorer::followObjects(const std::shared_ptr<Motion>& motion, const Tracker* track)
+std::map<ObjectIndex, moveit::Pose> SceneExplorer::followObjects(const std::shared_ptr<Motion>& motion, const Tracker* track)
 {
-	Eigen::Affine3d worldTstart = Eigen::Affine3d::Identity();
-	Eigen::Affine3d worldTend = Eigen::Affine3d::Identity();
-	Eigen::Affine3d worldTobject_init = Eigen::Affine3d::Identity(); // Object pose at the initial time
+	moveit::Pose worldTstart = moveit::Pose::Identity();
+	moveit::Pose worldTend = moveit::Pose::Identity();
+	moveit::Pose worldTobject_init = moveit::Pose::Identity(); // Object pose at the initial time
 
 #ifdef USE_PLAN_POSES
 	// Compute the motion transform from the initial hand pose to the final
@@ -330,10 +330,10 @@ std::map<ObjectIndex, Eigen::Affine3d> SceneExplorer::followObjects(const std::s
 		{
 			isGrasping = true;
 			std::cerr << "Is grasping!" << std::endl;
-			const Eigen::Affine3d Tstart = qStart.getFrameTransform(manip->palmName);
-			const Eigen::Affine3d Tend = qEnd.getFrameTransform(manip->palmName);
+			const moveit::Pose Tstart = qStart.getFrameTransform(manip->palmName);
+			const moveit::Pose Tend = qEnd.getFrameTransform(manip->palmName);
 
-			const Eigen::Affine3d Tdist = Tstart.inverse(Eigen::Isometry)*Tend;
+			const moveit::Pose Tdist = Tstart.inverse(Eigen::Isometry)*Tend;
 			double dist = Tdist.translation().norm()+2.0*Eigen::Quaterniond(Tdist.rotation()).vec().norm();
 
 			if (dist>maxDist)
@@ -348,7 +348,7 @@ std::map<ObjectIndex, Eigen::Affine3d> SceneExplorer::followObjects(const std::s
 
 	auto worldTobject_final = worldTend * worldTstart.inverse(Eigen::Isometry) * worldTobject_init;
 
-	std::map<ObjectIndex, Eigen::Affine3d> trajs;
+	std::map<ObjectIndex, moveit::Pose> trajs;
 	if (isGrasping)
 	{
 		trajs.insert({motion->targets.front(), worldTobject_final});
@@ -1160,7 +1160,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			}
 
 			const auto& action = std::dynamic_pointer_cast<JointTrajectoryAction>(compositeAction->actions[compositeAction->primaryAction]);
-			std::map<ObjectIndex, Eigen::Affine3d> objTrajs = followObjects(motion, tracker.get());
+			std::map<ObjectIndex, moveit::Pose> objTrajs = followObjects(motion, tracker.get());
 			for (int iter = 0; iter < 1; ++iter)
 			{
 				tf::Transform temp;
@@ -1419,7 +1419,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	{
 		tf::StampedTransform tableFrameInMocapCoordinates;
 		listener->lookupTransform(mapServer->getWorldFrame(), mocapFrame, ros::Time(0), tableFrameInMocapCoordinates);
-		Eigen::Affine3d tableTmocap;
+		moveit::Pose tableTmocap;
 		tf::transformTFToEigen(tableFrameInMocapCoordinates, tableTmocap);
 
 		for (int i = 0; i < 2; ++i)
@@ -1428,7 +1428,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 			wall->size[0] = 5;
 			wall->size[1] = 0.1;
 			wall->size[2] = 3;
-			Eigen::Affine3d pose = Eigen::Affine3d::Identity();
+			moveit::Pose pose = moveit::Pose::Identity();
 			pose.translation() = Eigen::Vector3d(2.0, 1.0, ((0==i)?1.0:-1.0));
 //			scenario->staticObstacles.push_back({wall, tableTmocap*pose});  // In Gazebo, we don't need to consider the monitors.
 		}
@@ -1436,7 +1436,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 		table->size[0] = 0.8;
 		table->size[1] = 1.2;
 		table->size[2] = 0.1;
-		Eigen::Affine3d pose = Eigen::Affine3d::Identity();
+		moveit::Pose pose = moveit::Pose::Identity();
 		pose.translation() = Eigen::Vector3d(0, 0, -table->size[2]/2.0);
 		scenario->staticObstacles.push_back({table, pose});
 	}

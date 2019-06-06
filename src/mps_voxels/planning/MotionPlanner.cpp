@@ -35,7 +35,7 @@ State stateFactory(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects
 	return objectState;
 }
 
-bool arePointsInHandRegion(const octomap::OcTree* tree, const Eigen::Affine3d& palmTworld)
+bool arePointsInHandRegion(const octomap::OcTree* tree, const moveit::Pose& palmTworld)
 {
 	Eigen::Vector3d aabbMin(-0.05, -0.05, 0.0);
 	Eigen::Vector3d aabbMax(0.05, 0.05, 0.1);
@@ -59,10 +59,10 @@ bool arePointsInHandRegion(const octomap::OcTree* tree, const Eigen::Affine3d& p
 	return false;
 }
 
-bool arePointsInHandRegion(const Manipulator* manip, const octomap::OcTree* tree, const robot_state::RobotState& state, const Eigen::Affine3d& robotTworld)
+bool arePointsInHandRegion(const Manipulator* manip, const octomap::OcTree* tree, const robot_state::RobotState& state, const moveit::Pose& robotTworld)
 {
-	const Eigen::Affine3d& robotTpalm = state.getFrameTransform(manip->palmName);
-	const Eigen::Affine3d palmTworld = robotTpalm.inverse(Eigen::Isometry) * robotTworld;
+	const moveit::Pose& robotTpalm = state.getFrameTransform(manip->palmName);
+	const moveit::Pose palmTworld = robotTpalm.inverse(Eigen::Isometry) * robotTworld;
 
 	return arePointsInHandRegion(tree, palmTworld);
 }
@@ -136,7 +136,7 @@ std::priority_queue<MotionPlanner::RankedPose, std::vector<MotionPlanner::Ranked
 
 //		const Eigen::Vector2d c = maxNpt - (maxN/2.0*nHat) + a; ///< Midpoint between active edge and distal point
 		const Eigen::Vector2d c = (a+b)/2.0 + (maxN/2.0*nHat);// + vHat/2.0;
-		Eigen::Affine3d graspPose = Eigen::Affine3d::Identity();
+		moveit::Pose graspPose = moveit::Pose::Identity();
 		graspPose.translation().head<2>() = c;
 		graspPose.translation().z() = maxZ;
 		graspPose.linear().topLeftCorner<2,2>() << nHat, vHat;
@@ -594,7 +594,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	pushFrame.translation() = Eigen::Map<const Eigen::Vector3f>(&sampleInfo.collision(0)).cast<double>();
 
 //	trajectory_msgs::JointTrajectory cmd;
-	PoseSequence pushGripperFrames(2, Eigen::Affine3d::Identity());
+	PoseSequence pushGripperFrames(2, moveit::Pose::Identity());
 	const octomap::point3d_collection& segmentPoints = env->objects.at(sampleInfo.id)->points;
 
 	Eigen::Vector3d minProj = Eigen::Vector3d::Ones() * std::numeric_limits<float>::max();
@@ -634,7 +634,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	}
 
 	pushGripperFrames.erase(std::remove_if(pushGripperFrames.begin(), pushGripperFrames.end(),
-	                                 [&](const Eigen::Affine3d& p){ return !arePointsInHandRegion(tree, p.inverse(Eigen::Isometry));}),
+	                                 [&](const moveit::Pose& p){ return !arePointsInHandRegion(tree, p.inverse(Eigen::Isometry));}),
 	                        pushGripperFrames.end());
 	if (pushGripperFrames.empty())
 	{
@@ -669,7 +669,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 		PoseSequence pushTrajectory;
 		for (int s = -15; s < nSteps; ++s)
 		{
-			Eigen::Affine3d step = pushGripperFrame;
+			moveit::Pose step = pushGripperFrame;
 			step.translation() += s*stepSize*pushGripperFrame.linear().col(2);
 			pushTrajectory.push_back(step);
 		}
@@ -709,10 +709,10 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 			compositeAction->primaryAction = 3;
 
 			// Lay out the Cartesian Path
-			Eigen::Affine3d gripperApproachPose = pushTrajectory.front();
+			moveit::Pose gripperApproachPose = pushTrajectory.front();
 			gripperApproachPose.translation() += APPROACH_HEIGHT*Eigen::Vector3d::UnitZ();
 
-			Eigen::Affine3d gripperRetractPose = pushTrajectory.back();
+			moveit::Pose gripperRetractPose = pushTrajectory.back();
 			gripperRetractPose.translation() += APPROACH_HEIGHT*Eigen::Vector3d::UnitZ();
 
 			PoseSequence approachTrajectory, slideTrajectory, retractTrajectory, fullTrajectory;
@@ -841,7 +841,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 
 	while (!graspPoses.empty())
 	{
-		Eigen::Affine3d gripperPose = graspPoses.top().second;
+		moveit::Pose gripperPose = graspPoses.top().second;
 		graspPoses.pop();
 		gripperPose.linear() = gripperPose.linear() * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).matrix();
 		gripperPose.translation() -= PALM_DISTANCE*gripperPose.linear().col(2);
@@ -877,10 +877,10 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 					}
 				}
 
-				Eigen::Affine3d goalPose;
+				moveit::Pose goalPose;
 //				for (int attempt = 0; attempt < SAMPLE_ATTEMPTS; ++attempt)
 				{
-					goalPose = Eigen::Affine3d::Identity();
+					goalPose = moveit::Pose::Identity();
 					goalPose.linear() = goalPose.linear() * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).matrix();
 					goalPose.linear() = goalPose.linear() * Eigen::AngleAxisd(thetaDistr(env->scenario->rng), Eigen::Vector3d::UnitZ()).matrix();
 					goalPose.translation() = Eigen::Vector3d(xDistr(env->scenario->rng), yDistr(env->scenario->rng), gripperPose.translation().z());
@@ -908,10 +908,10 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 						compositeAction->primaryAction = 4;
 
 						// Lay out the Cartesian Path
-						Eigen::Affine3d gripperApproachPose = gripperPose;
+						moveit::Pose gripperApproachPose = gripperPose;
 						gripperApproachPose.translation() -= APPROACH_DISTANCE*gripperApproachPose.linear().col(2);
 
-						Eigen::Affine3d gripperRetractPose = goalPose;
+						moveit::Pose gripperRetractPose = goalPose;
 						gripperRetractPose.translation() -= APPROACH_DISTANCE*gripperRetractPose.linear().col(2);
 
 						PoseSequence approachTrajectory, slideTrajectory, retractTrajectory, fullTrajectory;
@@ -1065,7 +1065,7 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 
 	while (!graspPoses.empty())
 	{
-		Eigen::Affine3d gripperPose = graspPoses.top().second;
+		moveit::Pose gripperPose = graspPoses.top().second;
 		graspPoses.pop();
 		gripperPose.linear() = gripperPose.linear() * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).matrix();
 		gripperPose.translation() -= PALM_DISTANCE*gripperPose.linear().col(2);
@@ -1117,10 +1117,10 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 			compositeAction->primaryAction = 3;
 
 			// Lay out the Cartesian Path
-			Eigen::Affine3d gripperApproachPose = gripperPose;
+			moveit::Pose gripperApproachPose = gripperPose;
 			gripperApproachPose.translation() -= APPROACH_DISTANCE*gripperApproachPose.linear().col(2);
 
-			Eigen::Affine3d gripperRetractPose = gripperPose;
+			moveit::Pose gripperRetractPose = gripperPose;
 			gripperRetractPose.translation() -= APPROACH_DISTANCE*gripperRetractPose.linear().col(2);
 
 			PoseSequence approachTrajectory, retractTrajectory, fullTrajectory;

@@ -26,6 +26,8 @@
 
 #include <Eigen/StdVector>
 
+#include <random>
+
 class LocalOctreeServer;
 class VoxelCompleter;
 class RGBDSegmenter;
@@ -53,7 +55,7 @@ public:
 class Scenario
 {
 public:
-	using Pose = Eigen::Affine3d;
+	using Pose = moveit::Pose;
 	// Lifetime properties
 
 	tf::TransformListener* listener;
@@ -78,7 +80,7 @@ public:
 class Scene
 {
 public:
-	using Pose = Scenario::Pose;
+	using Pose = moveit::Pose;
 	using ObstructionList = std::map<ObjectIndex, double>;
 
 	// Per-instant properties

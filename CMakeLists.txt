@@ -4,6 +4,10 @@ project(mps_voxels)
 ## Compile as C++14
 add_compile_options(-std=c++14)
 
+## No, really. Use C++14 (If a prior package sets c++11, sometimes that will be used instead of 14)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
