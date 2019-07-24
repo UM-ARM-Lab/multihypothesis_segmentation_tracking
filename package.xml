@@ -50,6 +50,7 @@
   <!--   <doc_depend>doxygen</doc_depend> -->
   <buildtool_depend>catkin</buildtool_depend>
   <depend>gazebo_msgs</depend>
+  <depend>image_geometry</depend>
   <depend>moveit_core</depend>
   <depend>tf_conversions</depend>
 

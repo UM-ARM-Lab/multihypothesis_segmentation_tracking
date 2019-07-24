@@ -3,11 +3,30 @@ project(mps_interactive_segmentation)
 
 add_compile_options(-std=c++14)
 
+set(CMAKE_BUILD_TYPE RelWithDebInfo)
+#set(CMAKE_BUILD_TYPE Debug)
+
+macro(use_strict_compile_flags)
+  set(BUILD_FLAGS "-Wshadow -Wall -Wextra -Wpedantic -Werror=return-type")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${BUILD_FLAGS}")
+endmacro()
+
+use_strict_compile_flags()
+
+macro(use_openmp)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+  set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -lgomp")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -lgomp")
+endmacro()
+
+use_openmp()
+
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   gazebo_msgs
+  image_geometry
   moveit_core
   tf_conversions
 )
@@ -15,6 +34,9 @@ find_package(catkin REQUIRED COMPONENTS
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
+find_package(OpenCV REQUIRED)
+include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
+link_libraries(${OpenCV_LIBS})
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -102,10 +124,10 @@ find_package(catkin REQUIRED COMPONENTS
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES mps_interactive_segmentation
-#  CATKIN_DEPENDS moveit_core
-#  DEPENDS system_lib
+  #  INCLUDE_DIRS include
+  #  LIBRARIES mps_interactive_segmentation
+  #  CATKIN_DEPENDS moveit_core
+  #  DEPENDS system_lib
 )
 
 ###########
@@ -114,14 +136,18 @@ catkin_package(
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
+include_directories(
+  include
+)
+
 include_directories(SYSTEM
   ${catkin_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
-# add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/mps_interactive_segmentation.cpp
-# )
+add_library(${PROJECT_NAME}
+  src/${PROJECT_NAME}/GazeboMocap.cpp
+)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -145,6 +171,15 @@ add_dependencies(${PROJECT_NAME}_gazebo_mocap ${${PROJECT_NAME}_EXPORTED_TARGETS
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(${PROJECT_NAME}_gazebo_mocap
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+
+add_executable(${PROJECT_NAME}_gazebo_segmentation_gt test/system/gazebo_segmentation_gt.cpp)
+set_target_properties(${PROJECT_NAME}_gazebo_segmentation_gt PROPERTIES OUTPUT_NAME gazebo_segmentation_gt PREFIX "")
+add_dependencies(${PROJECT_NAME}_gazebo_segmentation_gt ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_gazebo_segmentation_gt
+  ${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
 
