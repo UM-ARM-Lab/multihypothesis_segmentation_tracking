@@ -4,6 +4,7 @@
 
 #include "mps_interactive_segmentation/GazeboMocap.h"
 
+#include "geometric_shapes/shapes.h"
 #include <geometric_shapes/shape_operations.h>
 #include <geometric_shapes/mesh_operations.h>
 #include <geometric_shapes/body_operations.h>
@@ -23,11 +24,18 @@
 #include <regex>
 #include <iterator>
 
-std::vector<double> splitParams(const std::string& /*text*/)
+std::vector<double> splitParams(const std::string& text) //one more element at the last
 {
-static std::regex ws_re("\\s+"); // whitespace
-
-return std::vector<double>{};
+	std::vector<double> result;
+	std::stringstream ss;
+	ss << text;
+	while (ss)
+	{
+		double temp;
+		ss >> temp;
+		result.push_back(temp);
+	}
+	return result;
 }
 
 template <typename PointT>
@@ -63,7 +71,6 @@ struct GazeboModel
 {
 	std::string name;
 
-	// TODO: Make one for each link...
 	std::map<std::string, bodies::BodyPtr> bodies;
 };
 
@@ -294,6 +301,13 @@ int main(int argc, char** argv)
 		GazeboModel mod;
 		mod.name = name;
 
+		// skip loading camera as a model
+		if (name == "kinect2_victor_head")
+		{
+			xModel = xModel->NextSiblingElement("model");
+			continue;
+		}
+
 		// Loop through all links in model
 		TiXmlElement* xLink = xModel->FirstChildElement("link");
 		while (xLink)
@@ -305,9 +319,11 @@ int main(int argc, char** argv)
 			TiXmlElement* xPose = xLink->FirstChildElement("pose");
 			if (xPose)
 			{
-				// TODO: Parse sequence as pose
-				pose.position.z = 0.115;
-				std::cerr << "Boo!" << std::endl;
+				std::cerr << xPose->GetText() << std::endl;
+				std::vector<double> posexyz = splitParams(xPose->GetText());
+				pose.position.x = posexyz[0];
+				pose.position.y = posexyz[1];
+				pose.position.z = posexyz[2];
 			}
 
 			TiXmlElement* xVisual = xLink->FirstChildElement("visual");
@@ -318,17 +334,21 @@ int main(int argc, char** argv)
 			TiXmlElement* xBox = xGeometry->FirstChildElement("box");
 			TiXmlElement* xCylinder = xGeometry->FirstChildElement("cylinder");
 			TiXmlElement* xMesh = xGeometry->FirstChildElement("mesh");
-			// TODO: Plane (shape_msgs::Plane)
+			TiXmlElement* xPlane = xGeometry->FirstChildElement("plane");
 
 			if (xBox)
 			{
-				// TODO: Use split() on getText; write primitive.dimensions
 				std::cerr << "Is Box!" << std::endl;
 				shape_msgs::SolidPrimitive primitive;
 				primitive.type = shape_msgs::SolidPrimitive::BOX;
-//				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_X] =
-				std::cerr << xBox->FirstChildElement("size")->GetText() << std::endl;
+				primitive.dimensions.resize(3);
+				std::vector<double> BoxXYZ = splitParams(xBox->FirstChildElement("size")->GetText());
+				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_X] = BoxXYZ[0];
+				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_Y] = BoxXYZ[1];
+				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_Z] = BoxXYZ[2];
 
+				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::constructBodyFromMsg(primitive, pose))});
+				shapeModels.push_back(mod);
 			}
 			else if (xCylinder)
 			{
@@ -348,17 +368,47 @@ int main(int argc, char** argv)
 			else if (xMesh)
 			{
 				std::cerr << "Is Mesh!" << std::endl;
+				const std::string model_path = "/home/kunhuang/.gazebo/models/";
+				std::string pathuri = xMesh->FirstChildElement("uri")->GetText();
+				std::stringstream ss;
+				ss << pathuri;
+				for (int k = 0; k < 8; k++)
+				{
+					char temp;
+					ss >> temp;
+				}
+				ss >> pathuri;
+				std::cerr << pathuri << std::endl;
+//				pathuri = "cinder_block_2/meshes/cinder_block.dae";
+
+				shapes::Mesh* m = shapes::createMeshFromResource("file://" + model_path + pathuri);
+				std::cerr << "Vertices: " << m->vertex_count << std::endl;
+				shapes::ShapeMsg mesh;
+				constructMsgFromShape(m, mesh);
+
+//				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::createBodyFromShape(m))});
+				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::constructBodyFromMsg(mesh, pose))});
+				shapeModels.push_back(mod);
+			}
+			else if (xPlane)
+			{
+				std::cerr << "Is Plane!" << std::endl;
+//				std::vector<double> planeNormal = splitParams(xPlane->FirstChildElement("normal")->GetText());
+//				shape_msgs::Plane plane;
+//				plane.coef[0] = planeNormal[0];
+//				plane.coef[1] = planeNormal[1];
+//				plane.coef[2] = planeNormal[2];
+//				plane.coef[3] = 0.0;
+//				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::constructBodyFromMsg(plane, pose))});
+//				shapeModels.push_back(mod);
 			}
 			else
 			{
 				ROS_WARN_STREAM("Unknown shape type: " << name << ".");
 			}
 
-
 			xLink = xLink->NextSiblingElement("link");
 		}
-
-
 		xModel = xModel->NextSiblingElement("model");
 	}
 
@@ -368,7 +418,13 @@ int main(int argc, char** argv)
 
     for (auto& model : models)
     {
-        mocap.markerOffsets.insert({{model, std::string("link")}, tf::StampedTransform(tf::Transform::getIdentity(), ros::Time(0), mocap.mocap_frame_id, model)});
+		// TODO: load link name instead of "link"
+		std::string linkname = "link";
+//		if (model == "kinect2_victor_head")
+//		{
+//			linkname = "kinect2_victor_head";
+//		}
+        mocap.markerOffsets.insert({{model, linkname}, tf::StampedTransform(tf::Transform::getIdentity(), ros::Time(0), mocap.mocap_frame_id, model)});
     }
 
 	Segmenter seg;
@@ -386,6 +442,12 @@ int main(int argc, char** argv)
 	    std::vector<GazeboModelState> states;
 	    for (const auto& shape : shapeModels)
 	    {
+	    	// TODO: Skip adding this shape based on the plugin camera info in world file
+//	    	if (shape.name == "kinect2_victor_head")
+//		    {
+//	    		continue;
+//		    }
+
 	    	for (const auto& pair : shape.bodies)
 		    {
 			    const tf::StampedTransform& stf = mocap.linkPoses.at({shape.name, pair.first});
@@ -394,7 +456,7 @@ int main(int argc, char** argv)
 			    tf::transformTFToEigen(stf, T);
 			    states.push_back({T});
 
-			    std::cerr << T.matrix() << std::endl;
+//			    std::cerr << T.matrix() << std::endl;
 		    }
 
 	    }
