@@ -367,6 +367,7 @@
     </gui>
     <model name='coke_can'>
       <link name='link'>
+        <pose frame=''>0.003937 0.004724 -0.18 0 -0 0</pose>
         <inertial>
           <mass>0.39</mass>
           <inertia>
@@ -379,11 +380,10 @@
           </inertia>
         </inertial>
         <collision name='collision'>
-          <pose frame=''>0.003937 0.004724 -0.18 0 -0 0</pose>
           <geometry>
             <mesh>
               <uri>model://coke_can/meshes/coke_can.dae</uri>
-              <scale>10 1 1</scale>
+              <scale>1 1 1</scale>
             </mesh>
           </geometry>
           <max_contacts>10</max_contacts>
@@ -401,11 +401,10 @@
           </surface>
         </collision>
         <visual name='visual'>
-          <pose frame=''>0.003937 0.004724 -0.18 0 -0 0</pose>
           <geometry>
             <mesh>
               <uri>model://coke_can/meshes/coke_can.dae</uri>
-              <scale>10 1 1</scale>
+              <scale>1 1 1</scale>
             </mesh>
           </geometry>
         </visual>
@@ -841,6 +840,7 @@
     </model>
     <model name='coke_can_0'>
       <link name='link'>
+        <pose frame=''>0.003937 0.004724 -0.18 0 -0 0</pose>
         <inertial>
           <mass>0.39</mass>
           <inertia>
@@ -853,7 +853,6 @@
           </inertia>
         </inertial>
         <collision name='collision'>
-          <pose frame=''>0.003937 0.004724 -0.18 0 -0 0</pose>
           <geometry>
             <mesh>
               <uri>model://coke_can/meshes/coke_can.dae</uri>
@@ -875,7 +874,6 @@
           </surface>
         </collision>
         <visual name='visual'>
-          <pose frame=''>0.003937 0.004724 -0.18 0 -0 0</pose>
           <geometry>
             <mesh>
               <uri>model://coke_can/meshes/coke_can.dae</uri>
@@ -1288,6 +1286,7 @@
     </model>
     <model name='coke_can_1'>
       <link name='link'>
+        <pose frame=''>0.003937 0.004724 -0.18 0 -0 0</pose>
         <inertial>
           <mass>0.39</mass>
           <inertia>
@@ -1300,7 +1299,6 @@
           </inertia>
         </inertial>
         <collision name='collision'>
-          <pose frame=''>0.003937 0.004724 -0.18 0 -0 0</pose>
           <geometry>
             <mesh>
               <uri>model://coke_can/meshes/coke_can.dae</uri>
@@ -1322,7 +1320,6 @@
           </surface>
         </collision>
         <visual name='visual'>
-          <pose frame=''>0.003937 0.004724 -0.18 0 -0 0</pose>
           <geometry>
             <mesh>
               <uri>model://coke_can/meshes/coke_can.dae</uri>

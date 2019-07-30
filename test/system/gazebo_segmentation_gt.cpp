@@ -3,14 +3,18 @@
 //
 
 #include "mps_interactive_segmentation/GazeboMocap.h"
+#include "mps_interactive_segmentation/GazeboModel.h"
 
 #include "geometric_shapes/shapes.h"
 #include <geometric_shapes/shape_operations.h>
 #include <geometric_shapes/mesh_operations.h>
 #include <geometric_shapes/body_operations.h>
+#include <geometric_shapes/shape_to_marker.h>
 
 #include <image_geometry/pinhole_camera_model.h>
 #include <sensor_msgs/CameraInfo.h>
+
+#include <visualization_msgs/MarkerArray.h>
 
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
@@ -21,8 +25,14 @@
 
 #include "tinyxml.h"
 
+#include <boost/algorithm/string.hpp>
+
 #include <regex>
 #include <iterator>
+
+#define DEBUG_MESH_LOADING true
+
+using mps::GazeboModel;
 
 std::vector<double> splitParams(const std::string& text) //one more element at the last
 {
@@ -66,13 +76,6 @@ cv::Mat colorByLabel(const cv::Mat& input)
 
 	return output;
 }
-
-struct GazeboModel
-{
-	std::string name;
-
-	std::map<std::string, bodies::BodyPtr> bodies;
-};
 
 struct GazeboModelState
 {
@@ -128,7 +131,7 @@ public:
 
 		Eigen::Isometry3d worldTcamera;
 		tf::transformTFToEigen(cameraPose, worldTcamera);
-		Eigen::Isometry3d cameraTworld = worldTcamera.inverse(Eigen::Isometry);
+//		Eigen::Isometry3d cameraTworld = worldTcamera.inverse(Eigen::Isometry);
 
 		auto roi = cameraModel.rectifiedRoi();
 
@@ -179,6 +182,13 @@ public:
 //		}
 
 		const int step = 1;
+
+		// TODO: Remove after debugging
+//		roi.y = 900; roi.height = 100;
+//		roi.x = 820; roi.width = 100;
+
+
+
 #pragma omp parallel for
 		for (int v = roi.y; v < roi.y+roi.height; /*++v*/v+=step)
 		{
@@ -204,10 +214,15 @@ public:
 					const GazeboModel& model = models[m];
 					const GazeboModelState& state = states[m];
 
-					for (const auto& body_pair : model.bodies)
+					Eigen::Isometry3d worldTshape = state.pose/* * body_pair.second->getPose()*/;
+					Eigen::Isometry3d shapeTworld = worldTshape.inverse(Eigen::Isometry);
+
+					const Eigen::Vector3d cam_body = shapeTworld * r0_world;
+					const Eigen::Vector3d dir_body = shapeTworld.linear() * rn_world;
+
+//					for (const auto& body_pair : model.bodies)
 					{
-						Eigen::Isometry3d worldTshape = state.pose/* * body_pair.second->getPose()*/;
-						Eigen::Isometry3d shapeTworld = worldTshape.inverse(Eigen::Isometry);
+
 
 //						tf::Transform temp;
 //						Eigen::Isometry3d cameraTshape = cameraTworld * worldTshape;
@@ -215,9 +230,6 @@ public:
 //						broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), cameraFrame, model.name + "_" + body_pair.first));
 //						tf::poseEigenToTF(cameraTworld, temp);
 //						broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), cameraFrame, worldFrame + "_inv"));
-
-						const Eigen::Vector3d cam_body = shapeTworld * r0_world;
-						const Eigen::Vector3d dir_body = shapeTworld.linear() * rn_world;
 
 //						Eigen::Isometry3d bodyTcam_origin = Eigen::Isometry3d::Identity(); bodyTcam_origin.translation() = cam_body;
 //						tf::poseEigenToTF(bodyTcam_origin, temp);
@@ -230,10 +242,14 @@ public:
 //						ros::spinOnce(); ros::Duration(0.1).sleep();
 
 						EigenSTL::vector_Vector3d intersections;
-						if (body_pair.second->intersectsRay(cam_body, dir_body, &intersections))
+						if (mps::rayIntersectsModel(cam_body, dir_body, model, intersections))
 						{
 							for (const Eigen::Vector3d &pt_body : intersections)
 							{
+//								Eigen::Isometry3d bodyTdirpt = Eigen::Isometry3d::Identity(); bodyTdirpt.translation() = pt_body;
+//								tf::poseEigenToTF(bodyTdirpt, temp);
+//								broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), "mocap_" + model.name, "intersect"));
+//								ros::spinOnce(); ros::Duration(0.1).sleep();
 //							const Eigen::Vector3d pt_world = worldTshape * pt_body;
 								double dist = dir_body.dot(pt_body - cam_body);
 								assert(dist >= 0.0);
@@ -271,10 +287,13 @@ int main(int argc, char** argv)
     ros::init(argc, argv, "gazebo_segmentation_gt");
     ros::NodeHandle pnh("~");
 
+    ros::Publisher debugPub = pnh.advertise<visualization_msgs::MarkerArray>("debug_shapes", 10, true);
+	visualization_msgs::MarkerArray debugShapes;
+
 	cv::namedWindow("segmentation", /*cv::WINDOW_AUTOSIZE | cv::WINDOW_KEEPRATIO | */cv::WINDOW_GUI_EXPANDED);
 
     // Load Gazebo world file and get meshes
-//	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/interseg_table_new.world";
+//	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/interseg_table.world";
 	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/experiment_world.world";
 
 	// TODO: Poses for shapes
@@ -301,8 +320,8 @@ int main(int argc, char** argv)
 		GazeboModel mod;
 		mod.name = name;
 
-		// skip loading camera as a model
-		if (name == "kinect2_victor_head")
+		// skip loading camera and table
+		if (name == "kinect2_victor_head" || name == "table")
 		{
 			xModel = xModel->NextSiblingElement("model");
 			continue;
@@ -314,6 +333,7 @@ int main(int argc, char** argv)
 		{
 			std::string linkName(xLink->Attribute("name"));
 
+			Eigen::Isometry3d eigenPose;
 			geometry_msgs::Pose pose;
 			pose.orientation.w = 1;
 			TiXmlElement* xPose = xLink->FirstChildElement("pose");
@@ -321,9 +341,22 @@ int main(int argc, char** argv)
 			{
 				std::cerr << xPose->GetText() << std::endl;
 				std::vector<double> posexyz = splitParams(xPose->GetText());
+//				assert(posexyz.size() == 6);
 				pose.position.x = posexyz[0];
 				pose.position.y = posexyz[1];
 				pose.position.z = posexyz[2];
+
+				Eigen::Quaterniond q(Eigen::AngleAxisd(posexyz[3], Eigen::Vector3d::UnitZ())
+			                       * Eigen::AngleAxisd(posexyz[4], Eigen::Vector3d::UnitY())
+				                   * Eigen::AngleAxisd(posexyz[5], Eigen::Vector3d::UnitX()));
+
+				pose.orientation.x = q.x();
+				pose.orientation.y = q.y();
+				pose.orientation.z = q.z();
+				pose.orientation.w = q.w();
+
+				eigenPose.translation() = Eigen::Map<Eigen::Vector3d>(posexyz.data());
+				eigenPose.linear() = q.matrix();
 			}
 
 			TiXmlElement* xVisual = xLink->FirstChildElement("visual");
@@ -347,6 +380,26 @@ int main(int argc, char** argv)
 				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_Y] = BoxXYZ[1];
 				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_Z] = BoxXYZ[2];
 
+				shapes::ShapePtr shapePtr(shapes::constructShapeFromMsg(primitive));
+
+#if DEBUG_MESH_LOADING
+				visualization_msgs::Marker marker;
+				shapes::constructMarkerFromShape(shapePtr.get(), marker, true);
+				// Do some more marker stuff here
+				marker.color.a = 1.0;
+				marker.color.r=rand()/(float)RAND_MAX;
+				marker.color.g=rand()/(float)RAND_MAX;
+				marker.color.b=rand()/(float)RAND_MAX;
+				marker.pose = pose;
+				marker.header.frame_id = "mocap_" + name; //"table_surface";
+				marker.header.stamp = ros::Time::now();
+				marker.ns = name;
+				marker.id = 1;
+				marker.frame_locked = true;
+				debugShapes.markers.push_back(marker);
+#endif
+
+				mod.shapes.insert({linkName, shapePtr});
 				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::constructBodyFromMsg(primitive, pose))});
 				shapeModels.push_back(mod);
 			}
@@ -360,8 +413,28 @@ int main(int argc, char** argv)
 				primitive.dimensions[shape_msgs::SolidPrimitive::CYLINDER_HEIGHT] = std::strtod(xCylinder->FirstChildElement("length")->GetText(), &end_ptr);
 				primitive.dimensions[shape_msgs::SolidPrimitive::CYLINDER_RADIUS] = std::strtod(xCylinder->FirstChildElement("radius")->GetText(), &end_ptr);
 
+				shapes::ShapePtr shapePtr(shapes::constructShapeFromMsg(primitive));
+
+#if DEBUG_MESH_LOADING
+				visualization_msgs::Marker marker;
+				shapes::constructMarkerFromShape(shapePtr.get(), marker, true);
+				// Do some more marker stuff here
+				marker.color.a = 1.0;
+				marker.color.r=rand()/(float)RAND_MAX;
+				marker.color.g=rand()/(float)RAND_MAX;
+				marker.color.b=rand()/(float)RAND_MAX;
+				marker.pose = pose;
+				marker.header.frame_id = "mocap_" + name; //"table_surface";
+				marker.header.stamp = ros::Time::now();
+				marker.ns = name;
+				marker.id = 1;
+				marker.frame_locked = true;
+				debugShapes.markers.push_back(marker);
+#endif
+
 //				shapes::Cylinder* s = dynamic_cast<shapes::Cylinder*>(shapes::constructShapeFromMsg(primitive));
 //				s->print(std::cerr);
+				mod.shapes.insert({linkName, shapePtr});
 				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::constructBodyFromMsg(primitive, pose))});
 				shapeModels.push_back(mod);
 			}
@@ -372,7 +445,7 @@ int main(int argc, char** argv)
 				std::string pathuri = xMesh->FirstChildElement("uri")->GetText();
 				std::stringstream ss;
 				ss << pathuri;
-				for (int k = 0; k < 8; k++)
+				for (int k = 0; k < 8; k++) // get rid of "model://"
 				{
 					char temp;
 					ss >> temp;
@@ -382,12 +455,45 @@ int main(int argc, char** argv)
 //				pathuri = "cinder_block_2/meshes/cinder_block.dae";
 
 				shapes::Mesh* m = shapes::createMeshFromResource("file://" + model_path + pathuri);
-				std::cerr << "Vertices: " << m->vertex_count << std::endl;
+				shapes::ShapePtr shapePtr(m);
+				if (name.find("coke_can") != std::string::npos)
+				{
+//					xLink = xLink->NextSiblingElement("link"); continue;
+					for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
+					{
+						m->vertices[i] /= 1000.0;
+					}
+				}
+				m->computeTriangleNormals();
+				m->computeVertexNormals();
+				std::cerr << "Vertices: " << m->vertex_count << ", Faces: " << m->triangle_count << std::endl;
+
 				shapes::ShapeMsg mesh;
 				constructMsgFromShape(m, mesh);
+				bodies::BodyPtr bodyPtr(bodies::constructBodyFromMsg(mesh, pose));
 
-//				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::createBodyFromShape(m))});
-				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::constructBodyFromMsg(mesh, pose))});
+				auto* cvx = dynamic_cast<bodies::ConvexMesh*>(bodyPtr.get());
+				if (cvx) { std::cerr << "Converted to convex mesh. :(" << std::endl; }
+
+#if DEBUG_MESH_LOADING
+				visualization_msgs::Marker marker;
+				shapes::constructMarkerFromShape(m, marker, true);
+				// Do some more marker stuff here
+				marker.color.a = 1.0;
+				marker.color.r=rand()/(float)RAND_MAX;
+				marker.color.g=rand()/(float)RAND_MAX;
+				marker.color.b=rand()/(float)RAND_MAX;
+				marker.pose = pose;
+				marker.header.frame_id = "mocap_" + name; //"table_surface";
+				marker.header.stamp = ros::Time::now();
+				marker.ns = name;
+				marker.id = 1;
+				marker.frame_locked = true;
+				debugShapes.markers.push_back(marker);
+#endif
+
+				mod.shapes.insert({linkName, shapePtr});
+				mod.bodies.insert({linkName, bodyPtr});
 				shapeModels.push_back(mod);
 			}
 			else if (xPlane)
@@ -427,6 +533,11 @@ int main(int argc, char** argv)
         mocap.markerOffsets.insert({{model, linkname}, tf::StampedTransform(tf::Transform::getIdentity(), ros::Time(0), mocap.mocap_frame_id, model)});
     }
 
+	for (auto& shape : shapeModels)
+	{
+		shape.computeBoundingSphere();
+	}
+
 	Segmenter seg;
     seg.worldFrame = mocap.gazeboTmocap.frame_id_;
 
@@ -435,6 +546,10 @@ int main(int argc, char** argv)
     {
         r.sleep();
         ros::spinOnce();
+
+#if DEBUG_MESH_LOADING
+        debugPub.publish(debugShapes);
+#endif
 
         mocap.getTransforms();
 //        mocap.sendTransforms(false);

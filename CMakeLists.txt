@@ -32,6 +32,15 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 ## System dependencies are found with CMake's conventions
+
+# CGAL and its components
+# NB: CGAL likes to clobber global variables, e.g. Boost_LIBRARIES, so make sure you include it first
+set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE CACHE BOOL "Disable CGAL complaints about performance flags.")
+set(CGAL_DONT_OVERRIDE_CMAKE_FLAGS TRUE CACHE BOOL "Force CGAL to maintain CMAKE flags")
+find_package(CGAL 4.12 REQUIRED COMPONENTS
+  Polygon_mesh_processing
+)
+include( ${CGAL_USE_FILE} )
 # find_package(Boost REQUIRED COMPONENTS system)
 
 find_package(OpenCV REQUIRED)
@@ -146,6 +155,7 @@ include_directories(SYSTEM
 
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
+  src/${PROJECT_NAME}/GazeboModel.cpp
   src/${PROJECT_NAME}/GazeboMocap.cpp
 )
 
