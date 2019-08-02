@@ -293,8 +293,8 @@ int main(int argc, char** argv)
 	cv::namedWindow("segmentation", /*cv::WINDOW_AUTOSIZE | cv::WINDOW_KEEPRATIO | */cv::WINDOW_GUI_EXPANDED);
 
     // Load Gazebo world file and get meshes
-//	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/interseg_table.world";
-	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/experiment_world.world";
+	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/interseg_table_new.world";
+//	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/experiment_world.world";
 
 	// TODO: Poses for shapes
 	std::vector<GazeboModel> shapeModels;
@@ -312,6 +312,8 @@ int main(int argc, char** argv)
 //	TiXmlElement* xSdf = root->FirstChildElement("sdf");
 	TiXmlElement* xWorld = root->FirstChildElement("world");
 	TiXmlElement* xModel = xWorld->FirstChildElement("model");
+	TiXmlElement* xModState = xWorld->FirstChildElement("state");
+
 	while (xModel)
 	{
 		std::string name(xModel->Attribute("name"));
@@ -321,7 +323,7 @@ int main(int argc, char** argv)
 		mod.name = name;
 
 		// skip loading camera and table
-		if (name == "kinect2_victor_head" || name == "table")
+		if (name == "kinect2_victor_head" /*|| name == "table"*/)
 		{
 			xModel = xModel->NextSiblingElement("model");
 			continue;
@@ -342,9 +344,32 @@ int main(int argc, char** argv)
 				std::cerr << xPose->GetText() << std::endl;
 				std::vector<double> posexyz = splitParams(xPose->GetText());
 //				assert(posexyz.size() == 6);
-				pose.position.x = posexyz[0];
-				pose.position.y = posexyz[1];
-				pose.position.z = posexyz[2];
+
+				// Load scale
+				std::vector<double> modScale (3,1.0);
+				TiXmlElement* xMods = xModState->FirstChildElement("model");
+				while (true)
+				{
+					if (!xMods)
+					{
+						std::cerr << "No corresponding scale found!" << std::endl;
+						break;
+					}
+					else if(xMods->Attribute("name") == mod.name)
+					{
+						std::cerr << "scale: " << xMods->FirstChildElement("scale")->GetText() << std::endl;
+						std::vector<double> temp = splitParams(xMods->FirstChildElement("scale")->GetText());
+						modScale[0] = temp[0];
+						modScale[1] = temp[1];
+						modScale[2] = temp[2];
+						break;
+					}
+					xMods = xMods->NextSiblingElement("model");
+				}
+
+				pose.position.x = posexyz[0] * modScale[0];
+				pose.position.y = posexyz[1] * modScale[1];
+				pose.position.z = posexyz[2] * modScale[2];
 
 				Eigen::Quaterniond q(Eigen::AngleAxisd(posexyz[3], Eigen::Vector3d::UnitZ())
 			                       * Eigen::AngleAxisd(posexyz[4], Eigen::Vector3d::UnitY())
@@ -376,9 +401,32 @@ int main(int argc, char** argv)
 				primitive.type = shape_msgs::SolidPrimitive::BOX;
 				primitive.dimensions.resize(3);
 				std::vector<double> BoxXYZ = splitParams(xBox->FirstChildElement("size")->GetText());
-				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_X] = BoxXYZ[0];
-				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_Y] = BoxXYZ[1];
-				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_Z] = BoxXYZ[2];
+
+				// Load scale
+				std::vector<double> modScale (3,1.0);
+				TiXmlElement* xMods = xModState->FirstChildElement("model");
+				while (true)
+				{
+					if (!xMods)
+					{
+						std::cerr << "No corresponding scale found!" << std::endl;
+						break;
+					}
+					else if(xMods->Attribute("name") == mod.name)
+					{
+						std::cerr << "scale: " << xMods->FirstChildElement("scale")->GetText() << std::endl;
+						std::vector<double> temp = splitParams(xMods->FirstChildElement("scale")->GetText());
+						modScale[0] = temp[0];
+						modScale[1] = temp[1];
+						modScale[2] = temp[2];
+						break;
+					}
+					xMods = xMods->NextSiblingElement("model");
+				}
+
+				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_X] = BoxXYZ[0] * modScale[0];
+				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_Y] = BoxXYZ[1] * modScale[1];
+				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_Z] = BoxXYZ[2] * modScale[2];
 
 				shapes::ShapePtr shapePtr(shapes::constructShapeFromMsg(primitive));
 
@@ -410,8 +458,31 @@ int main(int argc, char** argv)
 				primitive.type = shape_msgs::SolidPrimitive::CYLINDER;
 				primitive.dimensions.resize(2);
 				char* end_ptr;
-				primitive.dimensions[shape_msgs::SolidPrimitive::CYLINDER_HEIGHT] = std::strtod(xCylinder->FirstChildElement("length")->GetText(), &end_ptr);
-				primitive.dimensions[shape_msgs::SolidPrimitive::CYLINDER_RADIUS] = std::strtod(xCylinder->FirstChildElement("radius")->GetText(), &end_ptr);
+
+				// Load scale
+				std::vector<double> modScale (3,1.0);
+				TiXmlElement* xMods = xModState->FirstChildElement("model");
+				while (true)
+				{
+					if (!xMods)
+					{
+						std::cerr << "No corresponding scale found!" << std::endl;
+						break;
+					}
+					else if(xMods->Attribute("name") == mod.name)
+					{
+						std::cerr << "scale: " << xMods->FirstChildElement("scale")->GetText() << std::endl;
+						std::vector<double> temp = splitParams(xMods->FirstChildElement("scale")->GetText());
+						modScale[0] = temp[0];
+						modScale[1] = temp[1];
+						modScale[2] = temp[2];
+						break;
+					}
+					xMods = xMods->NextSiblingElement("model");
+				}
+
+				primitive.dimensions[shape_msgs::SolidPrimitive::CYLINDER_HEIGHT] = std::strtod(xCylinder->FirstChildElement("length")->GetText(), &end_ptr) * modScale[2];
+				primitive.dimensions[shape_msgs::SolidPrimitive::CYLINDER_RADIUS] = std::strtod(xCylinder->FirstChildElement("radius")->GetText(), &end_ptr) * std::max(modScale[0], modScale[1]);
 
 				shapes::ShapePtr shapePtr(shapes::constructShapeFromMsg(primitive));
 
@@ -458,12 +529,55 @@ int main(int argc, char** argv)
 				shapes::ShapePtr shapePtr(m);
 				if (name.find("coke_can") != std::string::npos)
 				{
-//					xLink = xLink->NextSiblingElement("link"); continue;
 					for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
 					{
 						m->vertices[i] /= 1000.0;
 					}
 				}
+				if (name.find("disk_part") != std::string::npos)
+				{
+					xLink = xLink->NextSiblingElement("link"); continue;
+					for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
+					{
+						m->vertices[i] /= 1000.0;
+					}
+				}
+				if (name.find("hammer") != std::string::npos)
+				{
+					for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
+					{
+						m->vertices[i] *= 0.0254;
+					}
+				}
+
+				// Load scale
+				std::vector<double> modScale (3,1.0);
+				TiXmlElement* xMods = xModState->FirstChildElement("model");
+				while (true)
+				{
+					if (!xMods)
+					{
+						std::cerr << "No corresponding scale found!" << std::endl;
+						break;
+					}
+					else if(xMods->Attribute("name") == mod.name)
+					{
+						std::cerr << "scale: " << xMods->FirstChildElement("scale")->GetText() << std::endl;
+						std::vector<double> temp = splitParams(xMods->FirstChildElement("scale")->GetText());
+						modScale[0] = temp[0];
+						modScale[1] = temp[1];
+						modScale[2] = temp[2];
+						break;
+					}
+					xMods = xMods->NextSiblingElement("model");
+				}
+				for (unsigned i = 0; i <  m->vertex_count; ++i)
+				{
+					m->vertices[3 * i] *= modScale[0];
+					m->vertices[3 * i + 1] *= modScale[1];
+					m->vertices[3 * i + 2] *= modScale[2];
+				}
+
 				m->computeTriangleNormals();
 				m->computeVertexNormals();
 				std::cerr << "Vertices: " << m->vertex_count << ", Faces: " << m->triangle_count << std::endl;
