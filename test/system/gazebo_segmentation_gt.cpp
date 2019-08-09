@@ -184,8 +184,8 @@ public:
 		const int step = 1;
 
 		// TODO: Remove after debugging
-//		roi.y = 900; roi.height = 100;
-//		roi.x = 820; roi.width = 100;
+//		roi.y = 700; roi.height = 100;
+//		roi.x = 500; roi.width = 50;
 
 
 
@@ -203,7 +203,7 @@ public:
 //				tf::poseEigenToTF(worldTray, temp);
 //				broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), worldFrame, "ray"));
 //				ros::spinOnce(); ros::Duration(0.1).sleep();
-//
+
 //				Eigen::Isometry3d cameraTray = Eigen::Isometry3d::Identity(); cameraTray.translation() = toPoint3D<Eigen::Vector3d>(u, v, 1.0, cameraModel).normalized();
 //				tf::poseEigenToTF(cameraTray, temp);
 //				broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), cameraFrame, "ray_camera"));
@@ -244,6 +244,7 @@ public:
 						EigenSTL::vector_Vector3d intersections;
 						if (mps::rayIntersectsModel(cam_body, dir_body, model, intersections))
 						{
+							Eigen::Vector3d closestIntersection;
 							for (const Eigen::Vector3d &pt_body : intersections)
 							{
 //								Eigen::Isometry3d bodyTdirpt = Eigen::Isometry3d::Identity(); bodyTdirpt.translation() = pt_body;
@@ -260,10 +261,21 @@ public:
 									{
 										zBuf = dist;
 										labels.at<LabelT>(v, u) = m + 10;
+										closestIntersection = pt_body;
 									}
 								}
 							}
+//							Eigen::Isometry3d cameraTray = Eigen::Isometry3d::Identity(); cameraTray.translation() = toPoint3D<Eigen::Vector3d>(u, v, 1.0, cameraModel).normalized() * depthBuf.at<DepthT>(v, u);
+//							tf::poseEigenToTF(cameraTray, temp);
+//							broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), cameraFrame, "ray_camera"));
+//							ros::spinOnce(); ros::Duration(0.5).sleep();
 						}
+
+//						Eigen::Isometry3d worldTray = Eigen::Isometry3d::Identity(); worldTray.translation() = closestIntersection;
+//						tf::poseEigenToTF(worldTray, temp);
+//						broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), worldFrame, "ray"));
+//						ros::spinOnce(); ros::Duration(0.1).sleep();
+
 					}
 				}
 			}
@@ -293,8 +305,8 @@ int main(int argc, char** argv)
 	cv::namedWindow("segmentation", /*cv::WINDOW_AUTOSIZE | cv::WINDOW_KEEPRATIO | */cv::WINDOW_GUI_EXPANDED);
 
     // Load Gazebo world file and get meshes
-	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/interseg_table_new.world";
-//	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/experiment_world.world";
+//	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/interseg_table_new.world";
+	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/experiment_food.world";
 
 	// TODO: Poses for shapes
 	std::vector<GazeboModel> shapeModels;
@@ -429,6 +441,12 @@ int main(int argc, char** argv)
 				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_Z] = BoxXYZ[2] * modScale[2];
 
 				shapes::ShapePtr shapePtr(shapes::constructShapeFromMsg(primitive));
+
+				if (name.find("table") != std::string::npos)
+				{
+					std::cerr << "table pose: " << pose.position.x << " " << pose.position.y << " " << pose.position.z << std::endl;
+					pose.position.z += 1; // why??? The <pose> should be put in the correct place in .world
+				}
 
 #if DEBUG_MESH_LOADING
 				visualization_msgs::Marker marker;
@@ -679,7 +697,8 @@ int main(int argc, char** argv)
 
 	    	for (const auto& pair : shape.bodies)
 		    {
-			    const tf::StampedTransform& stf = mocap.linkPoses.at({shape.name, pair.first});
+//			    const tf::StampedTransform& stf = mocap.linkPoses.at({shape.name, pair.first});
+			    const tf::StampedTransform& stf = mocap.linkPoses.at({shape.name, "link"});
 
 			    Eigen::Isometry3d T;
 			    tf::transformTFToEigen(stf, T);

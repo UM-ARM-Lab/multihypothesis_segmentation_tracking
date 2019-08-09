@@ -91,13 +91,13 @@ bool rayIntersectsTriangle(const Eigen::Vector3d& rayOrigin,
                            const double* vertices,
                            Eigen::Vector3d& outIntersectionPoint)
 {
-	const float EPSILON = 0.0000001;
+	const double EPSILON = 0.0000001;
 
 	Eigen::Map<const Eigen::Vector3d> vertex0(vertices + 3 * triangles[3 * triangleIdx + 0]);
 	Eigen::Map<const Eigen::Vector3d> vertex1(vertices + 3 * triangles[3 * triangleIdx + 1]);
 	Eigen::Map<const Eigen::Vector3d> vertex2(vertices + 3 * triangles[3 * triangleIdx + 2]);
 	Eigen::Vector3d edge1, edge2, h, s, q;
-	float a,f,u,v;
+	double a,f,u,v;
 	edge1 = vertex1 - vertex0;
 	edge2 = vertex2 - vertex0;
 	h = rayVector.cross(edge2);
@@ -114,7 +114,7 @@ bool rayIntersectsTriangle(const Eigen::Vector3d& rayOrigin,
 	if (v < 0.0 || u + v > 1.0)
 		return false;
 	// At this stage we can compute t to find out where the intersection point is on the line.
-	float t = f * edge2.dot(q);
+	double t = f * edge2.dot(q); // t is correct
 	if (t > EPSILON) // ray intersection
 	{
 		outIntersectionPoint = rayOrigin + rayVector * t;
@@ -129,12 +129,14 @@ bool rayIntersectsMesh(const Eigen::Vector3d& rayOrigin,
                        const shapes::Mesh* m,
                        EigenSTL::vector_Vector3d& intersections)
 {
+	Eigen::Vector3d rayVectorNormal = rayVector;
+	rayVectorNormal.normalize();
 //	#pragma omp parallel
 	for (size_t tIdx = 0; tIdx < m->triangle_count; ++tIdx)
 	{
 		Eigen::Vector3d intersection;
 
-		if (rayIntersectsTriangle(rayOrigin, rayVector, tIdx, m->triangles, m->vertices, intersection))
+		if (rayIntersectsTriangle(rayOrigin, rayVectorNormal, tIdx, m->triangles, m->vertices, intersection))
 		{
 //			#pragma omp critical
 			{
