@@ -13,6 +13,10 @@
 
 #include <image_geometry/pinhole_camera_model.h>
 #include <sensor_msgs/CameraInfo.h>
+#include <mps_msgs/SegmentRGBDAction.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/image_encodings.h>
+#include <cv_bridge/cv_bridge.h>
 
 #include <visualization_msgs/MarkerArray.h>
 
@@ -29,10 +33,13 @@
 
 #include <regex>
 #include <iterator>
+#include <actionlib/server/simple_action_server.h>
 
 #define DEBUG_MESH_LOADING true
 
 using mps::GazeboModel;
+
+typedef actionlib::SimpleActionServer<mps_msgs::SegmentRGBDAction> GTServer;
 
 std::vector<double> splitParams(const std::string& text) //one more element at the last
 {
@@ -96,13 +103,19 @@ public:
 	std::string cameraFrame;
 	std::unique_ptr<tf::TransformListener> listener;
 	std::unique_ptr<tf::TransformBroadcaster> broadcaster;
+	std::unique_ptr<GTServer> actionServer;
 
-	Segmenter()
+	std::vector<GazeboModel> models;
+	std::vector<GazeboModelState> states;
+
+	Segmenter(ros::NodeHandle& nh, std::vector<GazeboModel> shapeModels_) : models(std::move(shapeModels_))
 	{
-		ros::NodeHandle nh;
 		listener = std::make_unique<tf::TransformListener>(ros::Duration(60.0));
 		broadcaster = std::make_unique<tf::TransformBroadcaster>();
 		cam_sub = std::make_unique<ros::Subscriber>(nh.subscribe<sensor_msgs::CameraInfo>("/kinect2_victor_head/hd/camera_info", 1, boost::bind(&Segmenter::cam_cb, this, _1)));
+
+		actionServer = std::make_unique<GTServer>(nh, "gazebo_segmentation", boost::bind(&Segmenter::execute, this, _1), false);
+		actionServer->start();
 	}
 
 	void cam_cb (const sensor_msgs::CameraInfoConstPtr& cam_msg)
@@ -113,7 +126,7 @@ public:
 //		cameraModel.rawRoi().y = 0;
 	}
 
-	cv::Mat segment(const std::vector<GazeboModel>& models, const std::vector<GazeboModelState>& states)
+	cv::Mat segment()
 	{
 		if (cameraFrame.empty())
 		{
@@ -184,15 +197,22 @@ public:
 		const int step = 1;
 
 		// TODO: Remove after debugging
-//		roi.y = 700; roi.height = 100;
-//		roi.x = 500; roi.width = 50;
+//		roi.y = 750; roi.height = 100;
+//		roi.x = 1400; roi.width = 100;
 
 
 
 #pragma omp parallel for
 		for (int v = roi.y; v < roi.y+roi.height; /*++v*/v+=step)
 		{
+//			if (actionServer->isActive())
+//			{
+//				mps_msgs::SegmentRGBDFeedback fb;
+//				fb.progress = static_cast<float>(v)/roi.height;
+//				actionServer->publishFeedback(fb);
+//			}
 			std::cerr << v << std::endl;
+
 			for (int u = roi.x; u < roi.x + roi.width; /*++u*/u+=step)
 			{
 				const Eigen::Vector3d rn_world = worldTcamera.linear() * toPoint3D<Eigen::Vector3d>(u, v, 1.0, cameraModel).normalized();
@@ -287,11 +307,44 @@ public:
 //		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*scene->cv_rgb_cropped.image;
 		cv::waitKey(1);
 		cv::imshow("segmentation", labelColorsMap);
-		cv::waitKey(0);
+		cv::waitKey(10);
 
 
 		return labels;
 	}
+
+	void execute(const mps_msgs::SegmentRGBDGoalConstPtr& /*goal*/)
+	{
+		mps_msgs::SegmentRGBDResult result_;
+
+		if (cameraFrame.empty())
+		{
+			actionServer->setAborted(result_, "No camera data.");
+		}
+
+		if (states.empty())
+		{
+			actionServer->setAborted(result_, "No state data.");
+		}
+
+		cv::Mat labels = segment();
+
+		if (labels.empty())
+		{
+			actionServer->setAborted(result_, "Labelling failed.");
+		}
+
+		sensor_msgs::Image seg;
+
+		std_msgs::Header header; // empty header
+		header.stamp = ros::Time::now(); // time
+		cv_bridge::CvImage img_bridge = cv_bridge::CvImage(header, sensor_msgs::image_encodings::MONO16, labels);
+		img_bridge.toImageMsg(seg); // from cv_bridge to sensor_msgs::Image
+
+		result_.segmentation = seg;
+		actionServer->setSucceeded(result_);
+	}
+
 };
 
 int main(int argc, char** argv)
@@ -299,14 +352,14 @@ int main(int argc, char** argv)
     ros::init(argc, argv, "gazebo_segmentation_gt");
     ros::NodeHandle pnh("~");
 
-    ros::Publisher debugPub = pnh.advertise<visualization_msgs::MarkerArray>("debug_shapes", 10, true);
+	ros::Publisher debugPub = pnh.advertise<visualization_msgs::MarkerArray>("debug_shapes", 10, true);
 	visualization_msgs::MarkerArray debugShapes;
 
 	cv::namedWindow("segmentation", /*cv::WINDOW_AUTOSIZE | cv::WINDOW_KEEPRATIO | */cv::WINDOW_GUI_EXPANDED);
 
     // Load Gazebo world file and get meshes
-//	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/interseg_table_new.world";
-	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/experiment_food.world";
+	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/interseg_table_food.world";
+//	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/experiment_food.world";
 
 	// TODO: Poses for shapes
 	std::vector<GazeboModel> shapeModels;
@@ -670,7 +723,7 @@ int main(int argc, char** argv)
 		shape.computeBoundingSphere();
 	}
 
-	Segmenter seg;
+	Segmenter seg(pnh, shapeModels);
     seg.worldFrame = mocap.gazeboTmocap.frame_id_;
 
     ros::Rate r(10.0);
@@ -686,7 +739,7 @@ int main(int argc, char** argv)
         mocap.getTransforms();
 //        mocap.sendTransforms(false);
 
-	    std::vector<GazeboModelState> states;
+		seg.states.clear();
 	    for (const auto& shape : shapeModels)
 	    {
 	    	// TODO: Skip adding this shape based on the plugin camera info in world file
@@ -702,15 +755,12 @@ int main(int argc, char** argv)
 
 			    Eigen::Isometry3d T;
 			    tf::transformTFToEigen(stf, T);
-			    states.push_back({T});
+			    seg.states.push_back({T});
 
 //			    std::cerr << T.matrix() << std::endl;
 		    }
 
 	    }
-
-
-        seg.segment(shapeModels, states);
     }
 
     return 0;

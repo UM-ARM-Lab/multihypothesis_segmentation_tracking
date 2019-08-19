@@ -25,9 +25,11 @@ use_openmp()
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
+  cv_bridge
   gazebo_msgs
   image_geometry
   moveit_core
+  mps_msgs
   tf_conversions
 )
 
@@ -46,6 +48,10 @@ include( ${CGAL_USE_FILE} )
 find_package(OpenCV REQUIRED)
 include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 link_libraries(${OpenCV_LIBS})
+
+#find_package(catkin REQUIRED mps_msgs actionlib_msgs)
+#add_action_files(DIRECTORY action FILES SegmentRGBD.action)
+#generate_messages(DEPENDENCIES actionlib_msgs)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
