@@ -18,6 +18,7 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
 #include <sensor_msgs/JointState.h>
+#include "mps_msgs/AABBox2d.h"
 
 #include <visualization_msgs/MarkerArray.h>
 #include <depth_image_proc/depth_traits.h>
@@ -168,6 +169,9 @@ public:
 
 	virtual
 	void track(const std::vector<ros::Time>& steps);
+
+	virtual
+	void siamtrack(const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox);
 
 	void imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	             const sensor_msgs::ImageConstPtr& depth_msg,

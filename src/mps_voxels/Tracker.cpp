@@ -235,6 +235,11 @@ void Tracker::track(const std::vector<ros::Time>& steps)
 	tracking.release();
 }
 
+void Tracker::siamtrack(const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox)
+{
+	Tracker::track(steps);
+}
+
 void Tracker::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
                       const sensor_msgs::ImageConstPtr& depth_msg,
                       const sensor_msgs::CameraInfoConstPtr& cam_msg)

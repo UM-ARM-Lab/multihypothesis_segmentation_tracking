@@ -6,6 +6,7 @@
 #include "mps_voxels/MotionModel.h"
 #include "mps_voxels/Tracker.h"
 #include "mps_voxels/CudaTracker.h"
+#include "mps_voxels/SiamTracker.h"
 #include "mps_voxels/TargetDetector.h"
 #include "mps_voxels/LocalOctreeServer.h"
 #include "mps_voxels/octree_utils.h"
@@ -54,6 +55,8 @@
 #include <std_msgs/Int64.h>
 
 #include <control_msgs/FollowJointTrajectoryAction.h>
+#include <mps_msgs/TrackBBoxAction.h>
+#include <mps_msgs/AABBox2d.h>
 #include <actionlib/client/simple_action_client.h>
 
 #include <tf/transform_listener.h>
@@ -386,20 +389,20 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 
 		std::unique_ptr<CaptureGuard> captureGuard; ///< RAII-style stopCapture() for various exit paths
 
-//		if (isPrimaryAction)
-//		{
-//			captureGuard = std::make_unique<CaptureGuard>(tracker.get());
-//			auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
-//			if (cache) { cache->cache.clear(); }
-//			tracker->startCapture();
-//		}
-        if (a == 1)
-        {
-            captureGuard = std::make_unique<CaptureGuard>(tracker.get());
-            auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
-            if (cache) { cache->cache.clear(); }
-            tracker->startCapture();
-        }
+		if (isPrimaryAction)
+		{
+			captureGuard = std::make_unique<CaptureGuard>(tracker.get());
+			auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
+			if (cache) { cache->cache.clear(); }
+			tracker->startCapture();
+		}
+//        if (a == 1)
+//        {
+//            captureGuard = std::make_unique<CaptureGuard>(tracker.get());
+//            auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
+//            if (cache) { cache->cache.clear(); }
+//            tracker->startCapture();
+//        }
 
 		auto armAction = std::dynamic_pointer_cast<JointTrajectoryAction>(action);
 		if (armAction)
@@ -473,30 +476,41 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			ros::Duration(2.0).sleep();
 		}
 
-//		if (isPrimaryAction)
-//		{
-//			tracker->stopCapture();
-//
-//			std::vector<ros::Time> steps;
-//			for (auto iter = tracker->rgb_buffer.begin(); iter != tracker->rgb_buffer.end(); std::advance(iter, 5))
-//			{
-//				steps.push_back(iter->first);
-//			}
-//
+		if (isPrimaryAction)
+		{
+			tracker->stopCapture();
+
+			std::vector<ros::Time> steps;
+			for (auto iter = tracker->rgb_buffer.begin(); iter != tracker->rgb_buffer.end(); std::advance(iter, 5))
+			{
+				steps.push_back(iter->first);
+			}
+
 //			tracker->track(steps);
-//		}
-        if (a == compositeAction->actions.size())
-        {
-            tracker->stopCapture();
 
-            std::vector<ros::Time> steps;
-            for (auto iter = tracker->rgb_buffer.begin(); iter != tracker->rgb_buffer.end(); std::advance(iter, 5))
-            {
-                steps.push_back(iter->first);
-            }
-
-            tracker->track(steps);
-        }
+//TODO: go through all objectindexes, compute their bboxes
+//      useful functions:
+//			scene->targetObjectID = std::make_shared<ObjectIndex>(scene->labelToIndexLookup.at((unsigned)matchID));
+//			scene->segInfo->objectness_segmentation->image;
+			mps_msgs::AABBox2d bbox;
+			bbox.xmin = 500;
+			bbox.xmax = 900;
+			bbox.ymin = 500;
+			bbox.ymax = 800;
+			tracker->siamtrack(steps, bbox);
+		}
+//        if (a == compositeAction->actions.size())
+//        {
+//            tracker->stopCapture();
+//
+//            std::vector<ros::Time> steps;
+//            for (auto iter = tracker->rgb_buffer.begin(); iter != tracker->rgb_buffer.end(); std::advance(iter, 5))
+//            {
+//                steps.push_back(iter->first);
+//            }
+//
+//            tracker->track(steps);
+//        }
 	}
 	return true;
 }
@@ -936,9 +950,16 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	auto rs = getCurrentRobotState();
 
 	std::shared_ptr<Motion> motion;
+	MotionPlanner::Introspection pushInfo;
 	if (scene->targetObjectID)
 	{
-		motion = planner->pick(rs, *scene->targetObjectID, scene->obstructions);
+		ROS_WARN_STREAM("Got target Object ID.");
+//		motion = planner->pick(rs, *scene->targetObjectID, scene->obstructions);
+		motion = planner->samplePush(rs, &pushInfo);
+		if (motion)
+		{
+			ROS_WARN_STREAM("Pushing motion successfully computed.");
+		}
 		if (!motion)
 		{
 			ROS_WARN_STREAM("Saw target object, but failed to compute grasp plan.");
@@ -987,11 +1008,12 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				continue;
 			}
 
-			MotionPlanner::Introspection pushInfo;
+//			MotionPlanner::Introspection pushInfo;
 			std::shared_ptr<Motion> motionPush = planner->samplePush(rs, &pushInfo);
 			if (motionPush)
 			{
-				double reward = planner->reward(rs, motionPush.get());
+//				double reward = planner->reward(rs, motionPush.get());
+				double reward = 10000000;
 				#pragma omp critical
 				{
 					motionQueue.push({reward, {motionPush, pushInfo}});
@@ -1301,7 +1323,8 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	setIfMissing(pnh, "use_memory", true);
 	setIfMissing(pnh, "use_completion", "optional");
 
-	tracker = std::make_unique<CudaTracker>(listener.get());
+	tracker = std::make_unique<SiamTracker>(listener.get());
+//	tracker = std::make_unique<CudaTracker>(listener.get());
 //	tracker = std::make_unique<Tracker>(listener.get());
 	tracker->stopCapture();
 

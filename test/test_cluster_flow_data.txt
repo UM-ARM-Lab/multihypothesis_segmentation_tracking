@@ -1,4 +1,4 @@
-rosservice call /cluster_flow "flow_field:
+rostopic pub /cluster_flow/request "flow_field:
 - pos:
     x: 1.0
     y: 0.0

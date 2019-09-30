@@ -254,6 +254,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/ROI.cpp
   src/${PROJECT_NAME}/Tracker.cpp
   src/${PROJECT_NAME}/CudaTracker.cpp
+  src/${PROJECT_NAME}/SiamTracker.cpp
   src/${PROJECT_NAME}/TargetDetector.cpp
   src/${PROJECT_NAME}/graph_matrix_utils.cpp
   src/${PROJECT_NAME}/LocalOctreeServer.cpp
