@@ -10,12 +10,18 @@
 #include "mps_voxels/ObjectIndex.h"
 
 #include <mps_msgs/SegmentRGBDAction.h>
+#include <mps_msgs/AABBox2d.h>
 
 #include <sensor_msgs/CameraInfo.h>
 #include <cv_bridge/cv_bridge.h>
 #include <image_geometry/pinhole_camera_model.h>
 #include <actionlib/client/simple_action_client.h>
 #include <ros/ros.h>
+
+struct xycoor{
+	int x;
+	int y;
+};
 
 
 struct SegmentationInfo
@@ -74,5 +80,9 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	const pcl::PointCloud<PointT>::Ptr& cloud, const cv::Mat& labels,
 	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi,
 	std::map<uint16_t, ObjectIndex>* labelToIndexLookup = nullptr);
+
+//std::map<uint16_t, std::vector<xycoor>> segmentMaskFromImage(const cv::Mat& labels,const cv::Rect& roi);
+
+std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels,const cv::Rect& roi);
 
 #endif // MPS_VOXELS_SEGMENTATION_UTILS_H

@@ -179,3 +179,68 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 
 	return retVal;
 }
+
+//std::map<uint16_t, std::vector<xycoor>> segmentMaskFromImage(const cv::Mat& labels,const cv::Rect& roi){
+//	std::map<uint16_t, std::vector<xycoor>> labelToMaskLookup;
+//	MPS_ASSERT(roi.width == labels.cols);
+//	MPS_ASSERT(roi.height == labels.rows);
+//	using LabelT = uint16_t;
+//	const LabelT BUFFER_VALUE = std::numeric_limits<LabelT>::max();
+//	std::set<LabelT> uniqueLabels = unique(labels);
+//
+//	std::map<LabelT, int> labelMap;
+//	cv::Mat filtered_labels(labels.size(), labels.type(), BUFFER_VALUE);
+//	for (const auto label : uniqueLabels)
+//	{
+//		labelMap.insert({label, (int)labelMap.size()});
+//
+//		// Erode the boundary of the label slightly
+//		cv::Mat labelMask = (labels == label);
+//		cv::erode(labelMask, labelMask, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5)));
+//		filtered_labels.setTo(label, labelMask);
+//	}
+//	return labelToMaskLookup;
+//}
+
+std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels,const cv::Rect& roi){
+	MPS_ASSERT(roi.width == labels.cols);
+	MPS_ASSERT(roi.height == labels.rows);
+	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup;
+	using LabelT = uint16_t;
+	std::set<LabelT> uniqueLabels = unique(labels);
+
+	for (const auto label : uniqueLabels)
+	{
+		mps_msgs::AABBox2d bbox;
+//		bbox.xmin = labels.cols;
+//		bbox.xmax = 0;
+//		bbox.ymin = labels.rows;
+//		bbox.ymax = 0;
+//		for(int i = 0;i < labels.rows;i++) {
+//			auto row = labels.ptr<LabelT>(i);
+////			auto row = labels.row(i);
+//			if(std::find(row, row + labels.cols, label) != row + labels.cols){
+//				bbox.ymin = i;
+//				break;
+//			}
+//		}
+//		for(int i = labels.rows-1;i >= 0;i--) {
+//			auto row = labels.ptr<LabelT>(i);
+//			if(std::find(row, row + labels.cols, label) != row + labels.cols){
+//				bbox.ymax = i;
+//				break;
+//			}
+//		}
+//		cv::Mat labelMask = (labels == label);
+		cv::Rect box = cv::boundingRect(labels == label);
+		bbox.xmin = box.x + roi.x;
+		bbox.xmax = box.x + box.width + roi.x;
+		bbox.ymin = box.y + roi.y;
+		bbox.ymax = box.y + box.height + roi.y;
+
+//		labelMask.
+//		cv::boundingRect();
+		labelToBBoxLookup.insert({label, bbox});
+	}
+	return labelToBBoxLookup;
+}

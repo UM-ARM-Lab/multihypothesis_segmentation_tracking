@@ -491,13 +491,15 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 //TODO: go through all objectindexes, compute their bboxes
 //      useful functions:
 //			scene->targetObjectID = std::make_shared<ObjectIndex>(scene->labelToIndexLookup.at((unsigned)matchID));
-//			scene->segInfo->objectness_segmentation->image;
-			mps_msgs::AABBox2d bbox;
-			bbox.xmin = 500;
-			bbox.xmax = 900;
-			bbox.ymin = 500;
-			bbox.ymax = 800;
-			tracker->siamtrack(steps, bbox);
+
+
+			cv::Mat temp_seg = scene->segInfo->objectness_segmentation->image;
+			scene->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
+
+			for(auto pair:scene->labelToBBoxLookup){
+				tracker->siamtrack(steps, pair.second);
+			}
+
 		}
 //        if (a == compositeAction->actions.size())
 //        {

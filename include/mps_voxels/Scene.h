@@ -23,6 +23,7 @@
 #include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/Image.h>
 #include <cv_bridge/cv_bridge.h>
+#include <mps_msgs/AABBox2d.h>
 
 #include <Eigen/StdVector>
 
@@ -111,6 +112,9 @@ public:
 	std::shared_ptr<SegmentationInfo> segInfo;
 	std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segments;
 	std::map<uint16_t, ObjectIndex> labelToIndexLookup; ///< Carries body segmentation to object index in this scene
+	std::map<uint16_t, std::vector<xycoor>> labelToMaskLookup;
+	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup;
+
 
 	octomap::OcTree* sceneOctree;
 	std::map<ObjectIndex, std::unique_ptr<Object>> objects;
