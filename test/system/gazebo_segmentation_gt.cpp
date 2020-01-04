@@ -281,6 +281,10 @@ public:
 									{
 										zBuf = dist;
 										labels.at<LabelT>(v, u) = m + 10;
+										if (model.name.find("table") != std::string::npos)
+										{
+											labels.at<LabelT>(v, u) = 1;
+										}
 										closestIntersection = pt_body;
 									}
 								}
@@ -355,11 +359,11 @@ int main(int argc, char** argv)
 	ros::Publisher debugPub = pnh.advertise<visualization_msgs::MarkerArray>("debug_shapes", 10, true);
 	visualization_msgs::MarkerArray debugShapes;
 
-	cv::namedWindow("segmentation", /*cv::WINDOW_AUTOSIZE | cv::WINDOW_KEEPRATIO | */cv::WINDOW_GUI_EXPANDED);
+//	cv::namedWindow("segmentation", /*cv::WINDOW_AUTOSIZE | cv::WINDOW_KEEPRATIO | */cv::WINDOW_GUI_EXPANDED);
 
     // Load Gazebo world file and get meshes
-	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/interseg_table_food.world";
-//	const std::string gazeboWorldFilename = "/home/kunhuang/catkin_ws/src/mps_interactive_segmentation/worlds/experiment_food.world";
+//	const std::string gazeboWorldFilename = "/home/kunhuang/armlab_ws/src/mps_interactive_segmentation/worlds/cluttered_food.world";
+	const std::string gazeboWorldFilename = "/home/kunhuang/armlab_ws/src/mps_interactive_segmentation/worlds/experiment_world.world";
 
 	// TODO: Poses for shapes
 	std::vector<GazeboModel> shapeModels;
