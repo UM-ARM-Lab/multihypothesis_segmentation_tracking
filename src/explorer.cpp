@@ -1015,7 +1015,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			if (motionPush)
 			{
 //				double reward = planner->reward(rs, motionPush.get());
-				double reward = 10000000;
+				double reward = 10000000; // TODO: remove this line to use grasp
 				#pragma omp critical
 				{
 					motionQueue.push({reward, {motionPush, pushInfo}});
@@ -1325,9 +1325,12 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	setIfMissing(pnh, "use_memory", true);
 	setIfMissing(pnh, "use_completion", "optional");
 
+#ifdef USE_CUDA_SIFT
+	tracker = std::make_unique<CudaTracker>(listener.get());
+#else
+	// tracker = std::make_unique<Tracker>(listener.get());
 	tracker = std::make_unique<SiamTracker>(listener.get());
-//	tracker = std::make_unique<CudaTracker>(listener.get());
-//	tracker = std::make_unique<Tracker>(listener.get());
+#endif
 	tracker->stopCapture();
 
 	bool gotParam = false;

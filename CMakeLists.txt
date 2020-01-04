@@ -19,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   message_generation
   mps_msgs
+  mps_shape_completion_msgs
   moveit_ros_planning
   octomap_msgs
 #  octomap_ros
@@ -54,9 +55,12 @@ include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 link_directories(${Boost_LIBRARY_DIRS})
 
 find_package(CUDA REQUIRED)
-add_subdirectory(CudaSift)
-include_directories(SYSTEM CudaSift/include)
-link_libraries(cudaSift)
+if (CMAKE_COMPILER_IS_GNUCC AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7 AND CUDA_VERSION VERSION_LESS 10) OR CUDA_VERSION VERSION_GREATER_EQUAL 10)
+  add_subdirectory(CudaSift)
+  include_directories(SYSTEM CudaSift/include)
+  link_libraries(cudaSift)
+  add_definitions(-DHAS_CUDA_SIFT)
+endif()
 
 find_package(OCTOMAP 1.9 REQUIRED)
 include_directories(SYSTEM ${OCTOMAP_INCLUDE_DIRS})

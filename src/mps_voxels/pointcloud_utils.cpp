@@ -19,6 +19,8 @@
 #include <pcl/ModelCoefficients.h>
 #include <pcl/kdtree/kdtree.h>
 
+#include <pcl/search/impl/search.hpp> // needed for kd-tree?
+
 #include <ros/console.h>
 
 #include <boost/core/null_deleter.hpp>
