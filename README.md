@@ -18,3 +18,11 @@ or
 Start Clion, and run gazebo_segmentation_gt
 
 To run SiamMask tracker, refer to [SimaMask](https://github.com/UM-ARM-Lab/SiamMask).
+
+To run Shape Completion, refer to [Shape Completion](https://github.com/UM-ARM-Lab/mps_shape_completion). 
+
+```ssh arprice@armtyphoon.local```
+
+```export ROS_MASTER_URI=http://armistice.local:11311```
+
+```rosrun mps_shape_completion shape_completion_node.py```
