@@ -1301,8 +1301,11 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	setIfMissing(pnh, "use_memory", true);
 	setIfMissing(pnh, "use_completion", "optional");
 
+#ifdef USE_CUDA_SIFT
 	tracker = std::make_unique<CudaTracker>(listener.get());
-//	tracker = std::make_unique<Tracker>(listener.get());
+#else
+	tracker = std::make_unique<Tracker>(listener.get());
+#endif
 	tracker->stopCapture();
 
 	bool gotParam = false;
