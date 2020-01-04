@@ -2,6 +2,8 @@
 // Created by arprice on 10/18/18.
 //
 
+#ifdef HAS_CUDA_SIFT
+
 #include "mps_voxels/CudaTracker.h"
 
 #include <opencv2/imgproc.hpp>
@@ -161,3 +163,5 @@ void CudaTracker::track(const std::vector<ros::Time>& steps)
 	video.release();
 	tracking.release();
 }
+
+#endif //#ifdef HAS_CUDA_SIFT

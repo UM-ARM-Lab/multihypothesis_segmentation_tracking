@@ -5,6 +5,8 @@
 #ifndef MPS_VOXELS_CUDATRACKER_H
 #define MPS_VOXELS_CUDATRACKER_H
 
+#ifdef HAS_CUDA_SIFT
+
 #include "mps_voxels/Tracker.h"
 
 class CudaTracker : public Tracker
@@ -18,4 +20,5 @@ public:
 	void track(const std::vector<ros::Time>& steps) override;
 };
 
+#endif // HAS_CUDA_SIFT
 #endif // MPS_VOXELS_CUDATRACKER_H
