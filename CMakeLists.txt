@@ -264,7 +264,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/planning/State.cpp
   src/${PROJECT_NAME}/planning/Action.cpp
   src/${PROJECT_NAME}/planning/MotionPlanner.cpp
-)
+  src/mps_voxels/ProbVoxel.cpp src/mps_voxels/ProbVoxel.h)
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
