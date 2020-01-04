@@ -19,6 +19,7 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   message_generation
   mps_msgs
+  mps_shape_completion_msgs
   moveit_ros_planning
   octomap_msgs
 #  octomap_ros

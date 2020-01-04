@@ -1,7 +1,7 @@
 
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
-#include <mps_msgs/CompleteShape.h>
+#include <mps_shape_completion_msgs/CompleteShape.h>
 //#include <octomap/octomap.h>
 //#include <octomap_msgs/conversions.h>
 //#include <octomap_msgs/GetOctomap.h>
