@@ -59,7 +59,7 @@ if (CMAKE_COMPILER_IS_GNUCC AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7 AND C
   add_subdirectory(CudaSift)
   include_directories(SYSTEM CudaSift/include)
   link_libraries(cudaSift)
-  add_definitions(HAS_CUDA_SIFT)
+  add_definitions(-DHAS_CUDA_SIFT)
 endif()
 
 find_package(OCTOMAP 1.9 REQUIRED)
