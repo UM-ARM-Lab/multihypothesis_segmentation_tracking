@@ -74,7 +74,7 @@ void SiamTracker::track(const std::vector<ros::Time>& steps)
 
 }
 
-void SiamTracker::siamtrack(const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox){
+void SiamTracker::siamtrack(LabelT label, const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox){
 	actionlib::SimpleActionClient<mps_msgs::TrackBBoxAction> ac("TrackBBox", true);
 
 	ROS_INFO("Waiting for action server to start.");
@@ -117,5 +117,14 @@ void SiamTracker::siamtrack(const std::vector<ros::Time>& steps, mps_msgs::AABBo
 	else
 		ROS_INFO("Action did not finish before the time out.");
 
+	std::vector<cv::Mat> ims;
+	for (auto it = ac.getResult()->mask.begin(); it != ac.getResult()->mask.end(); it++)
+	{
+//		std::cerr << it->encoding << std::endl;
+		cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvCopy(*it, it->encoding);
+		cv::Mat im = cv_ptr->image;
+		ims.push_back(im);
+	}
 
+	labelToTrackingLookup.insert({label, ims});
 }

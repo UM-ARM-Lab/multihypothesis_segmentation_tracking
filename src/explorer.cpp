@@ -497,7 +497,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			scene->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
 
 			for(auto pair:scene->labelToBBoxLookup){
-				tracker->siamtrack(steps, pair.second);
+				tracker->siamtrack(pair.first, steps, pair.second);
 			}
 
 		}

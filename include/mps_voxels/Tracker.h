@@ -142,6 +142,9 @@ public:
 	std::map<std::pair<ros::Time, ros::Time>, Flow3D> flows3;
 	std::map<std::pair<ros::Time, ros::Time>, Flow2D> flows2;
 
+	using LabelT = uint16_t;
+	std::map<LabelT, std::vector<cv::Mat>> labelToTrackingLookup;
+
 	SubscriptionOptions options;
 	TrackingOptions track_options;
 
@@ -171,7 +174,7 @@ public:
 	void track(const std::vector<ros::Time>& steps);
 
 	virtual
-	void siamtrack(const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox);
+	void siamtrack(LabelT label, const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox);
 
 	void imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	             const sensor_msgs::ImageConstPtr& depth_msg,

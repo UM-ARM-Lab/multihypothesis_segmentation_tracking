@@ -235,7 +235,7 @@ void Tracker::track(const std::vector<ros::Time>& steps)
 	tracking.release();
 }
 
-void Tracker::siamtrack(const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox)
+void Tracker::siamtrack(LabelT label, const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox)
 {
 	Tracker::track(steps);
 }

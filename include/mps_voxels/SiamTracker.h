@@ -18,7 +18,8 @@ public:
 
 	void track(const std::vector<ros::Time>& steps) override;
 
-	void siamtrack(const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox) override;
+	using LabelT = uint16_t;
+	void siamtrack(LabelT label, const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox) override;
 };
 
 
