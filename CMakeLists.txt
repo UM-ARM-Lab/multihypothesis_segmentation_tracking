@@ -381,11 +381,16 @@ install(PROGRAMS
 ## Testing ##
 #############
 
-## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_mps_voxels.cpp)
-# if(TARGET ${PROJECT_NAME}-test)
-#   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
-# endif()
+file(GLOB unit_tests_source "test/*.cpp")
+list(SORT unit_tests_source)
+foreach(utest_src_file ${unit_tests_source})
+  get_filename_component(test_base ${utest_src_file} NAME_WE)
 
-## Add folders to be run by python nosetests
-# catkin_add_nosetests(test)
+  catkin_add_gtest(${PROJECT_NAME}_${test_base} ${utest_src_file})
+  #  add_executable(${test_base} ${utest_src_file})
+
+  target_link_libraries(${PROJECT_NAME}_${test_base}
+#    ${PROJECT_NAME}
+    ${GTEST_LIBRARIES}
+    )
+endforeach(utest_src_file)
