@@ -33,6 +33,10 @@
 #include <boost/graph/grid_graph.hpp>
 #include <boost/graph/connected_components.hpp>
 
+#include <octomap/octomap.h>
+#include <Eigen/Geometry>
+#include <unordered_set>
+
 #include <vector>
 #include <iostream>
 
@@ -339,7 +343,7 @@ public:
 
 using namespace boost; // Boo! But currently needed for num_vertices...
 
-TEST(segmentation, image_update)
+TEST(segmentation, clustering)
 {
 	mps::VoxelSegmentation vox({3, 3, 3});
 //	std::cerr << "# Vertices: " << num_vertices(vox.grid) << std::endl;
@@ -392,6 +396,115 @@ TEST(segmentation, image_update)
 	std::cerr << "Yay!" << std::endl;
 
 }
+
+template <typename Point>
+Point snap(const Point& p, const octomap::OcTree* octree)
+{
+	auto coord = octree->keyToCoord(octree->coordToKey(p.x(), p.y(), p.z()));
+	return {coord.x(), coord.y(), coord.z()};
+}
+
+mps::VoxelSegmentation::VertexCoordinates roiToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax)
+{
+	auto minCoord = snap(roiMin, octree);
+	auto maxCoord = snap(roiMax, octree);
+
+	mps::VoxelSegmentation::VertexCoordinates dims;
+	for (int i = 0; i < 3; ++i)
+	{
+		dims[i] = ceil((maxCoord[i]-minCoord[i])/octree->getResolution()) + 1;
+	}
+
+	return dims;
+}
+
+mps::VoxelSegmentation::VertexCoordinates coordToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& query)
+{
+	auto minCoord = snap(roiMin, octree);
+	auto queryCoord = snap(query, octree);
+
+	mps::VoxelSegmentation::VertexCoordinates dims;
+	for (int i = 0; i < 3; ++i)
+	{
+		dims[i] = (queryCoord[i]-minCoord[i])/octree->getResolution();
+	}
+
+	return dims;
+}
+
+Eigen::Vector3d gridToCoord(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelSegmentation::VertexCoordinates& query)
+{
+	return roiMin + octree->getResolution() * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(query.data()).cast<double>());
+}
+
+bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelSegmentation::VertexCoordinates& query)
+{
+	auto coord = gridToCoord(octree, roiMin, query);
+	octomap::OcTreeNode* node = octree->search(coord.x(), coord.y(), coord.z());
+	if (node)
+	{
+		return node->getOccupancy() > 0.5;
+	}
+	return false;
+}
+
+mps::VoxelSegmentation::EdgeState
+octreeToGrid(const octomap::OcTree* octree,
+             const Eigen::Vector3d& minExtent,
+             const Eigen::Vector3d& maxExtent)
+{
+	mps::VoxelSegmentation::VertexCoordinates dims = roiToGrid(octree, minExtent, maxExtent);
+	mps::VoxelSegmentation vox(dims);
+
+	mps::VoxelSegmentation::EdgeState edges(vox.num_edges());
+
+	for (mps::VoxelSegmentation::edges_size_type e = 0; e < vox.num_edges(); ++e) // edges are bidirectional :(
+	{
+		const mps::VoxelSegmentation::edge_descriptor edge = vox.edge_at(e);
+		auto i = source(edge, vox);
+		auto j = target(edge, vox);
+
+		bool a = isOccupied(octree, minExtent, i);
+		bool b = isOccupied(octree, minExtent, j);
+
+		edges[e] = (a && b);
+	}
+
+	return edges;
+}
+
+TEST(segmentation, octree)
+{
+	std::shared_ptr<octomap::OcTree> octree = std::make_shared<octomap::OcTree>(0.05);
+	Eigen::Vector3d min(0.0, -0.3, 0.1);
+	Eigen::Vector3d max(0.1, -0.1, 0.3);
+
+	Eigen::Vector3d minLoop = gridToCoord(octree.get(), min, coordToGrid(octree.get(), min, min));
+	ASSERT_TRUE((minLoop-min).isZero(octree->getResolution()));
+
+	Eigen::Vector3d maxLoop = gridToCoord(octree.get(), min, coordToGrid(octree.get(), min, max));
+	ASSERT_TRUE((maxLoop-max).isZero(octree->getResolution()));
+
+	mps::VoxelSegmentation::VertexCoordinates dims = roiToGrid(octree.get(), min, max);
+	mps::VoxelSegmentation vox(dims);
+
+	// Verify 1-1 correspondance between octree leafs and grid nodes
+	std::unordered_set<octomap::OcTreeKey, octomap::OcTreeKey::KeyHash> keys;
+
+	for (mps::VoxelSegmentation::vertices_size_type v = 0; v < vox.num_vertices(); ++v)
+	{
+		Eigen::Vector3d p = gridToCoord(octree.get(), min, vox.vertex_at(v));
+		octomap::OcTreeKey key = octree->coordToKey(p.x(), p.y(), p.z());
+		ASSERT_TRUE(keys.find(key) == keys.end());
+		keys.insert(key);
+	}
+
+	// TODO: Verify that every Octree leaf has a unique grid node
+}
+
+// TODO: Investigate what happens when you call index_of(edge_descriptor) without having the vertices ordered correctly
+
+// TODO: Instantiate a simple OcTree, convert it to a grid graph, convert it back, and visualize it
 
 
 int main(int argc, char **argv)
