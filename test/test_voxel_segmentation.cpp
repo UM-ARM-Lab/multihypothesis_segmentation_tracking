@@ -476,6 +476,8 @@ octreeToGrid(const octomap::OcTree* octree,
 	return edges;
 }
 
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "cert-flp30-c"
 TEST(segmentation, octree)
 {
 	std::shared_ptr<octomap::OcTree> octree = std::make_shared<octomap::OcTree>(0.05);
@@ -490,31 +492,30 @@ TEST(segmentation, octree)
 	std::cerr << int((max[0] - min[0])/octree->getResolution()) << std::endl;
 	std::cerr << int((max[1] - min[1])/octree->getResolution()) << std::endl;
 	std::cerr << int((max[2] - min[2])/octree->getResolution()) << std::endl;
-	for (int x = 0; x < int((max[0] - min[0])/octree->getResolution()); x += 1) {
-		for (int y = 0; y < int((max[1] - min[1])/octree->getResolution()); y += 1) {
-			for (int z = 0; z < int((max[2] - min[2])/octree->getResolution()); z += 1) {
-				octree->updateNode(float(x)*octree->getResolution(), float(y)*octree->getResolution(), float(y)*octree->getResolution(), true); // integrate 'occupied' measurement
+
+	std::set<octomap::OcTreeNode*> nodes;
+	const float eps = std::numeric_limits<float>::epsilon();
+	const float res = octree->getResolution() + eps;
+	int count  = 0;
+	for (float x = min[0]; x <= max[0]; x += res)
+	{
+		for (float y = min[1]; y <= max[1]; y += res)
+		{
+			for (float z = min[2]; z <= max[2]; z += res)
+			{
+				auto* node = octree->updateNode(x, y, z, true);
+				++count;
+				ASSERT_TRUE(nodes.insert(node).second);
 			}
 		}
 	}
+
 
 	if (octree->getRoot()){
 		std::cerr << "OcTree is not empty!" << std::endl;
 	}
 	std::cerr << "Number of nodes = " << octree->calcNumNodes() << std::endl;
-	std::cerr << "Number of leaf nodes = " << octree->getNumLeafNodes() << std::endl;
 
-	int count  = 0;
-	for (int x = 0; x < int((max[0] - min[0])/octree->getResolution()); x += 1) {
-		for (int y = 0; y < int((max[1] - min[1])/octree->getResolution()); y += 1) {
-			for (int z = 0; z < int((max[2] - min[2])/octree->getResolution()); z += 1) {
-				count ++;
-//				auto node = octree->search(float(x)*octree->getResolution(), float(y)*octree->getResolution(), float(y)*octree->getResolution());
-//				std::cerr << float(x)*octree->getResolution() << " " << float(y)*octree->getResolution() << " " << float(y)*octree->getResolution() << std::endl;
-//				std::cerr << "Node value: " << node->getValue() << std::endl;
-			}
-		}
-	}
 	std::cerr << "count = " << count << std::endl;
 
 	Eigen::Vector3d minLoop = gridToCoord(octree.get(), min, coordToGrid(octree.get(), min, min));
@@ -585,6 +586,7 @@ TEST(segmentation, octree)
 //	}
 
 }
+#pragma clang diagnostic pop
 
 /* TODO:
  * OcTree is originally used to store occupancy probability, while we don't care about occupancy probability.
