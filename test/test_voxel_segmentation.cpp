@@ -36,6 +36,8 @@
 #include <boost/graph/grid_graph.hpp>
 #include <boost/graph/connected_components.hpp>
 
+#include <ompl/util/RandomNumbers.h>
+
 #include <octomap/octomap.h>
 #include <octomap/OcTreeStamped.h>
 #include <Eigen/Geometry>
@@ -523,6 +525,28 @@ bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, co
 	return false;
 }
 
+std::pair<bool, double>
+sampleIsOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelSegmentation::vertex_descriptor& query,
+                 ompl::RNG& rng)
+{
+	auto coord = gridToCoord(octree, roiMin, query);
+	octomap::OcTreeNode* node = octree->search(coord.x(), coord.y(), coord.z());
+
+	bool a;
+	double pa;
+	if (node)
+	{
+		a = node->getOccupancy() > rng.uniform01();
+		pa = a ? node->getOccupancy() : (1.0-node->getOccupancy());
+	}
+	else
+	{
+		a = false;
+		pa = 1.0;
+	}
+	return {a, pa};
+}
+
 // From octree labels to edge graph
 mps::VoxelSegmentation::EdgeState
 octreeToGrid(const octomap::OcTree* octree,
@@ -534,7 +558,7 @@ octreeToGrid(const octomap::OcTree* octree,
 
 	mps::VoxelSegmentation::EdgeState edges(vox.num_edges());
 
-	for (mps::VoxelSegmentation::edges_size_type e = 0; e < vox.num_edges(); ++e) // edges are bidirectional :(
+	for (mps::VoxelSegmentation::edges_size_type e = 0; e < vox.num_edges(); ++e)
 	{
 		const mps::VoxelSegmentation::edge_descriptor edge = vox.edge_at(e);
 		auto i = source(edge, vox);
@@ -549,7 +573,40 @@ octreeToGrid(const octomap::OcTree* octree,
 	return edges;
 }
 
-/*
+// From octree labels to edge graph
+std::pair<double, mps::VoxelSegmentation::EdgeState>
+octreeToGridParticle(const octomap::OcTree* octree,
+                     const Eigen::Vector3d& minExtent,
+                     const Eigen::Vector3d& maxExtent,
+                     ompl::RNG& rng)
+{
+	mps::VoxelSegmentation::vertex_descriptor dims = roiToGrid(octree, minExtent, maxExtent);
+	mps::VoxelSegmentation vox(dims);
+
+	mps::VoxelSegmentation::EdgeState edges(vox.num_edges());
+
+	double logOdds = 0;
+	for (mps::VoxelSegmentation::edges_size_type e = 0; e < vox.num_edges(); ++e)
+	{
+		const mps::VoxelSegmentation::edge_descriptor edge = vox.edge_at(e);
+		auto i = source(edge, vox);
+		auto j = target(edge, vox);
+
+		bool a; // Whether a cell is active
+		bool b;
+		double pa; // Probability of that cell state
+		double pb;
+
+		std::tie(a, pa) = sampleIsOccupied(octree, minExtent, i, rng);
+		std::tie(b, pb) = sampleIsOccupied(octree, minExtent, j, rng);
+
+		edges[e] = (a && b);
+		logOdds += std::log(pa) + std::log(pb);
+	}
+
+	return {logOdds, edges};
+}
+
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "cert-flp30-c"
 TEST(segmentation, octree)
@@ -661,7 +718,7 @@ TEST(segmentation, octree)
 
 }
 #pragma clang diagnostic pop
-*/
+
 /* TODO:
  * OcTree is originally used to store occupancy probability, while we don't care about occupancy probability.
  * Changing float to int -> store label? or use ColorOcTree.
