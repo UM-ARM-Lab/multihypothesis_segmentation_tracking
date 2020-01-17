@@ -40,6 +40,12 @@
 #include <ompl/util/RandomNumbers.h>
 
 #include <Eigen/Core>
+#include <visualization_msgs/MarkerArray.h>
+
+namespace cv
+{
+class RNG;
+}
 
 namespace mps
 {
@@ -129,6 +135,9 @@ public:
 
 	edges_size_type index_of(edge_descriptor edge) const;
 
+	visualization_msgs::MarkerArray visualizeEdgeStateDirectly(EdgeState& edges, const double resolution,
+	                                                           const Eigen::Vector3d& roiMin, const std::string& globalFrame);
+
 };
 
 template <typename Point>
@@ -148,7 +157,7 @@ bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, co
 
 std::pair<bool, double>
 sampleIsOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelSegmentation::vertex_descriptor& query,
-                 ompl::RNG& rng);
+                 cv::RNG& rng);
 
 // From octree labels to edge graph
 mps::VoxelSegmentation::EdgeState
@@ -161,7 +170,7 @@ std::pair<double, mps::VoxelSegmentation::EdgeState>
 octreeToGridParticle(const octomap::OcTree* octree,
                      const Eigen::Vector3d& minExtent,
                      const Eigen::Vector3d& maxExtent,
-                     ompl::RNG& rng);
+                     cv::RNG& rng);
 
 }
 

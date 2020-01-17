@@ -30,6 +30,9 @@
 #include "mps_voxels/VoxelSegmentation.h"
 #include "mps_voxels/DisjointSetForest.hpp"
 
+//#include <boost/pending/disjoint_sets.hpp>
+#include <opencv2/core.hpp>
+
 namespace mps
 {
 
@@ -273,6 +276,57 @@ VoxelSegmentation::edges_size_type VoxelSegmentation::index_of(VoxelSegmentation
 	return (edge_index);
 }
 
+visualization_msgs::MarkerArray
+VoxelSegmentation::visualizeEdgeStateDirectly(VoxelSegmentation::EdgeState& edges, const double resolution,
+                                              const Eigen::Vector3d& roiMin, const std::string& globalFrame)
+{
+	visualization_msgs::MarkerArray edgeStateVis;
+	edgeStateVis.markers.resize(1);
+	VertexLabels vlabels = components(edges);
+	Eigen::Vector3d offset(resolution * 0.5, resolution * 0.5, resolution * 0.5);
+	for (size_t i = 0; i < vlabels.size(); i++)
+	{
+		const vertex_descriptor vd = vertex_at(i);
+		Eigen::Vector3d coord = roiMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>()) + offset;
+
+		geometry_msgs::Point cubeCenter;
+		cubeCenter.x = coord[0];
+		cubeCenter.y = coord[1];
+		cubeCenter.z = coord[2];
+
+		edgeStateVis.markers[0].points.push_back(cubeCenter);
+
+		// Colors
+		std_msgs::ColorRGBA color;
+		color.a = 1.0;
+		color.r = 0.5;
+		color.g = 0.0;
+		color.b = 1.0;
+		edgeStateVis.markers[0].colors.push_back(color);
+
+	}
+
+	edgeStateVis.markers[0].header.frame_id = globalFrame;
+	edgeStateVis.markers[0].header.stamp = ros::Time::now();
+	edgeStateVis.markers[0].ns = "map" + std::to_string(0);//"occlusion";
+	edgeStateVis.markers[0].id = 0;
+	edgeStateVis.markers[0].type = visualization_msgs::Marker::CUBE_LIST;
+	edgeStateVis.markers[0].scale.x = resolution;
+	edgeStateVis.markers[0].scale.y = resolution;
+	edgeStateVis.markers[0].scale.z = resolution;
+	edgeStateVis.markers[0].color.r = 0;
+	edgeStateVis.markers[0].color.g = 0.2;
+	edgeStateVis.markers[0].color.b = 1;
+	edgeStateVis.markers[0].color.a = 1;
+
+	if (edgeStateVis.markers[0].points.size()>0)
+		edgeStateVis.markers[0].action = visualization_msgs::Marker::ADD;
+	else
+		edgeStateVis.markers[0].action = visualization_msgs::Marker::DELETE;
+
+	return edgeStateVis;
+}
+
 mps::VoxelSegmentation::vertex_descriptor
 roiToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax)
 {
@@ -323,7 +377,7 @@ bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin,
 }
 
 std::pair<bool, double> sampleIsOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin,
-                                         const mps::VoxelSegmentation::vertex_descriptor& query, ompl::RNG& rng)
+                                         const mps::VoxelSegmentation::vertex_descriptor& query, cv::RNG& rng)
 {
 	auto coord = gridToCoord(octree, roiMin, query);
 	octomap::OcTreeNode* node = octree->search(coord.x(), coord.y(), coord.z());
@@ -332,7 +386,7 @@ std::pair<bool, double> sampleIsOccupied(const octomap::OcTree* octree, const Ei
 	double pa;
 	if (node)
 	{
-		a = node->getOccupancy() > rng.uniform01();
+		a = node->getOccupancy() > rng.uniform(0.0, 1.0);
 		pa = a ? node->getOccupancy() : (1.0-node->getOccupancy());
 	}
 	else
@@ -368,7 +422,7 @@ octreeToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& minExtent, co
 
 std::pair<double, mps::VoxelSegmentation::EdgeState>
 octreeToGridParticle(const octomap::OcTree* octree, const Eigen::Vector3d& minExtent, const Eigen::Vector3d& maxExtent,
-                     ompl::RNG& rng)
+                     cv::RNG& rng)
 {
 	mps::VoxelSegmentation::vertex_descriptor dims = roiToGrid(octree, minExtent, maxExtent);
 	mps::VoxelSegmentation vox(dims);

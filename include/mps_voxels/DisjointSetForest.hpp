@@ -42,10 +42,11 @@ public:
 	Index merge(const Index& i, const Index& j)
 	{
 		//assert(i != j); // Merge i, i promotes i to the set representative
+		Index ancestorI = getAncestor(i);
 		Index ancestorJ = getAncestor(j);
-		nodes[j] = i;
-		nodes[ancestorJ] = i;
-		return i;
+		nodes[j] = ancestorI;
+		nodes[ancestorJ] = ancestorI;
+		return ancestorI;
 	}
 
 };

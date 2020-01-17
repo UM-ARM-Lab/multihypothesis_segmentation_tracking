@@ -807,18 +807,24 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	}
 
-	ompl::RNG rng;
+	cv::RNG rng;
 	for (const auto& obj : scene->objects)
 	{
-		mps::VoxelSegmentation seg(mps::roiToGrid(obj.second->occupancy.get(), minExtent.head<3>(), maxExtent.head<3>()));
+		mps::VoxelSegmentation seg(mps::roiToGrid(obj.second->occupancy.get(), minExtent.head<3>().cast<double>(), maxExtent.head<3>().cast<double>()));
+		std::cerr << "Edges in voxel grid: " << seg.num_edges() << std::endl;
+		std::cerr << "Vertices in voxel grid: " << seg.num_vertices() << std::endl;
 
 		for (int iter = 0; iter < 10; ++iter)
 		{
 			double weight;
 			mps::VoxelSegmentation::EdgeState edges;
-			std::tie(weight, edges) = mps::octreeToGridParticle(obj.second->occupancy.get(), minExtent.head<3>(), maxExtent.head<3>(), rng);
+			std::tie(weight, edges) = mps::octreeToGridParticle(obj.second->occupancy.get(), minExtent.head<3>().cast<double>(), maxExtent.head<3>().cast<double>(), rng);
 
 			// Visualize the edges
+			auto markers = seg.visualizeEdgeStateDirectly(edges, obj.second->occupancy->getResolution(), minExtent.head<3>().cast<double>(), scene->worldFrame);
+
+			octreePub.publish(markers);
+			waitKey(200);
 		}
 	}
 
