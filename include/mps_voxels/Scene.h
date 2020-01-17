@@ -49,6 +49,8 @@ public:
 	std::shared_ptr<shapes::Mesh> approximation;
 	octomap::point3d_collection points;
 	octomap::point3d_collection shadow;
+	Eigen::Vector3f minExtent;
+	Eigen::Vector3f maxExtent;
 
 	Object(const ObjectIndex i, const std::shared_ptr<octomap::OcTree>& tree);
 };

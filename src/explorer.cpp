@@ -789,7 +789,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 		// Visualize approximate shape
 		visualization_msgs::Marker m;
-		auto approx = obj.second->approximation;
+		auto& approx = obj.second->approximation;
 		shapes::constructMarkerFromShape(approx.get(), m, true);
 		m.id = std::abs(obj.first.id);
 		m.ns = "bounds";
@@ -810,7 +810,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	cv::RNG rng;
 	for (const auto& obj : scene->objects)
 	{
-		mps::VoxelSegmentation seg(mps::roiToGrid(obj.second->occupancy.get(), minExtent.head<3>().cast<double>(), maxExtent.head<3>().cast<double>()));
+		mps::VoxelSegmentation seg(mps::roiToGrid(obj.second->occupancy.get(), obj.second->minExtent.cast<double>(), obj.second->maxExtent.cast<double>()));
 		std::cerr << "Edges in voxel grid: " << seg.num_edges() << std::endl;
 		std::cerr << "Vertices in voxel grid: " << seg.num_vertices() << std::endl;
 
@@ -818,13 +818,13 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		{
 			double weight;
 			mps::VoxelSegmentation::EdgeState edges;
-			std::tie(weight, edges) = mps::octreeToGridParticle(obj.second->occupancy.get(), minExtent.head<3>().cast<double>(), maxExtent.head<3>().cast<double>(), rng);
+			std::tie(weight, edges) = mps::octreeToGridParticle(obj.second->occupancy.get(), obj.second->minExtent.cast<double>(), obj.second->maxExtent.cast<double>(), rng);
 
 			// Visualize the edges
-			auto markers = seg.visualizeEdgeStateDirectly(edges, obj.second->occupancy->getResolution(), minExtent.head<3>().cast<double>(), scene->worldFrame);
+			auto markers = seg.visualizeEdgeStateDirectly(edges, obj.second->occupancy->getResolution(), obj.second->minExtent.cast<double>(), scene->worldFrame);
 
 			octreePub.publish(markers);
-			waitKey(200);
+			sleep(1);
 		}
 	}
 

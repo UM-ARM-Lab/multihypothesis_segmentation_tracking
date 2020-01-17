@@ -65,7 +65,7 @@ VoxelSegmentation::VertexLabels VoxelSegmentation::components(VoxelSegmentation:
 {
 	DisjointSetForest<int> dsf(num_vertices());
 
-	for (Grid::edges_size_type e = 0; e < num_edges(); ++e) // edges are bidirectional :(
+	for (Grid::edges_size_type e = 0; e < num_edges(); ++e)
 	{
 		if (edges[e])
 		{
@@ -77,7 +77,7 @@ VoxelSegmentation::VertexLabels VoxelSegmentation::components(VoxelSegmentation:
 	}
 
 	// Normalize the edges
-	for (Grid::edges_size_type e = 0; e < num_edges(); ++e) // edges are bidirectional :(
+	for (Grid::edges_size_type e = 0; e < num_edges(); ++e)
 	{
 		const Grid::edge_descriptor edge = edge_at(e);
 		auto i = index_of(source(edge, *this));
@@ -87,9 +87,21 @@ VoxelSegmentation::VertexLabels VoxelSegmentation::components(VoxelSegmentation:
 	}
 
 	// Flatten and relabel tree as root labels
+	std::map<int, unsigned> sizes;
 	for (size_t i = 0; i < dsf.nodes.size(); ++i)
 	{
-		dsf.nodes[i] = dsf.getAncestor(i);
+		int label = dsf.getAncestor(i);
+		dsf.nodes[i] = label;
+		sizes[label]++;
+	}
+
+	for (size_t i = 0; i < dsf.nodes.size(); ++i)
+	{
+		int label = dsf.getAncestor(i);
+		if (sizes[label] == 1)
+		{
+			dsf.nodes[i] = -1;
+		}
 	}
 
 	return dsf.nodes;
@@ -286,6 +298,7 @@ VoxelSegmentation::visualizeEdgeStateDirectly(VoxelSegmentation::EdgeState& edge
 	Eigen::Vector3d offset(resolution * 0.5, resolution * 0.5, resolution * 0.5);
 	for (size_t i = 0; i < vlabels.size(); i++)
 	{
+		if (vlabels[i] < 0) { continue; }
 		const vertex_descriptor vd = vertex_at(i);
 		Eigen::Vector3d coord = roiMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>()) + offset;
 

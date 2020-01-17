@@ -24,3 +24,24 @@ std::shared_ptr<shapes::Mesh> approximateShape(const octomap::OcTree* tree)
 //	std::shared_ptr<shapes::Mesh> hull = ZAMBB(pts);
 	return hull;
 }
+
+void getAABB(const shapes::Mesh& shape, Eigen::Vector3f& min, Eigen::Vector3f& max)
+{
+	const int DIM = 3;
+	for (int d=0; d < DIM; ++d)
+	{
+		min[d] = std::numeric_limits<float>::infinity();
+		max[d] = -std::numeric_limits<float>::infinity();
+	}
+
+//	#pragma omp parallel for reduction(max : max) reduction(min : min)
+	for (unsigned i = 0; i < shape.vertex_count; ++i)
+	{
+		Eigen::Map<Eigen::Vector3d> vertex(shape.vertices + (3*i));
+		for (int d=0; d < DIM; ++d)
+		{
+			min[d] = std::min(min[d], static_cast<float>(vertex[d]));
+			max[d] = std::max(max[d], static_cast<float>(vertex[d]));
+		}
+	}
+}

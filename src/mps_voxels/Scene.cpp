@@ -648,6 +648,7 @@ bool SceneProcessor::buildObjects(Scene& s)
 			res.first->second->segment = seg.second;
 			res.first->second->approximation = approx;
 			res.first->second->points = getPoints(subtree.get());
+			getAABB(*res.first->second->approximation, res.first->second->minExtent, res.first->second->maxExtent);
 		}
 
 	}
