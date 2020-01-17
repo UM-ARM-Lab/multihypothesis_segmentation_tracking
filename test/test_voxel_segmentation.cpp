@@ -110,7 +110,11 @@ public:
 			edges[e] = (dsf.nodes[i] == dsf.nodes[j]);
 		}
 
-		// TODO: Flatten and relabel tree as root labels
+		// Flatten and relabel tree as root labels
+		for (size_t i = 0; i < dsf.nodes.size(); ++i)
+		{
+			dsf.nodes[i] = dsf.getAncestor(i);
+		}
 
 		return dsf.nodes;
 	}
