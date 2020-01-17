@@ -30,6 +30,7 @@
 #include "mps_voxels/DisjointSetForest.hpp"
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/ProbVoxel.h"
+#include "mps_voxels/octree_utils.h"
 
 #include <boost/array.hpp>
 #include <boost/graph/grid_graph.hpp>
@@ -118,6 +119,72 @@ public:
 
 		return dsf.nodes;
 	}
+
+	visualization_msgs::MarkerArray visualizeEdgeState(EdgeState& edges, const double resolution,
+		const Eigen::Vector3d& roiMin, const std::string& globalFrame, const std_msgs::ColorRGBA* base_color)
+	{
+		VertexLabels vlabels = components(edges);
+		Eigen::Vector3d offset(resolution * 0.5, resolution * 0.5, resolution * 0.5);
+		octomap::OcTree octree(resolution);
+		for (size_t i = 0; i < vlabels.size(); i++)
+		{
+			const vertex_descriptor vd = vertex_at(i);
+			Eigen::Vector3d coord = roiMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>()) + offset;
+			octree.updateNode(coord[0], coord[1], coord[2], true);
+		}
+		return visualizeOctree(&octree, globalFrame, base_color);
+	}
+
+	visualization_msgs::MarkerArray visualizeEdgeStateDirectly(EdgeState& edges, const double resolution,
+	                                                   const Eigen::Vector3d& roiMin, const std::string& globalFrame)
+	{
+		visualization_msgs::MarkerArray edgeStateVis;
+		edgeStateVis.markers.resize(1);
+		VertexLabels vlabels = components(edges);
+		Eigen::Vector3d offset(resolution * 0.5, resolution * 0.5, resolution * 0.5);
+		for (size_t i = 0; i < vlabels.size(); i++)
+		{
+			const vertex_descriptor vd = vertex_at(i);
+			Eigen::Vector3d coord = roiMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>()) + offset;
+
+			geometry_msgs::Point cubeCenter;
+			cubeCenter.x = coord[0];
+			cubeCenter.y = coord[1];
+			cubeCenter.z = coord[2];
+
+			edgeStateVis.markers[0].points.push_back(cubeCenter);
+
+			// Colors
+			std_msgs::ColorRGBA color;
+			color.a = 1.0;
+			color.r = 0.5;
+			color.g = 0.0;
+			color.b = 1.0;
+			edgeStateVis.markers[0].colors.push_back(color);
+
+		}
+
+		edgeStateVis.markers[0].header.frame_id = globalFrame;
+		edgeStateVis.markers[0].header.stamp = ros::Time::now();
+		edgeStateVis.markers[0].ns = "map" + std::to_string(0);//"occlusion";
+		edgeStateVis.markers[0].id = 0;
+		edgeStateVis.markers[0].type = visualization_msgs::Marker::CUBE_LIST;
+		edgeStateVis.markers[0].scale.x = resolution;
+		edgeStateVis.markers[0].scale.y = resolution;
+		edgeStateVis.markers[0].scale.z = resolution;
+		edgeStateVis.markers[0].color.r = 0;
+		edgeStateVis.markers[0].color.g = 0.2;
+		edgeStateVis.markers[0].color.b = 1;
+		edgeStateVis.markers[0].color.a = 1;
+
+		if (edgeStateVis.markers[0].points.size()>0)
+			edgeStateVis.markers[0].action = visualization_msgs::Marker::ADD;
+		else
+			edgeStateVis.markers[0].action = visualization_msgs::Marker::DELETE;
+
+		return edgeStateVis;
+	}
+
 
 	using edges_size_type = Grid::edges_size_type;
 	using edge_descriptor = Grid::edge_descriptor;
@@ -603,7 +670,7 @@ TEST(segmentation, octree)
 
 TEST(segmentation, octreelabel) {
 	octomap::OcTreeStamped ots(0.05);
-	octomap::OcTreeLabel otl(0.05);
+//	octomap::OcTreeLabel otl(0.05);
 
 }
 
