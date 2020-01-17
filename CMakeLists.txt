@@ -62,7 +62,7 @@ if (CMAKE_COMPILER_IS_GNUCC AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7 AND C
   add_definitions(-DHAS_CUDA_SIFT)
 endif()
 
-find_package(OCTOMAP 1.9 REQUIRED)
+find_package(OCTOMAP REQUIRED)
 include_directories(SYSTEM ${OCTOMAP_INCLUDE_DIRS})
 link_libraries(${OCTOMAP_LIBRARIES})
 
@@ -103,6 +103,8 @@ if(CLION)
 endif()
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 #set(CMAKE_BUILD_TYPE Debug)
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DCGAL_DISABLE_ROUNDING_MATH_CHECK")
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DCGAL_NO_ASSERTIONS")
 
 macro(use_strict_compile_flags)
   set(BUILD_FLAGS "-Wshadow -Wall -Wextra -Wpedantic -Werror=return-type")
@@ -262,13 +264,14 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/TargetDetector.cpp
   src/${PROJECT_NAME}/graph_matrix_utils.cpp
   src/${PROJECT_NAME}/LocalOctreeServer.cpp
+  src/${PROJECT_NAME}/VoxelSegmentation.cpp
   src/${PROJECT_NAME}/Scene.cpp
   src/${PROJECT_NAME}/ObjectLogger.cpp
   src/${PROJECT_NAME}/video_graph.cpp
   src/${PROJECT_NAME}/planning/State.cpp
   src/${PROJECT_NAME}/planning/Action.cpp
   src/${PROJECT_NAME}/planning/MotionPlanner.cpp
-  src/mps_voxels/ProbVoxel.cpp src/mps_voxels/ProbVoxel.h)
+  )
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
@@ -391,7 +394,7 @@ foreach(utest_src_file ${unit_tests_source})
   #  add_executable(${test_base} ${utest_src_file})
 
   target_link_libraries(${PROJECT_NAME}_${test_base}
-#    ${PROJECT_NAME}
+    ${PROJECT_NAME}
     ${GTEST_LIBRARIES}
     )
 endforeach(utest_src_file)

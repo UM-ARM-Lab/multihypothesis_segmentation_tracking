@@ -118,10 +118,10 @@ void SiamTracker::siamtrack(LabelT label, const std::vector<ros::Time>& steps, m
 		ROS_INFO("Action did not finish before the time out.");
 
 	std::vector<cv::Mat> ims;
-	for (auto it = ac.getResult()->mask.begin(); it != ac.getResult()->mask.end(); it++)
+	for (auto iter = ac.getResult()->mask.begin(); iter != ac.getResult()->mask.end(); iter++)
 	{
-//		std::cerr << it->encoding << std::endl;
-		cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvCopy(*it, it->encoding);
+//		std::cerr << iter->encoding << std::endl;
+		cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvCopy(*iter, iter->encoding);
 		cv::Mat im = cv_ptr->image;
 		ims.push_back(im);
 	}

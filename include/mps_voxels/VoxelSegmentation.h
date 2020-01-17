@@ -1,0 +1,168 @@
+/*
+ * Copyright (c) 2020 Andrew Price
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ *    this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its
+ *    contributors may be used to endorse or promote products derived from
+ *    this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#ifndef SRC_VOXELSEGMENTATION_H
+#define SRC_VOXELSEGMENTATION_H
+
+//#include "mps_voxels/octree_utils.h"
+
+#include <boost/array.hpp>
+#include <boost/graph/grid_graph.hpp>
+
+#include <octomap/octomap.h>
+
+#include <ompl/util/RandomNumbers.h>
+
+#include <Eigen/Core>
+
+namespace mps
+{
+
+class VoxelSegmentation
+{
+public:
+	const static int Dimensions = 3;
+	using Grid = boost::grid_graph<Dimensions>;
+	using vertex_descriptor = Grid::vertex_descriptor;
+	// vertex_descriptor is the boost::array of the grid coordinates
+	// VertexIndex is the size_t linear position of the vertex
+	// edge_descriptor is the ordered pair (vertex_descriptor, vertex_descriptor)
+
+	using EdgeState = std::vector<bool>;
+	using VertexLabels = std::vector<int>;
+
+	VoxelSegmentation(boost::array<std::size_t, Dimensions> dims);
+
+	size_t getEdgeIndex(vertex_descriptor a, vertex_descriptor b);
+
+	// From edge graph to vertex labels
+	VertexLabels components(EdgeState& edges);
+
+	using edges_size_type = Grid::edges_size_type;
+	using edge_descriptor = Grid::edge_descriptor;
+	using vertices_size_type = Grid::vertices_size_type;
+
+	const vertex_descriptor m_dimension_lengths;
+	vertices_size_type m_num_vertices;
+
+	boost::array<edges_size_type, Dimensions> m_edge_count;
+	edges_size_type m_num_edges;
+
+	// Pre-computes the number of vertices and edges
+	void precalculate();
+
+	// Returns the number of dimensions in the graph
+	inline std::size_t dimensions() const {
+		return (Dimensions);
+	}
+
+	// Returns the length of dimension [dimension_index]
+	inline vertices_size_type length(std::size_t dimension) const {
+		return (m_dimension_lengths[dimension]);
+	}
+
+	// Returns the number of vertices in the graph
+	inline vertices_size_type num_vertices() const {
+		return (m_num_vertices);
+	}
+
+	// Returns the number of edges in the graph
+	inline edges_size_type num_edges() const {
+		return (m_num_edges);
+	}
+
+	// Returns the number of edges in dimension [dimension_index]
+	inline edges_size_type num_edges(std::size_t dimension_index) const {
+		return (m_edge_count[dimension_index]);
+	}
+
+	// Gets the vertex that is [distance] units ahead of [vertex] in
+	// dimension [dimension_index].
+	vertex_descriptor next
+		(vertex_descriptor vertex,
+		 std::size_t dimension_index,
+		 vertices_size_type distance = 1) const;
+
+	// Gets the vertex that is [distance] units behind [vertex] in
+	// dimension [dimension_index].
+	vertex_descriptor previous
+		(vertex_descriptor vertex,
+		 std::size_t dimension_index,
+		 vertices_size_type distance = 1) const;
+
+	// Returns the index of [vertex] (See also vertex_at)
+	vertices_size_type index_of(vertex_descriptor vertex) const;
+
+	// Returns the vertex whose index is [vertex_index] (See also
+	// index_of(vertex_descriptor))
+	vertex_descriptor vertex_at(vertices_size_type vertex_index) const;
+
+	// Returns the edge whose index is [edge_index] (See also
+	// index_of(edge_descriptor)).
+	edge_descriptor edge_at(edges_size_type edge_index) const;
+
+	edges_size_type index_of(edge_descriptor edge) const;
+
+};
+
+template <typename Point>
+Point snap(const Point& p, const octomap::OcTree* octree)
+{
+	auto coord = octree->keyToCoord(octree->coordToKey(p.x(), p.y(), p.z()));
+	return {coord.x(), coord.y(), coord.z()};
+}
+
+mps::VoxelSegmentation::vertex_descriptor roiToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax);
+
+mps::VoxelSegmentation::vertex_descriptor coordToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& query);
+
+Eigen::Vector3d gridToCoord(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelSegmentation::vertex_descriptor& query);
+
+bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelSegmentation::vertex_descriptor& query);
+
+std::pair<bool, double>
+sampleIsOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelSegmentation::vertex_descriptor& query,
+                 ompl::RNG& rng);
+
+// From octree labels to edge graph
+mps::VoxelSegmentation::EdgeState
+octreeToGrid(const octomap::OcTree* octree,
+             const Eigen::Vector3d& minExtent,
+             const Eigen::Vector3d& maxExtent);
+
+// From octree labels to edge graph
+std::pair<double, mps::VoxelSegmentation::EdgeState>
+octreeToGridParticle(const octomap::OcTree* octree,
+                     const Eigen::Vector3d& minExtent,
+                     const Eigen::Vector3d& maxExtent,
+                     ompl::RNG& rng);
+
+}
+
+#endif // SRC_VOXELSEGMENTATION_H

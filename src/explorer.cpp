@@ -48,6 +48,8 @@
 
 //#include <pcl/visualization/cloud_viewer.h>
 
+#include "mps_voxels/VoxelSegmentation.h"
+
 #include <geometric_shapes/shape_operations.h>
 
 #include <message_filters/subscriber.h>
@@ -803,6 +805,21 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		octreePub.publish(allMarkers.flatten());
 		waitKey(200);
 
+	}
+
+	ompl::RNG rng;
+	for (const auto& obj : scene->objects)
+	{
+		mps::VoxelSegmentation seg(mps::roiToGrid(obj.second->occupancy.get(), minExtent.head<3>(), maxExtent.head<3>()));
+
+		for (int iter = 0; iter < 10; ++iter)
+		{
+			double weight;
+			mps::VoxelSegmentation::EdgeState edges;
+			std::tie(weight, edges) = mps::octreeToGridParticle(obj.second->occupancy.get(), minExtent.head<3>(), maxExtent.head<3>(), rng);
+
+			// Visualize the edges
+		}
 	}
 
 	PROFILE_RECORD("Complete Scene");
