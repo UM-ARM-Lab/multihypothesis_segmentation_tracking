@@ -29,12 +29,14 @@
 
 #include "mps_voxels/DisjointSetForest.hpp"
 #include "mps_voxels/octree_utils.h"
+#include "mps_voxels/ProbVoxel.h"
 
 #include <boost/array.hpp>
 #include <boost/graph/grid_graph.hpp>
 #include <boost/graph/connected_components.hpp>
 
 #include <octomap/octomap.h>
+#include <octomap/OcTreeStamped.h>
 #include <Eigen/Geometry>
 #include <unordered_set>
 
@@ -476,6 +478,7 @@ octreeToGrid(const octomap::OcTree* octree,
 	return edges;
 }
 
+/*
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "cert-flp30-c"
 TEST(segmentation, octree)
@@ -587,12 +590,18 @@ TEST(segmentation, octree)
 
 }
 #pragma clang diagnostic pop
-
+*/
 /* TODO:
  * OcTree is originally used to store occupancy probability, while we don't care about occupancy probability.
  * Changing float to int -> store label? or use ColorOcTree.
  * Some reference:
  * https://answers.ros.org/question/11443/initializing-and-manipulating-octomaps-with-more-than-just-occupancy/ */
+
+TEST(segmentation, octreelabel) {
+	octomap::OcTreeStamped ots(0.05);
+	octomap::OcTreeLabel otl(0.05);
+
+}
 
 int main(int argc, char **argv)
 {
