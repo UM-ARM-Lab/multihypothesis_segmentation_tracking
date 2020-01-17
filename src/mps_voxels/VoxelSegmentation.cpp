@@ -33,6 +33,8 @@
 //#include <boost/pending/disjoint_sets.hpp>
 #include <opencv2/core.hpp>
 
+#include <map>
+
 namespace mps
 {
 
@@ -284,26 +286,38 @@ VoxelSegmentation::visualizeEdgeStateDirectly(VoxelSegmentation::EdgeState& edge
 	edgeStateVis.markers.resize(1);
 	VertexLabels vlabels = components(edges);
 	Eigen::Vector3d offset(resolution * 0.5, resolution * 0.5, resolution * 0.5);
+
+	std::map<int, Eigen::Vector3d> colormap;
 	for (size_t i = 0; i < vlabels.size(); i++)
 	{
-		const vertex_descriptor vd = vertex_at(i);
-		Eigen::Vector3d coord = roiMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>()) + offset;
+		if (vlabels[i] == -1){ // vlabels[i] == -1 represents empty space
+			const vertex_descriptor vd = vertex_at(i);
+			Eigen::Vector3d coord = roiMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>()) + offset;
 
-		geometry_msgs::Point cubeCenter;
-		cubeCenter.x = coord[0];
-		cubeCenter.y = coord[1];
-		cubeCenter.z = coord[2];
+			geometry_msgs::Point cubeCenter;
+			cubeCenter.x = coord[0];
+			cubeCenter.y = coord[1];
+			cubeCenter.z = coord[2];
 
-		edgeStateVis.markers[0].points.push_back(cubeCenter);
+			edgeStateVis.markers[0].points.push_back(cubeCenter);
 
-		// Colors
-		std_msgs::ColorRGBA color;
-		color.a = 1.0;
-		color.r = 0.5;
-		color.g = 0.0;
-		color.b = 1.0;
-		edgeStateVis.markers[0].colors.push_back(color);
-
+			// Colors
+			std_msgs::ColorRGBA color;
+			color.a = 1.0;
+			if (colormap.find(vlabels[i]) != colormap.end()){
+				color.r = colormap[vlabels[i]][0];
+				color.g = colormap[vlabels[i]][1];
+				color.b = colormap[vlabels[i]][2];
+			}
+			else{ // new label
+				color.r = rand()/(float)RAND_MAX;
+				color.g = rand()/(float)RAND_MAX;
+				color.b = rand()/(float)RAND_MAX;
+				Eigen::Vector3d temp(color.r, color.g, color.b);
+				colormap[vlabels[i]] = temp;
+			}
+			edgeStateVis.markers[0].colors.push_back(color);
+		}
 	}
 
 	edgeStateVis.markers[0].header.frame_id = globalFrame;
