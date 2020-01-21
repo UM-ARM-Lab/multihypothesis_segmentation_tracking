@@ -392,6 +392,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		std::unique_ptr<CaptureGuard> captureGuard; ///< RAII-style stopCapture() for various exit paths
 
 		if (isPrimaryAction)
+//		if ((compositeAction->primaryAction >= 0) && a == 1)
 		{
 			captureGuard = std::make_unique<CaptureGuard>(tracker.get());
 			auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
@@ -479,6 +480,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		}
 
 		if (isPrimaryAction)
+//		if ((compositeAction->primaryAction >= 0) && a == compositeAction->actions.size()-1)
 		{
 			tracker->stopCapture();
 
