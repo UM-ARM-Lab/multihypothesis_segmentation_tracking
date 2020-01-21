@@ -15,24 +15,25 @@
 
 #include <opencv2/highgui.hpp>
 
+namespace mps
+{
+
 CudaTracker::CudaTracker(tf::TransformListener* _listener,
-                         const size_t _buffer,
-                         SubscriptionOptions _options,
                          TrackingOptions _track_options)
-                         : Tracker(_listener, _buffer, std::move(_options), std::move(_track_options))
+	:Tracker(_listener, std::move(_track_options))
 {
 
 }
 
-void CudaTracker::track(const std::vector<ros::Time>& steps)
+void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer)
 {
-	if (rgb_buffer.empty() || depth_buffer.empty())
+	if (buffer.rgb.empty() || buffer.depth.empty())
 	{
 		ROS_WARN_STREAM("Tracking failed: Capture buffer empty.");
 		return;
 	}
 
-	mask = getMask();
+	mask = getMask(buffer);
 
 	////////////////////////////////////////
 	//// Set up Keypoint tracking
@@ -44,12 +45,13 @@ void CudaTracker::track(const std::vector<ros::Time>& steps)
 	const ros::Time& tFirst = steps.front();
 	const ros::Time& tLast = steps.back();
 
-	double fps = steps.size()/(tLast - tFirst).toSec();
-	cv::VideoWriter video("source.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, rgb_buffer[tFirst]->image.size(), true);
-	cv::VideoWriter tracking("tracking.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, rgb_buffer[tFirst]->image.size(), true);
+	double fps = steps.size() / (tLast - tFirst).toSec();
+	cv::VideoWriter video("source.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(), true);
+	cv::VideoWriter tracking("tracking.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(),
+	                         true);
 
-	const unsigned int w = rgb_buffer[tFirst]->image.cols;
-	const unsigned int h = rgb_buffer[tFirst]->image.rows;
+	const unsigned int w = buffer.rgb.at(tFirst)->image.cols;
+	const unsigned int h = buffer.rgb.at(tFirst)->image.rows;
 
 	const float initBlur = 1.0f;
 	const float thresh = 2.5f;
@@ -67,24 +69,24 @@ void CudaTracker::track(const std::vector<ros::Time>& steps)
 	cudaSift::Image img1, img2;
 
 	// Convert to 32-bit grayscale and compute SIFT
-	cv::cvtColor(rgb_buffer.begin()->second->image, tempGray, cv::COLOR_BGR2GRAY);
+	cv::cvtColor(buffer.rgb.begin()->second->image, tempGray, cv::COLOR_BGR2GRAY);
 	tempGray.convertTo(gray1, CV_32FC1);
-	img1.Allocate(w, h, cudaSift::iAlignUp(w, 128), false, nullptr, (float*)gray1.data);
+	img1.Allocate(w, h, cudaSift::iAlignUp(w, 128), false, nullptr, (float*) gray1.data);
 	img1.stream = 0;
 	img1.Download();
 	cudaSift::ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false);
 
 	for (int i = 1; i < static_cast<int>(steps.size()) && ros::ok(); ++i)
 	{
-		const ros::Time& tPrev = steps[i-1];
+		const ros::Time& tPrev = steps[i - 1];
 		const ros::Time& tCurr = steps[i];
 
-		rgb_buffer[tPrev]->image.copyTo(display);
+		buffer.rgb.at(tPrev)->image.copyTo(display);
 
 		// Convert to 32-bit grayscale and compute SIFT
-		cv::cvtColor(rgb_buffer[tCurr]->image, tempGray, cv::COLOR_BGR2GRAY);
+		cv::cvtColor(buffer.rgb.at(tCurr)->image, tempGray, cv::COLOR_BGR2GRAY);
 		tempGray.convertTo(gray2, CV_32FC1);
-		img2.Allocate(w, h, cudaSift::iAlignUp(w, 128), false, nullptr, (float*)gray2.data);
+		img2.Allocate(w, h, cudaSift::iAlignUp(w, 128), false, nullptr, (float*) gray2.data);
 		img2.stream = 0;
 		img2.Download();
 		cudaSift::ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false);
@@ -102,7 +104,7 @@ void CudaTracker::track(const std::vector<ros::Time>& steps)
 			const cudaSift::SiftPoint& spm = siftData2.h_data[sp.match];
 			{
 				// Enforce max pixel motion constraint
-				if (sqrt(pow(sp.xpos-spm.xpos,2)+pow(sp.ypos-spm.ypos,2)) > pixel_motion_thresh) { continue; }
+				if (sqrt(pow(sp.xpos - spm.xpos, 2) + pow(sp.ypos - spm.ypos, 2)) > pixel_motion_thresh) { continue; }
 
 				cv::Point2i pt1(sp.xpos, sp.ypos);
 				cv::Point2i pt2(spm.xpos, spm.ypos);
@@ -114,23 +116,24 @@ void CudaTracker::track(const std::vector<ros::Time>& steps)
 				}
 
 				// Get depths and validity
-				uint16_t dVal1 = depth_buffer[tPrev]->image.at<uint16_t>(pt1);
-				uint16_t dVal2 = depth_buffer[tCurr]->image.at<uint16_t>(pt2);
+				uint16_t dVal1 = buffer.depth.at(tPrev)->image.at<uint16_t>(pt1);
+				uint16_t dVal2 = buffer.depth.at(tCurr)->image.at<uint16_t>(pt2);
 				if (!(DepthTraits::valid(dVal1) && DepthTraits::valid(dVal2))) { continue; }
 
 				// Get 3D motion vector
 				float depth1 = DepthTraits::toMeters(dVal1); // if (depth1 > maxZ || depth1 < minZ) { continue; }
 				float depth2 = DepthTraits::toMeters(dVal2); // if (depth2 > maxZ || depth2 < minZ) { continue; }
-				Vector p1 = toPoint3D<Vector>(sp.xpos, sp.ypos, depth1, cameraModel);
-				Vector p2 = toPoint3D<Vector>(spm.xpos, spm.ypos, depth2, cameraModel);
-				Vector v = p2-p1;
+				Vector p1 = toPoint3D<Vector>(sp.xpos, sp.ypos, depth1, buffer.cameraModel);
+				Vector p2 = toPoint3D<Vector>(spm.xpos, spm.ypos, depth2, buffer.cameraModel);
+				Vector v = p2 - p1;
 				const double dist_thresh = track_options.meterRadius;
-				if ((v.x()*v.x() + v.y()*v.y() + v.z()*v.z()) > dist_thresh*dist_thresh) { continue; }
+				if ((v.x() * v.x() + v.y() * v.y() + v.z() * v.z()) > dist_thresh * dist_thresh) { continue; }
 
 				// Draw the match
 				cv::circle(display, cv::Point2f(sp.xpos, sp.ypos), sp.scale, cv::Scalar(255, 0, 0));
 				cv::circle(display, cv::Point2f(spm.xpos, spm.ypos), spm.scale, cv::Scalar(0, 255, 0));
-				cv::line(display, cv::Point2f(sp.xpos, sp.ypos), cv::Point2f(spm.xpos, spm.ypos), cv::Scalar(0, 0, 255));
+				cv::line(display, cv::Point2f(sp.xpos, sp.ypos), cv::Point2f(spm.xpos, spm.ypos),
+				         cv::Scalar(0, 0, 255));
 
 				flow2.push_back({pt1, pt2});
 				flow3.push_back({p1, v});
@@ -144,7 +147,7 @@ void CudaTracker::track(const std::vector<ros::Time>& steps)
 		flows2[{tPrev, tCurr}] = flow2;
 		flows3[{tPrev, tCurr}] = flow3;
 
-		video.write(rgb_buffer[tPrev]->image);
+		video.write(buffer.rgb.at(tPrev)->image);
 		tracking.write(display);
 //		cv::imshow("prev", display);
 //		cv::waitKey(1);
@@ -159,9 +162,11 @@ void CudaTracker::track(const std::vector<ros::Time>& steps)
 	cudaSift::FreeSiftData(siftData1);
 	cudaSift::FreeSiftData(siftData2);
 
-	video.write(rgb_buffer[tLast]->image);
+	video.write(buffer.rgb.at(tLast)->image);
 	video.release();
 	tracking.release();
+}
+
 }
 
 #endif //#ifdef HAS_CUDA_SIFT

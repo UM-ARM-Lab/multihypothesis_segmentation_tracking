@@ -3,7 +3,8 @@
 //
 
 #include "mps_voxels/image_utils.h"
-#include "mps_voxels/Tracker.h"
+#include "mps_voxels/SensorHistorian.h"
+#include "mps_voxels/ROI.h"
 
 pcl::PointCloud<PointT>::Ptr imagesToCloud(const cv::Mat& rgb, const cv::Mat& depth, const image_geometry::PinholeCameraModel& cameraModel)
 {
@@ -20,7 +21,7 @@ pcl::PointCloud<PointT>::Ptr imagesToCloud(const cv::Mat& rgb, const cv::Mat& de
 			auto color = rgb.at<cv::Vec3b>(v, u);
 			auto dVal = depth.at<uint16_t>(v, u);
 
-			float depthVal = Tracker::DepthTraits::toMeters(dVal); // if (depth1 > maxZ || depth1 < minZ) { continue; }
+			float depthVal = mps::SensorHistorian::DepthTraits::toMeters(dVal); // if (depth1 > maxZ || depth1 < minZ) { continue; }
 			PointT pt(color[2], color[1], color[0]);
 			pt.getVector3fMap() = toPoint3D<Eigen::Vector3f>(u, v, depthVal, cameraModel);
 			cloud->points[idx] = pt;

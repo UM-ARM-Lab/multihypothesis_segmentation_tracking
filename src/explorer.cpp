@@ -103,6 +103,7 @@
 #define namedWindow(n, t) cv::namedWindow((n), (t))
 #endif
 
+using namespace mps;
 
 sensor_msgs::JointState::ConstPtr latestJoints;
 std::mutex joint_mtx;
@@ -177,6 +178,7 @@ public:
 	std::shared_ptr<LocalOctreeServer> mapServer;
 	std::shared_ptr<VoxelCompleter> completionClient;
 	std::shared_ptr<RGBDSegmenter> segmentationClient;
+	std::unique_ptr<SensorHistorian> historian;
 	std::unique_ptr<Tracker> tracker;
 	std::unique_ptr<TargetDetector> targetDetector;
 	std::unique_ptr<TrajectoryClient> trajectoryClient;
@@ -221,7 +223,7 @@ public:
 
 	robot_state::RobotState getCurrentRobotState();
 	trajectory_msgs::JointTrajectory fillMissingJointTrajectories(const trajectory_msgs::JointTrajectory& trajIn);
-	std::map<ObjectIndex, moveit::Pose> followObjects(const std::shared_ptr<Motion>& motion, const Tracker* track);
+	std::map<ObjectIndex, moveit::Pose> followObjects(const std::shared_ptr<Motion>& motion, const SensorHistoryBuffer& buffer);
 	bool executeMotion(const std::shared_ptr<Motion>& motion, const robot_state::RobotState& recoveryState);
 
 	void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
@@ -298,7 +300,7 @@ trajectory_msgs::JointTrajectory SceneExplorer::fillMissingJointTrajectories(con
 	return trajOut;
 }
 
-std::map<ObjectIndex, moveit::Pose> SceneExplorer::followObjects(const std::shared_ptr<Motion>& motion, const Tracker* track)
+std::map<ObjectIndex, moveit::Pose> SceneExplorer::followObjects(const std::shared_ptr<Motion>& motion, const SensorHistoryBuffer& buffer)
 {
 	moveit::Pose worldTstart = moveit::Pose::Identity();
 	moveit::Pose worldTend = moveit::Pose::Identity();
@@ -313,8 +315,8 @@ std::map<ObjectIndex, moveit::Pose> SceneExplorer::followObjects(const std::shar
 	worldTend = action->palm_trajectory.back();
 
 #else
-	auto msgStart = find_nearest(track->joint_buffer, track->rgb_buffer.begin()->first)->second;
-	auto msgEnd = find_nearest(track->joint_buffer, track->rgb_buffer.rbegin()->first)->second;
+	auto msgStart = find_nearest(buffer.joint, buffer.rgb.begin()->first)->second;
+	auto msgEnd = find_nearest(buffer.joint, buffer.rgb.rbegin()->first)->second;
 
 	// Assume that state at start of track is start of manipulation
 	robot_state::RobotState qStart(pModel);
@@ -393,17 +395,17 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 
 		if (isPrimaryAction)
 		{
-			captureGuard = std::make_unique<CaptureGuard>(tracker.get());
+			captureGuard = std::make_unique<CaptureGuard>(historian.get());
 			auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
 			if (cache) { cache->cache.clear(); }
-			tracker->startCapture();
+			historian->startCapture();
 		}
 //        if (a == 1)
 //        {
-//            captureGuard = std::make_unique<CaptureGuard>(tracker.get());
+//            captureGuard = std::make_unique<CaptureGuard>(historian.get());
 //            auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
 //            if (cache) { cache->cache.clear(); }
-//            tracker->startCapture();
+//            historian->startCapture();
 //        }
 
 		auto armAction = std::dynamic_pointer_cast<JointTrajectoryAction>(action);
@@ -480,17 +482,16 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 
 		if (isPrimaryAction)
 		{
-			tracker->stopCapture();
+			historian->stopCapture();
 
 			std::vector<ros::Time> steps;
-			for (auto iter = tracker->rgb_buffer.begin(); iter != tracker->rgb_buffer.end(); std::advance(iter, 5))
+			for (auto iter = historian->buffer.rgb.begin(); iter != historian->buffer.rgb.end(); std::advance(iter, 5))
 			{
 				steps.push_back(iter->first);
 			}
 
 //			tracker->track(steps);
 
-//TODO: go through all objectindexes, compute their bboxes
 //      useful functions:
 //			scene->targetObjectID = std::make_shared<ObjectIndex>(scene->labelToIndexLookup.at((unsigned)matchID));
 
@@ -498,8 +499,9 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			cv::Mat temp_seg = scene->segInfo->objectness_segmentation->image;
 			scene->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
 
+			// TODO: [Kun] Get unified interface for "tracking"
 			for(auto pair:scene->labelToBBoxLookup){
-				tracker->siamtrack(pair.first, steps, pair.second);
+//				tracker->track(pair.first, steps, pair.second);
 			}
 
 		}
@@ -1207,7 +1209,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			}
 
 			const auto& action = std::dynamic_pointer_cast<JointTrajectoryAction>(compositeAction->actions[compositeAction->primaryAction]);
-			std::map<ObjectIndex, moveit::Pose> objTrajs = followObjects(motion, tracker.get());
+			std::map<ObjectIndex, moveit::Pose> objTrajs = followObjects(motion, historian->buffer);
 			for (int iter = 0; iter < 1; ++iter)
 			{
 				tf::Transform temp;
@@ -1354,7 +1356,8 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	// tracker = std::make_unique<Tracker>(listener.get());
 	tracker = std::make_unique<SiamTracker>(listener.get());
 #endif
-	tracker->stopCapture();
+	historian = std::make_unique<SensorHistorian>(listener.get());
+	historian->stopCapture();
 
 	bool gotParam = false;
 
@@ -1558,7 +1561,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	namedWindow("rgb", cv::WINDOW_GUI_NORMAL);
 	namedWindow("segmentation", cv::WINDOW_GUI_NORMAL);
 
-	Tracker::SubscriptionOptions options(topic_prefix);
+	SensorHistorian::SubscriptionOptions options(topic_prefix);
 
 	visualization_msgs::MarkerArray ma;
 	ma.markers.push_back(tracker->track_options.roi.getMarker());
@@ -1569,9 +1572,9 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	segmentationPub = std::make_unique<image_transport::Publisher>(it.advertise("segmentation", 1));
 	targetPub = std::make_unique<image_transport::Publisher>(it.advertise("target", 1));
 
-	rgb_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.rgb_topic, options.buffer, options.hints);
-	depth_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.depth_topic, options.buffer, options.hints);
-	cam_sub = std::make_unique<message_filters::Subscriber<sensor_msgs::CameraInfo>>(options.nh, options.cam_topic, options.buffer);
+	rgb_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.rgb_topic, options.queue_size, options.hints);
+	depth_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.depth_topic, options.queue_size, options.hints);
+	cam_sub = std::make_unique<message_filters::Subscriber<sensor_msgs::CameraInfo>>(options.nh, options.cam_topic, options.queue_size);
 
     auto man_sub_options = ros::SubscribeOptions::create<std_msgs::Int64>("/segment_rgbd/man", 2, manCallback, ros::VoidPtr(), sensor_queue.get());
 //    ros::SubscribeOptions man_sub_options;
@@ -1579,7 +1582,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
     indexofinterestSub = nh.subscribe(man_sub_options);
 //    indexofinterestSub = nh.subscribe("/segment_rgbd/man", 1, &SceneExplorer::manCallback, this);
 
-	sync = std::make_unique<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(options.buffer), *rgb_sub, *depth_sub, *cam_sub);
+	sync = std::make_unique<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(options.queue_size), *rgb_sub, *depth_sub, *cam_sub);
 	sync->registerCallback(boost::bind(&SceneExplorer::cloud_cb, this, _1, _2, _3));
 
 }

@@ -9,16 +9,19 @@
 
 #include "mps_voxels/Tracker.h"
 
+namespace mps
+{
+
 class CudaTracker : public Tracker
 {
 public:
 	CudaTracker(tf::TransformListener* _listener,
-	            const size_t _buffer = 500,
-	            SubscriptionOptions _options = SubscriptionOptions(),
 	            TrackingOptions _track_options = TrackingOptions());
 
 	void track(const std::vector<ros::Time>& steps) override;
 };
+
+}
 
 #endif // HAS_CUDA_SIFT
 #endif // MPS_VOXELS_CUDATRACKER_H
