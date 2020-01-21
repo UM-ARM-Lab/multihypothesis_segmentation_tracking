@@ -13,16 +13,17 @@
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
 
+namespace mps
+{
+
 SiamTracker::SiamTracker(tf::TransformListener* _listener,
-                         const size_t _buffer,
-                         SubscriptionOptions _options,
                          TrackingOptions _track_options)
-                         : Tracker(_listener, _buffer, std::move(_options), std::move(_track_options))
+	:Tracker(_listener, std::move(_track_options))
 {
 
 }
 
-void SiamTracker::track(const std::vector<ros::Time>& steps)
+void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer)
 {
 	actionlib::SimpleActionClient<mps_msgs::TrackBBoxAction> ac("TrackBBox", true);
 
@@ -40,7 +41,7 @@ void SiamTracker::track(const std::vector<ros::Time>& steps)
 	bbox.ymax = 200;
 	goal.bbox = bbox;
 
-	if (rgb_buffer.empty() || depth_buffer.empty())
+	if (buffer.rgb.empty() || buffer.depth.empty())
 	{
 		ROS_WARN_STREAM("Tracking failed: Capture buffer empty.");
 		return;
@@ -49,11 +50,11 @@ void SiamTracker::track(const std::vector<ros::Time>& steps)
 //	sensor_msgs::Image video[numframes];
 	for (int i = 0; i < numframes && ros::ok(); ++i)
 	{
-		cv::Mat im = rgb_buffer[steps[i]]->image;
+		cv::Mat im = buffer.rgb.at(steps[i])->image;
 		cv_bridge::CvImage out_msg;
 //		out_msg.header   = im.header; // Same timestamp and tf frame as input image
 		out_msg.encoding = sensor_msgs::image_encodings::RGB8; // Or whatever
-		out_msg.image    = im; // Your cv::Mat
+		out_msg.image = im; // Your cv::Mat
 
 		goal.video.push_back(*out_msg.toImageMsg());
 	}
@@ -66,7 +67,7 @@ void SiamTracker::track(const std::vector<ros::Time>& steps)
 	if (finished_before_timeout)
 	{
 		actionlib::SimpleClientGoalState state = ac.getState();
-		ROS_INFO("Action finished: %s",state.toString().c_str());
+		ROS_INFO("Action finished: %s", state.toString().c_str());
 	}
 	else
 		ROS_INFO("Action did not finish before the time out.");
@@ -74,7 +75,8 @@ void SiamTracker::track(const std::vector<ros::Time>& steps)
 
 }
 
-void SiamTracker::siamtrack(LabelT label, const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox){
+void SiamTracker::siamtrack(LabelT label, const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox, const SensorHistoryBuffer& buffer)
+{
 	actionlib::SimpleActionClient<mps_msgs::TrackBBoxAction> ac("TrackBBox", true);
 
 	ROS_INFO("Waiting for action server to start.");
@@ -86,7 +88,7 @@ void SiamTracker::siamtrack(LabelT label, const std::vector<ros::Time>& steps, m
 	mps_msgs::TrackBBoxGoal goal;
 	goal.bbox = bbox;
 
-	if (rgb_buffer.empty() || depth_buffer.empty())
+	if (buffer.rgb.empty() || buffer.depth.empty())
 	{
 		ROS_WARN_STREAM("Tracking failed: Capture buffer empty.");
 		return;
@@ -95,11 +97,11 @@ void SiamTracker::siamtrack(LabelT label, const std::vector<ros::Time>& steps, m
 //	sensor_msgs::Image video[numframes];
 	for (int i = 0; i < numframes && ros::ok(); ++i)
 	{
-		cv::Mat im = rgb_buffer[steps[i]]->image;
+		cv::Mat im = buffer.rgb.at(steps[i])->image;
 		cv_bridge::CvImage out_msg;
 //		out_msg.header   = im.header; // Same timestamp and tf frame as input image
 		out_msg.encoding = sensor_msgs::image_encodings::RGB8; // Or whatever
-		out_msg.image    = im; // Your cv::Mat
+		out_msg.image = im; // Your cv::Mat
 
 		goal.video.push_back(*out_msg.toImageMsg());
 	}
@@ -112,7 +114,7 @@ void SiamTracker::siamtrack(LabelT label, const std::vector<ros::Time>& steps, m
 	if (finished_before_timeout)
 	{
 		actionlib::SimpleClientGoalState state = ac.getState();
-		ROS_INFO("Action finished: %s",state.toString().c_str());
+		ROS_INFO("Action finished: %s", state.toString().c_str());
 	}
 	else
 		ROS_INFO("Action did not finish before the time out.");
@@ -127,4 +129,6 @@ void SiamTracker::siamtrack(LabelT label, const std::vector<ros::Time>& steps, m
 	}
 
 	labelToTrackingLookup.insert({label, ims});
+}
+
 }
