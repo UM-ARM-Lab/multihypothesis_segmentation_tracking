@@ -25,7 +25,7 @@ CudaTracker::CudaTracker(tf::TransformListener* _listener,
 
 }
 
-void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer)
+void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label)
 {
 	if (buffer.rgb.empty() || buffer.depth.empty())
 	{

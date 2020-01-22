@@ -18,7 +18,7 @@ public:
 	CudaTracker(tf::TransformListener* _listener,
 	            TrackingOptions _track_options = TrackingOptions());
 
-	void track(const std::vector<ros::Time>& steps) override;
+	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label = 0) override;
 };
 
 }

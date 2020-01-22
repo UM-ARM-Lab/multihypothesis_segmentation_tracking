@@ -9,6 +9,8 @@
 #include "mps_voxels/colormap.h"
 #include "mps_voxels/SensorHistorian.h"
 
+#include "mps_msgs/AABBox2d.h"
+
 #include <opencv2/imgproc.hpp>
 
 #include <visualization_msgs/MarkerArray.h>
@@ -112,8 +114,10 @@ public:
 
 	cv::Mat& getMask(const SensorHistoryBuffer& buffer);
 
+	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup;
+
 	virtual
-	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer);
+	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label = 0);
 
 	virtual
 	void reset();

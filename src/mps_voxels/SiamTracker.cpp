@@ -23,7 +23,7 @@ SiamTracker::SiamTracker(tf::TransformListener* _listener,
 
 }
 
-void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer)
+void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label)
 {
 	actionlib::SimpleActionClient<mps_msgs::TrackBBoxAction> ac("TrackBBox", true);
 
@@ -34,12 +34,7 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	ROS_INFO("Action server started, sending goal.");
 	// send a goal to the action
 	mps_msgs::TrackBBoxGoal goal;
-	mps_msgs::AABBox2d bbox;
-	bbox.xmin = 100;
-	bbox.ymin = 100;
-	bbox.xmax = 200;
-	bbox.ymax = 200;
-	goal.bbox = bbox;
+	goal.bbox = labelToBBoxLookup[label];
 
 	if (buffer.rgb.empty() || buffer.depth.empty())
 	{
@@ -72,9 +67,19 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	else
 		ROS_INFO("Action did not finish before the time out.");
 
+	std::vector<cv::Mat> ims;
+	for (auto iter = ac.getResult()->mask.begin(); iter != ac.getResult()->mask.end(); iter++)
+	{
+//		std::cerr << iter->encoding << std::endl;
+		cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvCopy(*iter, iter->encoding);
+		cv::Mat im = cv_ptr->image;
+		ims.push_back(im);
+	}
 
+	labelToTrackingLookup.insert({label, ims});
 }
 
+/*
 void SiamTracker::siamtrack(LabelT label, const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox, const SensorHistoryBuffer& buffer)
 {
 	actionlib::SimpleActionClient<mps_msgs::TrackBBoxAction> ac("TrackBBox", true);
@@ -129,6 +134,6 @@ void SiamTracker::siamtrack(LabelT label, const std::vector<ros::Time>& steps, m
 	}
 
 	labelToTrackingLookup.insert({label, ims});
-}
+}*/
 
 }

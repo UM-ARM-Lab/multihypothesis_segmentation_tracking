@@ -484,6 +484,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		if (isPrimaryAction)
 //		if ((compositeAction->primaryAction >= 0) && a == compositeAction->actions.size()-1)
 		{
+			std::cerr << "Start Tracker!" << std::endl;
 			historian->stopCapture();
 
 			std::vector<ros::Time> steps;
@@ -499,11 +500,11 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 
 
 			cv::Mat temp_seg = scene->segInfo->objectness_segmentation->image;
-			scene->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
+//			scene->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
+			tracker->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
 
-			// TODO: [Kun] Get unified interface for "tracking"
-			for(auto pair:scene->labelToBBoxLookup){
-//				tracker->track(pair.first, steps, pair.second);
+			for(auto pair:tracker->labelToBBoxLookup){
+				tracker->track(steps, historian->buffer, pair.first);
 			}
 
 		}

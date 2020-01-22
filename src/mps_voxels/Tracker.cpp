@@ -66,7 +66,7 @@ cv::Mat& Tracker::getMask(const SensorHistoryBuffer& buffer)
 	return mask;
 }
 
-void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer)
+void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label)
 {
 	if (buffer.rgb.empty() || buffer.depth.empty())
 	{

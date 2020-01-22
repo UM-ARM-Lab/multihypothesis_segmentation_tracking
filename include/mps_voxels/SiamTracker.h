@@ -17,11 +17,11 @@ public:
 	SiamTracker(tf::TransformListener* _listener,
 	            TrackingOptions _track_options = TrackingOptions());
 
-	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer) override;
+	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label = 0) override;
 
 	using LabelT = uint16_t;
 
-	void siamtrack(LabelT label, const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox, const SensorHistoryBuffer& buffer);
+//	void siamtrack(LabelT label, const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox, const SensorHistoryBuffer& buffer);
 };
 
 }
