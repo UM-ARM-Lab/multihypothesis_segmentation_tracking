@@ -16,9 +16,8 @@
 namespace mps
 {
 
-SiamTracker::SiamTracker(tf::TransformListener* _listener,
-                         TrackingOptions _track_options)
-	:Tracker(_listener, std::move(_track_options))
+SiamTracker::SiamTracker(TrackingOptions _track_options)
+	:Tracker(std::move(_track_options))
 {
 
 }

@@ -9,8 +9,6 @@
 #include <opencv2/features2d.hpp>
 #include <opencv2/xfeatures2d.hpp>
 
-#include <tf/transform_listener.h>
-
 #include <numeric>
 
 namespace mps
@@ -30,9 +28,8 @@ void drawKeypoint(cv::Mat& display, const cv::KeyPoint& kp, const cv::Scalar& co
 	}
 }
 
-Tracker::Tracker(tf::TransformListener* _listener, TrackingOptions _options)
-	:track_options(std::move(_options)),
-	 listener(_listener)
+Tracker::Tracker(TrackingOptions _options)
+	:track_options(std::move(_options))
 {
 //	vizPub = options.nh.advertise<visualization_msgs::MarkerArray>("flow", 10, true);
 }
@@ -49,16 +46,20 @@ cv::Mat& Tracker::getMask(const SensorHistoryBuffer& buffer)
 	//// Set up Mask
 	////////////////////////////////////////
 
-	if (!listener->waitForTransform(buffer.cameraModel.tfFrame(), "table_surface", ros::Time(0), ros::Duration(1.0)))
+	const std::string tableFrame = "table_surface";
+
+	if (!buffer.tfs
+	    || !buffer.tfs->canTransform(buffer.cameraModel.tfFrame(), tableFrame, ros::Time(0), ros::Duration(1.0)))
 	{
 		ROS_WARN_STREAM("Tracking failed: Failed to look up transform between '" << buffer.cameraModel.tfFrame() << "' and '"
-		                                                                         << "table_surface" << "'.");
+		                                                                         << tableFrame << "'.");
 		mask = cv::Mat::ones(buffer.cameraModel.cameraInfo().height, buffer.cameraModel.cameraInfo().width, CV_8UC1);
 	}
 	else
 	{
 		tf::StampedTransform cameraTworld;
-		listener->lookupTransform(buffer.cameraModel.tfFrame(), "table_surface", ros::Time(0), cameraTworld);
+		geometry_msgs::TransformStamped cTw = buffer.tfs->lookupTransform(buffer.cameraModel.tfFrame(), tableFrame, ros::Time(0));
+		tf::transformStampedMsgToTF(cTw, cameraTworld);
 
 		mask = this->track_options.roi.getMask(cameraTworld, buffer.cameraModel);
 	}

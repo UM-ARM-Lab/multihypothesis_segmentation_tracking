@@ -1354,12 +1354,12 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	setIfMissing(pnh, "use_completion", "optional");
 
 #ifdef USE_CUDA_SIFT
-	tracker = std::make_unique<CudaTracker>(listener.get());
+	tracker = std::make_unique<CudaTracker>();
 #else
-	// tracker = std::make_unique<Tracker>(listener.get());
-	tracker = std::make_unique<SiamTracker>(listener.get());
+	// tracker = std::make_unique<Tracker>();
+	tracker = std::make_unique<SiamTracker>();
 #endif
-	historian = std::make_unique<SensorHistorian>(listener.get());
+	historian = std::make_unique<SensorHistorian>();
 	historian->stopCapture();
 
 	bool gotParam = false;
