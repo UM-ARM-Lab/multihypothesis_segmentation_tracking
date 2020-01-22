@@ -106,6 +106,9 @@ void SensorHistorian::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
                       const sensor_msgs::ImageConstPtr& depth_msg,
                       const sensor_msgs::CameraInfoConstPtr& cam_msg)
 {
+	if (!ifAddtoBuffer)
+		return;
+
 	cv_bridge::CvImagePtr cv_rgb_ptr;
 	try
 	{
@@ -149,6 +152,9 @@ void SensorHistorian::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 void SensorHistorian::jointCb(const sensor_msgs::JointStateConstPtr& joint_msg)
 {
+	if (!ifAddtoBuffer)
+		return;
+
 	buffer.joint.insert(buffer.joint.end(), {joint_msg->header.stamp, joint_msg});
 }
 

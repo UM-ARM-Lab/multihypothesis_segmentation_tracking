@@ -386,9 +386,30 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 	}
 
 	auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
+
+	std::unique_ptr<CaptureGuard> captureGuard; ///< RAII-style stopCapture() for various exit paths
+
+	if (compositeAction->primaryAction >= 0){
+		captureGuard = std::make_unique<CaptureGuard>(historian.get());
+		auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
+		if (cache) { cache->cache.clear(); }
+		historian->startCapture();
+	}
+
 	for (size_t a = 0; a < compositeAction->actions.size(); ++a)
 	{
+		std::cerr << "Start Action " << a << std::endl;
 		const auto& action = compositeAction->actions[a];
+
+		if ((compositeAction->primaryAction >= 0) && (a == 1 || compositeAction->primaryAction == static_cast<int>(a) || a == compositeAction->actions.size()-1))
+		{
+			historian->ifAddtoBuffer = true;
+		}
+		else
+		{
+			historian->ifAddtoBuffer = false;
+		}
+/*
 		bool isPrimaryAction = ((compositeAction->primaryAction >= 0) && (compositeAction->primaryAction == static_cast<int>(a)));
 
 		std::unique_ptr<CaptureGuard> captureGuard; ///< RAII-style stopCapture() for various exit paths
@@ -401,13 +422,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			if (cache) { cache->cache.clear(); }
 			historian->startCapture();
 		}
-//        if (a == 1)
-//        {
-//            captureGuard = std::make_unique<CaptureGuard>(historian.get());
-//            auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
-//            if (cache) { cache->cache.clear(); }
-//            historian->startCapture();
-//        }
+*/
 
 		auto armAction = std::dynamic_pointer_cast<JointTrajectoryAction>(action);
 		if (armAction)
@@ -480,7 +495,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			}
 			ros::Duration(2.0).sleep();
 		}
-
+/*
 		if (isPrimaryAction)
 //		if ((compositeAction->primaryAction >= 0) && a == compositeAction->actions.size()-1)
 		{
@@ -495,10 +510,6 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 
 //			tracker->track(steps);
 
-//      useful functions:
-//			scene->targetObjectID = std::make_shared<ObjectIndex>(scene->labelToIndexLookup.at((unsigned)matchID));
-
-
 			cv::Mat temp_seg = scene->segInfo->objectness_segmentation->image;
 //			scene->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
 			tracker->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
@@ -508,18 +519,29 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			}
 
 		}
-//        if (a == compositeAction->actions.size())
-//        {
-//            tracker->stopCapture();
-//
-//            std::vector<ros::Time> steps;
-//            for (auto iter = tracker->rgb_buffer.begin(); iter != tracker->rgb_buffer.end(); std::advance(iter, 5))
-//            {
-//                steps.push_back(iter->first);
-//            }
-//
-//            tracker->track(steps);
-//        }
+*/
+	}
+	if (compositeAction->primaryAction >= 0)
+	{
+		std::cerr << "Start Tracker!" << std::endl;
+		historian->stopCapture();
+
+		std::vector<ros::Time> steps;
+		for (auto iter = historian->buffer.rgb.begin(); iter != historian->buffer.rgb.end(); std::advance(iter, 5))
+		{
+			steps.push_back(iter->first);
+		}
+
+		//			tracker->track(steps);
+
+		cv::Mat temp_seg = scene->segInfo->objectness_segmentation->image;
+		//			scene->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
+		tracker->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
+
+		for (auto pair:tracker->labelToBBoxLookup)
+		{
+			tracker->track(steps, historian->buffer, pair.first);
+		}
 	}
 	return true;
 }

@@ -113,6 +113,7 @@ public:
 
 
 	SensorHistoryBuffer buffer;
+	bool ifAddtoBuffer = true;
 
 	explicit
 	SensorHistorian(const size_t _buffer = 500,
