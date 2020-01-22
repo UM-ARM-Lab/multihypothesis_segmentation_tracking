@@ -58,7 +58,7 @@ struct SensorHistoryBuffer
 	std::map<ros::Time, cv_bridge::CvImagePtr> rgb;
 	std::map<ros::Time, cv_bridge::CvImagePtr> depth;
 	std::map<ros::Time, sensor_msgs::JointStateConstPtr> joint;
-	// We might want TFs here at some point
+	std::unique_ptr<tf2_ros::Buffer> tfs;
 };
 
 class SensorHistorian
@@ -73,16 +73,21 @@ public:
 //		image_transport::ImageTransport it;
 		image_transport::TransportHints hints;
 		int queue_size;
+		ros::Duration buffer_duration;
 		std::string topic_prefix;
 		std::string rgb_topic;
 		std::string depth_topic;
 		std::string cam_topic;
 		std::string joint_topic;
+
+		explicit
 		SubscriptionOptions(const std::string& prefix = "/kinect2_victor_head/hd")
 			:nh(), pnh("~"),
 //			  it(nh),
               hints("compressed", ros::TransportHints(), pnh),
-             queue_size(10), topic_prefix(prefix),
+             queue_size(10),
+             buffer_duration(tf2_ros::Buffer::DEFAULT_CACHE_TIME),
+             topic_prefix(prefix),
              rgb_topic(topic_prefix+"/image_color_rect"),
              depth_topic(topic_prefix+"/image_depth_rect"),
              cam_topic(topic_prefix+"/camera_info"),
@@ -98,10 +103,10 @@ public:
 	std::unique_ptr<message_filters::Synchronizer<SyncPolicy>> sync;
 	std::unique_ptr<ros::Subscriber> joint_sub;
 
-	SubscriptionOptions options;
-	const size_t MAX_BUFFER_LEN;//1000;
+	std::unique_ptr<tf2_ros::TransformListener> listener;
 
-	tf::TransformListener* listener; // TODO: Shared ptr?
+	const size_t MAX_BUFFER_LEN;//1000;
+	SubscriptionOptions options;
 
 	ros::CallbackQueue callback_queue;
 	ros::AsyncSpinner spinner;
@@ -110,8 +115,7 @@ public:
 	SensorHistoryBuffer buffer;
 
 	explicit
-	SensorHistorian(tf::TransformListener* _listener,
-	                const size_t _buffer = 500,
+	SensorHistorian(const size_t _buffer = 500,
 	                SubscriptionOptions _options = SubscriptionOptions());
 
 	~SensorHistorian();

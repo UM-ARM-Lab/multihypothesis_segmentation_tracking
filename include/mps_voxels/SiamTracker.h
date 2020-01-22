@@ -14,8 +14,7 @@ namespace mps
 class SiamTracker : public Tracker
 {
 public:
-	SiamTracker(tf::TransformListener* _listener,
-	            TrackingOptions _track_options = TrackingOptions());
+	SiamTracker(TrackingOptions _track_options = TrackingOptions());
 
 	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer) override;
 

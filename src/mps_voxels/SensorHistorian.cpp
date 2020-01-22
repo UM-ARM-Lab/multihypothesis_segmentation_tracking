@@ -32,14 +32,15 @@
 namespace mps
 {
 
-SensorHistorian::SensorHistorian(tf::TransformListener* _listener, const size_t _buffer, SubscriptionOptions _options)
+SensorHistorian::SensorHistorian(const size_t _buffer, SubscriptionOptions _options)
 	: MAX_BUFFER_LEN(_buffer), options(std::move(_options)),
-	  listener(_listener),
 	  callback_queue(),
 	  spinner(1, &callback_queue)
 {
 	options.nh.setCallbackQueue(&callback_queue);
 	options.pnh.setCallbackQueue(&callback_queue);
+
+	buffer.tfs = std::make_unique<tf2_ros::Buffer>(options.buffer_duration);
 
 	it = std::make_unique<image_transport::ImageTransport>(options.nh);
 	rgb_sub = std::make_unique<image_transport::SubscriberFilter>(*it, options.rgb_topic, options.queue_size, options.hints);
@@ -69,6 +70,8 @@ void SensorHistorian::startCapture()
 {
 	reset();
 
+	listener = std::make_unique<tf2_ros::TransformListener>(*buffer.tfs);
+
 	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>(options.joint_topic, 2, boost::bind(&SensorHistorian::jointCb, this, _1), ros::VoidPtr(), &callback_queue);
 	joint_sub = std::make_unique<ros::Subscriber>(options.nh.subscribe(joint_sub_options));
 
@@ -87,6 +90,7 @@ void SensorHistorian::stopCapture()
 		joint_sub->shutdown();
 		joint_sub.reset();
 	}
+	listener.reset();
 }
 
 void SensorHistorian::reset()
@@ -94,6 +98,8 @@ void SensorHistorian::reset()
 	buffer.rgb.clear();
 	buffer.depth.clear();
 	buffer.joint.clear();
+	if (buffer.tfs)
+		buffer.tfs->clear();
 }
 
 void SensorHistorian::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,

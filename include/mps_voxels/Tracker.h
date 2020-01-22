@@ -100,12 +100,10 @@ public:
 
 	TrackingOptions track_options;
 
-	tf::TransformListener* listener;
 	ros::Publisher vizPub;
 
 	explicit
-	Tracker(tf::TransformListener* _listener,
-	        TrackingOptions _track_options = TrackingOptions());
+	Tracker(TrackingOptions _track_options = TrackingOptions());
 
 	virtual
 	~Tracker() = default;

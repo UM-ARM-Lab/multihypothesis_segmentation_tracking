@@ -18,9 +18,8 @@
 namespace mps
 {
 
-CudaTracker::CudaTracker(tf::TransformListener* _listener,
-                         TrackingOptions _track_options)
-	:Tracker(_listener, std::move(_track_options))
+CudaTracker::CudaTracker(TrackingOptions _track_options)
+	:Tracker(std::move(_track_options))
 {
 
 }
