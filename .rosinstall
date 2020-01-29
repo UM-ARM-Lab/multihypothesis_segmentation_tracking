@@ -1,0 +1,16 @@
+- git:
+    local-name: arc_utilities
+    uri: git@github.com:UM-ARM-Lab/arc_utilities.git
+    version: master
+- git:
+    local-name: kuka_iiwa_interface
+    uri: git@github.com:UM-ARM-Lab/kuka_iiwa_interface.git
+    version: gazebo
+- git:
+    local-name: mps_core
+    uri: git@github.com:UM-ARM-Lab/mps_core.git
+    version: develop
+- git:
+    local-name: victor_gazebo_plugins
+    uri: git@github.com:UM-ARM-Lab/victor_gazebo_plugins.git
+    version: melodic-devel

@@ -1,5 +1,52 @@
 # mps_interactive_segmentation
 
+## Installation on a Clean System
+
+Assuming you already have ROS installed and configured, and your desired workspace is `catkin_ws`:
+
+If you want to install things only to the local user, add the following to your `~/.bashrc`/`~/.zshrc` file:
+```
+# Local install dir
+export PATH=$PATH:~/local/bin
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/local/lib
+export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:~/local/lib/pkgconfig
+export CMAKE_PREFIX_PATH=~/local:$CMAKE_PREFIX_PATH
+```
+
+
+Install CGAL:
+```
+mkdir -p ~/local/src && cd ~/local/src
+git clone --depth 1 --branch releases/CGAL-4.14.2 https://github.com/CGAL/cgal.git
+cd ~/local/src/cgal
+mkdir -p build/release
+cd build/release
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=~/local ../..
+make -j$(nproc)
+make install
+```
+
+Clone the current package and its source dependencies
+```
+cd ~/catkin_ws/src
+git clone git@github.com:UM-ARM-Lab/mps_interactive_segmentation.git
+```
+
+```
+cd ~/catkin_ws
+wstool init src
+wstool merge -t src src/mps_interactive_segmentation/.rosinstall
+wstool update -t src
+```
+
+Install the broader ROS dependencies:
+```
+cd ~/catkin_ws
+rosdep install --from-paths src --ignore-src -r -y
+```
+
+## Running Manipulation Demo
+
 
 ```roscore```
 
@@ -17,7 +64,7 @@ or
 
 Start Clion, and run gazebo_segmentation_gt
 
-To run SiamMask tracker, refer to [SimaMask](https://github.com/UM-ARM-Lab/SiamMask).
+To run SiamMask tracker, refer to [SiamMask](https://github.com/UM-ARM-Lab/SiamMask).
 
 To run Shape Completion, refer to [Shape Completion](https://github.com/UM-ARM-Lab/mps_shape_completion). 
 

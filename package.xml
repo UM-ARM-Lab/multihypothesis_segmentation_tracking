@@ -69,6 +69,7 @@
   <test_depend>roslaunch</test_depend>
   <test_depend>rviz</test_depend>
   <test_depend>victor_moveit_config</test_depend>
+  <test_depend>victor_gazebo_plugins</test_depend>
 
   <doc_depend>doxygen</doc_depend>
 
