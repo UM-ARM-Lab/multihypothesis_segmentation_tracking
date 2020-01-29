@@ -12,6 +12,7 @@
 
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
+#include <opencv2/highgui.hpp>
 
 namespace mps
 {
@@ -42,7 +43,7 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	}
 	int numframes = static_cast<int>(steps.size());
 //	sensor_msgs::Image video[numframes];
-	for (int i = 0; i < numframes && ros::ok(); ++i)
+	for (int i = 0; i < numframes && ros::ok(); i++) // TODO: change i to decrement tracking frame rate
 	{
 		cv::Mat im = buffer.rgb.at(steps[i])->image;
 		cv_bridge::CvImage out_msg;
@@ -66,16 +67,37 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	else
 		ROS_INFO("Action did not finish before the time out.");
 
+	// each raw tracking result takes around 300Mb at 0.5fps, too large!!!
 	std::vector<cv::Mat> ims;
+	std::vector<std::vector<std::vector<bool>>> masks;
+	std::cerr << "number of frames: " << ac.getResult()->mask.size() << std::endl;
 	for (auto iter = ac.getResult()->mask.begin(); iter != ac.getResult()->mask.end(); iter++)
 	{
-//		std::cerr << iter->encoding << std::endl;
+		// only store the first frame and the last frame:
+		if (iter != ac.getResult()->mask.begin() && iter != ac.getResult()->mask.end()-1) continue;
+
+		std::vector<std::vector<bool>> maskBool;
+		maskBool.resize(iter->height, std::vector<bool>(iter->width));
+
+		auto temp = iter->data;
+		std::cerr << "Tracking result type: " << iter->encoding << std::endl;
 		cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvCopy(*iter, iter->encoding);
-		cv::Mat im = cv_ptr->image;
-		ims.push_back(im);
+		cv::Mat im = cv_ptr->image; // uchar
+//		cv::imwrite("/home/kunhuang/Pictures/mask.jpg", im);
+//		cv::waitKey(0);
+		for (size_t i = 0; i < iter->height; i++)
+		{
+			for (size_t j = 0; j < iter->width; j++)
+			{
+				maskBool[i][j] = (int) im.at<uint8_t>(i, j) > 0;
+			}
+		}
+//		ims.push_back(im);
+		masks.push_back(maskBool);
 	}
 
-	labelToTrackingLookup.insert({label, ims});
+//	labelToTrackingLookup.insert({label, ims});
+	labelToMasksLookup.insert({label, masks});
 }
 
 /*

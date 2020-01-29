@@ -121,14 +121,47 @@ void SensorHistorian::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 
 	cv_bridge::CvImagePtr cv_depth_ptr;
-	try
+	if ("16UC1" == depth_msg->encoding)
 	{
-		cv_depth_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_16UC1); // MONO16?
+		try
+		{
+			cv_depth_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_16UC1); // MONO16?
+		}
+		catch (cv_bridge::Exception& e)
+		{
+			ROS_ERROR("cv_bridge exception: %s", e.what());
+			return;
+		}
 	}
-	catch (cv_bridge::Exception& e)
+	else if ("32FC1" == depth_msg->encoding)
 	{
-		ROS_ERROR("cv_bridge exception: %s", e.what());
-		return;
+		try
+		{
+			cv_depth_ptr = cv_bridge::toCvCopy(depth_msg, sensor_msgs::image_encodings::TYPE_32FC1);
+		}
+		catch (cv_bridge::Exception& e)
+		{
+			ROS_ERROR("cv_bridge exception: %s", e.what());
+			return;
+		}
+
+		cv::Mat convertedDepthImg(cv_depth_ptr->image.size(), CV_16UC1);
+
+		const int V = cv_depth_ptr->image.size().height;
+		const int U = cv_depth_ptr->image.size().width;
+
+#pragma omp parallel for
+		for (int v = 0; v < V; ++v)
+		{
+			for (int u = 0; u < U; ++u)
+			{
+				convertedDepthImg.at<uint16_t>(v, u)
+					= depth_image_proc::DepthTraits<uint16_t>::fromMeters(cv_depth_ptr->image.at<float>(v, u));
+			}
+		}
+
+		cv_depth_ptr->encoding = "16UC1";
+		cv_depth_ptr->image = convertedDepthImg;
 	}
 
 	buffer.cameraModel.fromCameraInfo(*cam_msg);
@@ -136,7 +169,7 @@ void SensorHistorian::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	if (buffer.rgb.size() < MAX_BUFFER_LEN)
 	{
 		buffer.rgb.insert({cv_rgb_ptr->header.stamp, cv_rgb_ptr});
-		std::cerr << buffer.rgb.size() << ": " << buffer.rgb.rbegin()->first - buffer.rgb.begin()->first << std::endl;
+		std::cerr << "rgb " << buffer.rgb.size() << ": " << buffer.rgb.rbegin()->first - buffer.rgb.begin()->first << std::endl;
 	}
 
 	if (buffer.depth.size() < MAX_BUFFER_LEN)
@@ -152,10 +185,58 @@ void SensorHistorian::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 void SensorHistorian::jointCb(const sensor_msgs::JointStateConstPtr& joint_msg)
 {
+/*
+	if (isLastTimeAddedInit)
+	{
+		double Posdifference = 0.0;
+		double jointV = 0.0;
+		for (size_t iter = 0; iter < joint_msg->position.size(); iter++)
+		{
+			Posdifference += (joint_msg->position[iter] - buffer.joint[lastTimeAdded]->position[iter]) * (joint_msg->position[iter] - buffer.joint[lastTimeAdded]->position[iter]);
+			jointV += joint_msg->velocity[iter] * joint_msg->velocity[iter];
+		}
+		std::cerr << "Pose Difference = " << Posdifference << std::endl;
+		std::cerr << "Joint Velocity = " << jointV << std::endl;
+		if (Posdifference < 0.04)
+		{
+			ifAddtoBuffer = false;
+			return;
+		}
+		else
+		{
+			ifAddtoBuffer = true;
+			lastTimeAdded = joint_msg->header.stamp;
+			std::cerr << "joint " << buffer.joint.size() << ": " << buffer.joint.rbegin()->first - buffer.joint.begin()->first << std::endl;
+		}
+	}
+	else
+	{
+		ifAddtoBuffer = true;
+		lastTimeAdded = joint_msg->header.stamp;
+		isLastTimeAddedInit = true;
+	}
+*/
 	if (!ifAddtoBuffer)
 		return;
 
 	buffer.joint.insert(buffer.joint.end(), {joint_msg->header.stamp, joint_msg});
+}
+
+void SensorHistorian::ifTrackAction(const std::shared_ptr<Action>& action)
+{
+	auto armAction = std::dynamic_pointer_cast<JointTrajectoryAction>(action);
+	if (armAction)
+	{
+		std::cerr << "armAction->palm_trajectory.size() = " << armAction->palm_trajectory.size() << std::endl;
+		if (armAction->palm_trajectory.size() > 1)
+		{
+			ifAddtoBuffer = true;
+		}
+		else
+		{
+			ifAddtoBuffer = false;
+		}
+	}
 }
 
 }

@@ -45,6 +45,8 @@
 #include <tf/transform_datatypes.h>
 #include <tf/transform_listener.h>
 
+#include "mps_voxels/planning/Action.h"
+
 namespace mps
 {
 
@@ -114,6 +116,8 @@ public:
 
 	SensorHistoryBuffer buffer;
 	bool ifAddtoBuffer = true;
+	ros::Time lastTimeAdded;
+	bool isLastTimeAddedInit = false;
 
 	explicit
 	SensorHistorian(const size_t _buffer = 500,
@@ -132,6 +136,8 @@ public:
 	             const sensor_msgs::CameraInfoConstPtr& cam_msg);
 
 	void jointCb(const sensor_msgs::JointStateConstPtr& joint_msg);
+
+	void ifTrackAction(const std::shared_ptr<Action>& action);
 
 	// TODO: TF Callback
 };

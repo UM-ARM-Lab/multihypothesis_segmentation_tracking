@@ -97,8 +97,8 @@ public:
 	cv_bridge::CvImagePtr cv_depth_ptr;
 	image_geometry::PinholeCameraModel cameraModel;
 
-	Pose worldTrobot;
-	Pose worldTcamera;
+	Pose worldTrobot; // transformation from robot to world
+	Pose worldTcamera; // transformation from camera to world
 	std::string worldFrame;
 	std::string cameraFrame;
 	Eigen::Vector4f minExtent, maxExtent;

@@ -99,6 +99,7 @@ public:
 
 	using LabelT = uint16_t;
 	std::map<LabelT, std::vector<cv::Mat>> labelToTrackingLookup;
+	std::map<LabelT, std::vector<std::vector<std::vector<bool>>>> labelToMasksLookup;
 
 	TrackingOptions track_options;
 

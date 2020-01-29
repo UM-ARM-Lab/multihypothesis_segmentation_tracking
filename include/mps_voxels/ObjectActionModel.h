@@ -1,0 +1,8 @@
+//
+// Created by kunhuang on 1/24/20.
+//
+
+#ifndef ARMLAB_WS_OBJECTACTIONMODEL_H
+#define ARMLAB_WS_OBJECTACTIONMODEL_H
+
+#endif //ARMLAB_WS_OBJECTACTIONMODEL_H
