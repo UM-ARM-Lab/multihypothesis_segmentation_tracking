@@ -42,8 +42,9 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 		return;
 	}
 	int numframes = static_cast<int>(steps.size());
+	std::cerr << "Number of time steps: " << numframes << std::endl;
 //	sensor_msgs::Image video[numframes];
-	for (int i = 0; i < numframes && ros::ok(); i++) // TODO: change i to decrement tracking frame rate
+	for (int i = 0; i < numframes && ros::ok(); i++) // TODO: do NOT change i-step here; otherwise, masks don't match with vector<Time> steps
 	{
 		cv::Mat im = buffer.rgb.at(steps[i])->image;
 		cv_bridge::CvImage out_msg;
@@ -53,6 +54,7 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 
 		goal.video.push_back(*out_msg.toImageMsg());
 	}
+	std::cerr << "Number of frames sent to SiamMask: " << goal.video.size() << std::endl;
 
 	ac.sendGoal(goal);
 
@@ -70,17 +72,17 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	// each raw tracking result takes around 300Mb at 0.5fps, too large!!!
 	std::vector<cv::Mat> ims;
 	std::vector<std::vector<std::vector<bool>>> masks;
-	std::cerr << "number of frames: " << ac.getResult()->mask.size() << std::endl;
+	std::cerr << "Number of frames returned from SiamMask: " << ac.getResult()->mask.size() << std::endl;
 	for (auto iter = ac.getResult()->mask.begin(); iter != ac.getResult()->mask.end(); iter++)
 	{
 		// only store the first frame and the last frame:
-		if (iter != ac.getResult()->mask.begin() && iter != ac.getResult()->mask.end()-1) continue;
+//		if (iter != ac.getResult()->mask.begin() && iter != ac.getResult()->mask.end()-1) continue;
 
 		std::vector<std::vector<bool>> maskBool;
 		maskBool.resize(iter->height, std::vector<bool>(iter->width));
 
 		auto temp = iter->data;
-		std::cerr << "Tracking result type: " << iter->encoding << std::endl;
+//		std::cerr << "Tracking result type: " << iter->encoding << std::endl;
 		cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvCopy(*iter, iter->encoding);
 		cv::Mat im = cv_ptr->image; // uchar
 //		cv::imwrite("/home/kunhuang/Pictures/mask.jpg", im);
@@ -94,6 +96,14 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 		}
 //		ims.push_back(im);
 		masks.push_back(maskBool);
+	}
+	if (steps.size() != masks.size())
+	{
+		ROS_WARN_STREAM("SiamMask output does not match with input timestamp!!!");
+	}
+	if (steps.size() == masks.size() + 1)
+	{
+		ROS_WARN_STREAM("SiamMask does not return the first frame!!!");
 	}
 
 //	labelToTrackingLookup.insert({label, ims});

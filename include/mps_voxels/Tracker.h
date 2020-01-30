@@ -8,6 +8,8 @@
 #include "mps_voxels/ROI.h"
 #include "mps_voxels/colormap.h"
 #include "mps_voxels/SensorHistorian.h"
+#include "mps_voxels/image_utils.h"
+#include "mps_voxels/assert.h"
 
 #include "mps_msgs/AABBox2d.h"
 
@@ -117,6 +119,9 @@ public:
 
 	virtual
 	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label = 0);
+
+	virtual
+	void siftOnMask(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label);
 
 	virtual
 	void reset();
