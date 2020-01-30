@@ -6,6 +6,10 @@
 #include "mps_voxels/SensorHistorian.h"
 #include "mps_voxels/ROI.h"
 
+#define CV_VERSION_AT_LEAST(x,y,z) (CV_VERSION_MAJOR>x || (CV_VERSION_MAJOR>=x && \
+                                   (CV_VERSION_MINOR>y || (CV_VERSION_MINOR>=y && \
+                                                           CV_VERSION_REVISION>=z))))
+
 pcl::PointCloud<PointT>::Ptr imagesToCloud(const cv::Mat& rgb, const cv::Mat& depth, const image_geometry::PinholeCameraModel& cameraModel)
 {
 	pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>());
@@ -72,7 +76,11 @@ cv::Mat colorByLabel(const cv::Mat& input)
 	cv::randu(colormap, 0, 256);
 
 	cv::Mat output;
+#if CV_VERSION_AT_LEAST(3, 3, 0)
 	cv::applyColorMap(labels, output, colormap);
+#else
+	cv::LUT(labels, colormap, output);
+#endif
 
 	return output;
 }

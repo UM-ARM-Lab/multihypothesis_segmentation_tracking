@@ -27,6 +27,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   pcl_ros
   realtime_tools
+  rosbag
   roscpp
   rospy
   sensor_msgs
@@ -223,6 +224,7 @@ catkin_package(
 #    octomap_server
     pcl_conversions
     pcl_ros
+    rosbag
     roscpp
     rospy
     sensor_msgs
@@ -253,6 +255,9 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/shape_utils.cpp
   src/${PROJECT_NAME}/colormap.cpp
   src/${PROJECT_NAME}/Ultrametric.cpp
+  src/${PROJECT_NAME}/ValueTree.cpp
+  src/${PROJECT_NAME}/SceneCut.cpp
+  src/${PROJECT_NAME}/MCMCTreeCut.cpp
   src/${PROJECT_NAME}/Manipulator.cpp
   src/${PROJECT_NAME}/VictorManipulator.cpp
   src/${PROJECT_NAME}/MotionModel.cpp
@@ -268,6 +273,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/VoxelSegmentation.cpp
   src/${PROJECT_NAME}/Scene.cpp
   src/${PROJECT_NAME}/ObjectLogger.cpp
+  src/${PROJECT_NAME}/DataLog.cpp
   src/${PROJECT_NAME}/video_graph.cpp
   src/${PROJECT_NAME}/planning/State.cpp
   src/${PROJECT_NAME}/planning/Action.cpp
@@ -337,6 +343,14 @@ cuda_add_executable(${PROJECT_NAME}_explorer src/explorer.cpp)
 set_target_properties(${PROJECT_NAME}_explorer PROPERTIES OUTPUT_NAME explorer PREFIX "")
 add_dependencies(${PROJECT_NAME}_explorer ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME}_explorer
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+
+cuda_add_executable(${PROJECT_NAME}_test_segmentation_sampling src/test_segmentation_sampling.cpp)
+set_target_properties(${PROJECT_NAME}_test_segmentation_sampling PROPERTIES OUTPUT_NAME test_segmentation_sampling PREFIX "")
+add_dependencies(${PROJECT_NAME}_test_segmentation_sampling ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_test_segmentation_sampling
   ${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
