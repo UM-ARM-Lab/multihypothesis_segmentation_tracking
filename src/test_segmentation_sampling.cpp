@@ -249,14 +249,17 @@ int main(int argc, char* argv[])
 	SceneCut sc;
 	ValueTree T = sc.process(um, si->labels);
 
-	const double sigmaSquared = 10.0;
+	auto cutStar = optimalCut(T);
+	double vStar = value(T, cutStar.second);
+	const double sigmaSquared = vStar*vStar;
+	const int seed = 1;
 
 	MCMCTreeCut mcmc(T, sigmaSquared);
 
 	std::random_device rd;
 	std::default_random_engine re(rd());
 
-	auto cutStar = mcmc.sample(re, Belief<TreeCut>::SAMPLE_TYPE::MAXIMUM);
+	cutStar = mcmc.sample(re, Belief<TreeCut>::SAMPLE_TYPE::MAXIMUM);
 
 	// Validate this cut
 	for (size_t n = 0; n < T.parent.size(); ++n)
@@ -280,19 +283,44 @@ int main(int argc, char* argv[])
 	cv::imshow("Image", si->rgb);
 	cv::imshow("Labels", colorByLabel(si->labels));
 	cv::imshow("Contours", si->display_contours);
+	cv::theRNG().state = seed;
 	cv::imshow("Objectness", colorByLabel(si->objectness_segmentation->image));
+
+	std::string dir = "/tmp/segmentation/";
+	cv::imwrite(dir + "image.png", si->rgb);
+	cv::imwrite(dir + "contours.png", si->display_contours);
+	cv::theRNG().state = seed;
+	cv::imwrite(dir + "objectness.png", colorByLabel(si->objectness_segmentation->image));
 
 	std::cerr << "# original objects: " << unique(si->objectness_segmentation->image).size() << std::endl;
 	std::cerr << "# new objects: " << cutStar.second.size() << std::endl;
 
+	cv::theRNG().state = seed;
 	auto seg = relabelCut(um, T, si->labels, cutStar.second);
 	auto disp = colorByLabel(seg);
 
-
 	cv::imshow("Segmentation", disp);
+	cv::imwrite(dir + "cStar.png", disp);
 
 	cv::waitKey(0);
 
+//	mcmc.sigmaSquared = 1e10*vStar*vStar; // With proposal ratio
+//	mcmc.nTrials = 100;
+	mcmc.sigmaSquared = vStar*vStar;
+	mcmc.nTrials = 25;
+
+	for (int i = 0; i < 10; ++i)
+	{
+		auto cut = mcmc.sample(re, Belief<TreeCut>::SAMPLE_TYPE::RANDOM);
+		std::cerr << cut.first << std::endl;
+		cv::theRNG().state = seed;
+		seg = relabelCut(um, T, si->labels, cut.second);
+		disp = colorByLabel(seg);
+		cv::imshow("Segmentation", disp);
+		cv::imwrite(dir + "c" + std::to_string(i) + ".png", disp);
+
+		cv::waitKey(0);
+	}
 	return 0;
 
 }

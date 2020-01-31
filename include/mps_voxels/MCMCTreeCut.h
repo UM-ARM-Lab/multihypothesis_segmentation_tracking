@@ -51,7 +51,7 @@ public:
 	std::uniform_real_distribution<> uni;
 
 	double sigmaSquared;
-	const int nTrials = 10; // Mixing number to reduce MCMC autocorrelation
+	int nTrials = 10; // Mixing number to reduce MCMC autocorrelation
 
 	explicit
 	MCMCTreeCut(ValueTree t, const double sigSquared);
