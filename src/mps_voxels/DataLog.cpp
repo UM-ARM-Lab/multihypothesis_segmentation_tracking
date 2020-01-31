@@ -42,7 +42,7 @@ std::unique_ptr<DataLog> DataLog::instance;
 DataLog::DataLog(const std::string& filename, const ChannelSet& channels, const rosbag::bagmode::BagMode mode)
 {
 	auto path = (filename.empty() ? getDefaultPath() : filename);
-	if (fs::exists(path) && mode == rosbag::BagMode::Read)
+	if (!fs::exists(path) && mode == rosbag::BagMode::Read)
 	{
 		throw std::runtime_error("Attempting to read from nonexistant file '" + path + "'.");
 	}

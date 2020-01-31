@@ -40,14 +40,6 @@
 
 using namespace mps;
 
-//template <>
-//void DataLog::log<cv::Mat>(const std::string& channel, const cv::Mat& msg)
-//{
-//	if (activeChannels.find(channel) == activeChannels.end()) { return; }
-//	std_msgs::ByteMultiArray bytes;
-//	std::copy(msg.begin(), msg.end(), std::back_inserter(bytes.data));
-//	log(channel, bytes);
-//}
 
 std::string cvType2Str(int type)
 {
@@ -85,6 +77,9 @@ std::string cvType2Str(int type)
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
 
+/**
+ * @def STRINGIFY STRINGIFY(kitten) resolves to "kitten" in the post-processed source
+ */
 #define STRINGIFY2(X) #X
 #define STRINGIFY(X) STRINGIFY2(X)
 
@@ -96,44 +91,113 @@ std::string cvType2Str(int type)
         BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)  \
     )
 
+template <typename T>
+struct ros_message_conversion {};
+
+template <typename T>
+struct ros_message_type_of {};
+
+/**
+ * @tparam T Main type to be converted to message
+ * @tparam Aux Auxiliary type containing any extra info (particularly headers)
+ * @param t Object to convert
+ * @param a Aux data object (defaults to null pointer)
+ * @return
+ */
+template <typename T, typename Aux = nullptr_t>
+auto toMessage(T t, Aux a = nullptr)
+{
+	return ros_message_conversion<std::remove_cv_t<std::remove_reference_t<T>>>::toMessage(t, a);
+}
+
+template <typename T>
+auto fromMessage(T t)
+{
+	return ros_message_conversion<typename ros_message_type_of<std::remove_cv_t<std::remove_reference_t<T>>>::CppType>::fromMessage(t);
+}
+
+
+template<>
+struct ros_message_type_of<sensor_msgs::Image> { using CppType = cv::Mat; };
+
+template<>
+struct ros_message_conversion<cv::Mat>
+{
+	using MsgType = sensor_msgs::Image;
+	using CppType = cv::Mat;
+
+	static
+	MsgType toMessage(const CppType& t, const nullptr_t)
+	{
+		return *cv_bridge::CvImage(std_msgs::Header(), cvType2Str(t.type()), t).toImageMsg();
+	}
+
+	static
+	MsgType toMessage(const CppType& t, const std_msgs::Header& h)
+	{
+		return *cv_bridge::CvImage(h, cvType2Str(t.type()), t).toImageMsg();
+	}
+
+	static
+	CppType fromMessage(const MsgType& t)
+	{
+		return cv_bridge::toCvCopy(t, t.encoding)->image;
+	}
+};
+
 
 #define LOG_IMAGE_MESSAGE(var_name) \
 	activeChannels.insert(channel + "/" STRINGIFY(var_name) ); \
-	log(channel + "/" STRINGIFY(var_name) , *cv_bridge::CvImage(header, cvType2Str(msg.var_name.type()), msg.var_name).toImageMsg());
+	log(channel + "/" STRINGIFY(var_name) , toMessage(msg.var_name, header));
 template <>
 void DataLog::log<SegmentationInfo>(const std::string& channel, const SegmentationInfo& msg)
 {
 	std_msgs::Header header; header.stamp = msg.t; header.frame_id = msg.frame_id;
-//	LOG_IMAGE_MESSAGE(rgb)
 	APPLY_TO_ALL(LOG_IMAGE_MESSAGE, rgb, depth, ucm2, labels2, centroids2, stats2, display_contours, labels)
-//	log(channel + "/rgb", *cv_bridge::CvImage(header, cvType2Str(msg.rgb.type()), msg.rgb).toImageMsg());
+
+	activeChannels.insert(channel + "/objectness_segmentation"); \
+	log(channel + "/objectness_segmentation", *msg.objectness_segmentation->toImageMsg());
 }
 
 #define LOAD_IMAGE_MESSAGE(var_name) \
-	load(channel + "/" STRINGIFY(var_name) , im); msg.var_name = cv_bridge::toCvCopy(im, im.encoding)->image;
+	load(channel + "/" STRINGIFY(var_name) , im); msg.var_name = fromMessage(im);
 template <>
 bool DataLog::load<SegmentationInfo>(const std::string& channel, SegmentationInfo& msg)
 {
 	sensor_msgs::Image im;
-//	LOAD_IMAGE_MESSAGE(rgb)
 	APPLY_TO_ALL(LOAD_IMAGE_MESSAGE, rgb, depth, ucm2, labels2, centroids2, stats2, display_contours, labels)
-//	load(channel + "/rgb", im); msg.rgb = cv_bridge::toCvCopy(im, im.encoding)->image;
 	msg.t = im.header.stamp; msg.frame_id = im.header.frame_id;
+
+	load(channel + "/objectness_segmentation" , im);
+	msg.objectness_segmentation = cv_bridge::toCvCopy(im);
 	return true;
 }
 
-cv::Mat relabelCut(const Ultrametric& um, const cv::Mat& superpixels, const TreeCut& cut)
+cv::Mat relabelCut(const Ultrametric& um, const ValueTree& T, const cv::Mat& labels, const TreeCut& cut)
 {
+	std::map<int, int> index_to_label;
+	for (const auto& pair : um.label_to_index)
+	{
+		index_to_label.insert({pair.second, pair.first});
+	}
+
 	int label = 0;
-	cv::Mat segmentation(superpixels.size(), superpixels.type());
+
+//	cv::Mat segmentation = cv::Mat::zeros(labels.size(), labels.type());
+	cv::Mat segmentation = cv::Mat(labels.size(), labels.type());
 	for (const auto node : cut)
 	{
 		++label;
-		auto children = um.getChildren(um.merge_tree, node + 1);
+		std::set<int> children;
+		descendants(T, node, children);
+		children.insert(node); // This cut node could be a leaf as well
 		for (const auto c : children)
 		{
-			auto mask = (superpixels == c);
-			segmentation.setTo(label, mask);
+			if (T.children[c].empty()) // Leaf node
+			{
+				auto mask = (labels == index_to_label.at(c));
+				segmentation.setTo(label, mask);
+			}
 		}
 	}
 
@@ -181,13 +245,9 @@ int main(int argc, char* argv[])
 	}
 
 
-	// TODO: Store/Load SegmentationInfo
-
 	Ultrametric um(si->ucm2, si->labels2);
 	SceneCut sc;
-	ValueTree T = sc.process(um);
-
-
+	ValueTree T = sc.process(um, si->labels);
 
 	const double sigmaSquared = 10.0;
 
@@ -198,6 +258,18 @@ int main(int argc, char* argv[])
 
 	auto cutStar = mcmc.sample(re, Belief<TreeCut>::SAMPLE_TYPE::MAXIMUM);
 
+	// Validate this cut
+	for (size_t n = 0; n < T.parent.size(); ++n)
+	{
+		if (T.children[n].empty())
+		{
+			auto an = ancestors(T, n);
+			an.insert(n);
+			std::vector<int> crossover;
+			std::set_intersection(an.begin(), an.end(), cutStar.second.begin(), cutStar.second.end(), std::back_inserter(crossover));
+			assert(crossover.size() == 1); // A leaf node should have exactly one leaf node that is a parent.
+		}
+	}
 
 	cv::namedWindow("Image", cv::WINDOW_NORMAL);
 	cv::namedWindow("Labels", cv::WINDOW_NORMAL);
@@ -210,7 +282,10 @@ int main(int argc, char* argv[])
 	cv::imshow("Contours", si->display_contours);
 	cv::imshow("Objectness", colorByLabel(si->objectness_segmentation->image));
 
-	auto seg = relabelCut(um, si->labels, cutStar.second);
+	std::cerr << "# original objects: " << unique(si->objectness_segmentation->image).size() << std::endl;
+	std::cerr << "# new objects: " << cutStar.second.size() << std::endl;
+
+	auto seg = relabelCut(um, T, si->labels, cutStar.second);
 	auto disp = colorByLabel(seg);
 
 

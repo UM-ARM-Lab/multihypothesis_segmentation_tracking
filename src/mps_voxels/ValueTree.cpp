@@ -31,6 +31,8 @@
 
 #include <cassert>
 
+#include <iostream>
+
 namespace mps
 {
 
@@ -64,6 +66,18 @@ std::set<int> ancestors(const ValueTree& T, const int node)
 	res.erase(node);
 
 	return res;
+}
+
+void descendants(const ValueTree& T, const int node, std::set<int>& nodes)
+{
+	const auto& children = T.children[node];
+
+	nodes.insert(children.begin(), children.end());
+
+	for (const int c : children)
+	{
+		descendants(T, c, nodes);
+	}
 }
 
 double value(const ValueTree& T, const TreeCut& C)

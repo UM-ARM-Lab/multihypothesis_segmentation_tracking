@@ -70,7 +70,29 @@ cv::Mat colorByLabel(const cv::Mat& input)
 	double max;
 	cv::minMaxIdx(input, &min, &max);
 	cv::Mat labels;
-	input.convertTo(labels, CV_8UC1);
+	if (max > 255)
+	{
+		cv::Mat mod;
+		input.copyTo(mod);
+
+		uchar depth = mod.type() & CV_MAT_DEPTH_MASK;
+
+		switch ( depth )
+		{
+		case CV_8U:  mod.forEach<uint8_t>([&](uint8_t& label, const int*) -> void { label = label % 256; }); break;
+		case CV_8S:  mod.forEach<int8_t>([&](int8_t& label, const int*) -> void { label = label % 256; }); break;
+		case CV_16U: mod.forEach<uint16_t>([&](uint16_t& label, const int*) -> void { label = label % 256; }); break;
+		case CV_16S: mod.forEach<int16_t>([&](int16_t& label, const int*) -> void { label = label % 256; }); break;
+		case CV_32S: mod.forEach<int32_t>([&](int32_t& label, const int*) -> void { label = label % 256; }); break;
+		default:     throw std::runtime_error("Unknown image data type in colorByLabel: " + std::to_string(input.type())); break;
+		}
+
+		mod.convertTo(labels, CV_8UC1);
+	}
+	else
+	{
+		input.convertTo(labels, CV_8UC1);
+	}
 
 	cv::Mat colormap(256, 1, CV_8UC3);
 	cv::randu(colormap, 0, 256);

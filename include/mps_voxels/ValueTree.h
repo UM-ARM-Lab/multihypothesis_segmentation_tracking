@@ -50,6 +50,8 @@ int root(const ValueTree& T);
 std::set<int>
 ancestors(const ValueTree& T, const int node);
 
+void descendants(const ValueTree& T, const int node, std::set<int>& nodes);
+
 double value(const ValueTree& T, const TreeCut& C);
 
 /**
