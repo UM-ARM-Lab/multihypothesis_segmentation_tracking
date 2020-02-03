@@ -33,145 +33,15 @@
 #include "mps_voxels/SceneCut.h"
 #include "mps_voxels/MCMCTreeCut.h"
 
-#include "mps_voxels/DataLog.h"
+#include "mps_voxels/logging/DataLog.h"
+#include "mps_voxels/logging/log_segmentation_info.h"
+#include "mps_voxels/logging/log_sensor_history.h"
 
 #include "mps_voxels/image_utils.h"
 #include <opencv2/highgui.hpp>
 
 using namespace mps;
 
-
-std::string cvType2Str(int type)
-{
-	std::string r;
-	switch (type)
-	{
-	case CV_8UC1:  return sensor_msgs::image_encodings::MONO8;
-	case CV_8UC3:  return sensor_msgs::image_encodings::BGR8;
-	case CV_16UC1: return sensor_msgs::image_encodings::MONO16;
-	default: ; // Do nothing
-	}
-
-	uchar depth = type & CV_MAT_DEPTH_MASK;
-	uchar chans = 1 + (type >> CV_CN_SHIFT);
-
-	switch ( depth ) {
-	case CV_8U:  r = "8U"; break;
-	case CV_8S:  r = "8S"; break;
-	case CV_16U: r = "16U"; break;
-	case CV_16S: r = "16S"; break;
-	case CV_32S: r = "32S"; break;
-	case CV_32F: r = "32F"; break;
-	case CV_64F: r = "64F"; break;
-	default:     r = "User"; break;
-	}
-
-	r += "C";
-	r += (chans+'0');
-
-	return r;
-}
-
-
-#include <boost/preprocessor/seq/enum.hpp>
-#include <boost/preprocessor/seq/for_each.hpp>
-#include <boost/preprocessor/variadic/to_seq.hpp>
-
-/**
- * @def STRINGIFY STRINGIFY(kitten) resolves to "kitten" in the post-processed source
- */
-#define STRINGIFY2(X) #X
-#define STRINGIFY(X) STRINGIFY2(X)
-
-// Run the given macro on all the variadic elements passed
-#define ID_OP(_, func, elem) func(elem)
-#define APPLY_TO_ALL(func, ...)                \
-    BOOST_PP_SEQ_FOR_EACH(                     \
-        ID_OP, func,                           \
-        BOOST_PP_VARIADIC_TO_SEQ(__VA_ARGS__)  \
-    )
-
-template <typename T>
-struct ros_message_conversion {};
-
-template <typename T>
-struct ros_message_type_of {};
-
-/**
- * @tparam T Main type to be converted to message
- * @tparam Aux Auxiliary type containing any extra info (particularly headers)
- * @param t Object to convert
- * @param a Aux data object (defaults to null pointer)
- * @return
- */
-template <typename T, typename Aux = nullptr_t>
-auto toMessage(T t, Aux a = nullptr)
-{
-	return ros_message_conversion<std::remove_cv_t<std::remove_reference_t<T>>>::toMessage(t, a);
-}
-
-template <typename T>
-auto fromMessage(T t)
-{
-	return ros_message_conversion<typename ros_message_type_of<std::remove_cv_t<std::remove_reference_t<T>>>::CppType>::fromMessage(t);
-}
-
-
-template<>
-struct ros_message_type_of<sensor_msgs::Image> { using CppType = cv::Mat; };
-
-template<>
-struct ros_message_conversion<cv::Mat>
-{
-	using MsgType = sensor_msgs::Image;
-	using CppType = cv::Mat;
-
-	static
-	MsgType toMessage(const CppType& t, const nullptr_t)
-	{
-		return *cv_bridge::CvImage(std_msgs::Header(), cvType2Str(t.type()), t).toImageMsg();
-	}
-
-	static
-	MsgType toMessage(const CppType& t, const std_msgs::Header& h)
-	{
-		return *cv_bridge::CvImage(h, cvType2Str(t.type()), t).toImageMsg();
-	}
-
-	static
-	CppType fromMessage(const MsgType& t)
-	{
-		return cv_bridge::toCvCopy(t, t.encoding)->image;
-	}
-};
-
-
-#define LOG_IMAGE_MESSAGE(var_name) \
-	activeChannels.insert(channel + "/" STRINGIFY(var_name) ); \
-	log(channel + "/" STRINGIFY(var_name) , toMessage(msg.var_name, header));
-template <>
-void DataLog::log<SegmentationInfo>(const std::string& channel, const SegmentationInfo& msg)
-{
-	std_msgs::Header header; header.stamp = msg.t; header.frame_id = msg.frame_id;
-	APPLY_TO_ALL(LOG_IMAGE_MESSAGE, rgb, depth, ucm2, labels2, centroids2, stats2, display_contours, labels)
-
-	activeChannels.insert(channel + "/objectness_segmentation"); \
-	log(channel + "/objectness_segmentation", *msg.objectness_segmentation->toImageMsg());
-}
-
-#define LOAD_IMAGE_MESSAGE(var_name) \
-	load(channel + "/" STRINGIFY(var_name) , im); msg.var_name = fromMessage(im);
-template <>
-bool DataLog::load<SegmentationInfo>(const std::string& channel, SegmentationInfo& msg)
-{
-	sensor_msgs::Image im;
-	APPLY_TO_ALL(LOAD_IMAGE_MESSAGE, rgb, depth, ucm2, labels2, centroids2, stats2, display_contours, labels)
-	msg.t = im.header.stamp; msg.frame_id = im.header.frame_id;
-
-	load(channel + "/objectness_segmentation" , im);
-	msg.objectness_segmentation = cv_bridge::toCvCopy(im);
-	return true;
-}
 
 cv::Mat relabelCut(const Ultrametric& um, const ValueTree& T, const cv::Mat& labels, const TreeCut& cut)
 {
@@ -222,25 +92,37 @@ int main(int argc, char* argv[])
 	}
 	catch (...)
 	{
-		// TODO: Make loadable from file
-		SensorHistorian::SubscriptionOptions opts;
-		opts.hints = image_transport::TransportHints();
-		auto historian = std::make_unique<SensorHistorian>(500, opts);
-		historian->startCapture();
-		for (int attempt = 0; attempt < 1000; ++attempt)
+		SensorHistoryBuffer buff;
+
+		if (!log || !log->load("sensor_history", buff))
 		{
-			ros::Duration(0.1).sleep();
-			if (!historian->buffer.rgb.empty()) { break; }
+			SensorHistorian::SubscriptionOptions opts;
+			opts.hints = image_transport::TransportHints();
+			auto historian = std::make_unique<SensorHistorian>(500, opts);
+			historian->startCapture();
+			for (int attempt = 0; attempt < 1000; ++attempt)
+			{
+				ros::Duration(0.1).sleep();
+				if (!historian->buffer.rgb.empty()) { break; }
+			}
+			historian->stopCapture();
+			if (historian->buffer.rgb.empty()) { throw std::runtime_error("Failed to get any data."); }
+
+			log = std::make_shared<DataLog>("", std::unordered_set<std::string>{"sensor_history"}, rosbag::BagMode::Write);
+			log->log("sensor_history", historian->buffer);
+
+			auto segmentationClient = std::make_shared<RGBDSegmenter>(nh);
+			si = segmentationClient->segment(*historian->buffer.rgb.begin()->second, *historian->buffer.depth.begin()->second, historian->buffer.cameraModel.cameraInfo());
+			if (!si) { throw std::runtime_error("Failed to get segmentation."); }
 		}
-		historian->stopCapture();
-		if (historian->buffer.rgb.empty()) { throw std::runtime_error("Failed to get any data."); }
-		const SensorHistoryBuffer& buff = historian->buffer;
+		else
+		{
+			auto segmentationClient = std::make_shared<RGBDSegmenter>(nh);
+			si = segmentationClient->segment(*buff.rgb.begin()->second, *buff.depth.begin()->second, buff.cameraModel.cameraInfo());
+			if (!si) { throw std::runtime_error("Failed to get segmentation."); }
+		}
 
-		auto segmentationClient = std::make_shared<RGBDSegmenter>(nh);
-		si = segmentationClient->segment(*buff.rgb.begin()->second, *buff.depth.begin()->second, buff.cameraModel.cameraInfo());
-		if (!si) { throw std::runtime_error("Failed to get segmentation."); }
-
-		log = std::make_shared<DataLog>("", std::unordered_set<std::string>{"segmentation"}, rosbag::BagMode::Write);
+		if (!log) { log = std::make_shared<DataLog>("", std::unordered_set<std::string>{"segmentation"}, rosbag::BagMode::Write); }
 		log->log("segmentation", *si);
 	}
 

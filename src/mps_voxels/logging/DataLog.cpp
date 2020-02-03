@@ -27,95 +27,57 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef SRC_DATALOGGER_H
-#define SRC_DATALOGGER_H
+#include "mps_voxels/logging/DataLog.h"
 
-#include <std_msgs/String.h>
-#include <std_msgs/ByteMultiArray.h>
+#include <ros/console.h>
 
-#include <rosbag/bag.h>
-#include <rosbag/view.h>
-
-#include <chrono>
-#include <mutex>
-#include <set>
-#include <unordered_set>
-
-//#include <boost/concept_check.hpp>
-//
-//template <class T>
-//struct IsROSMessageType : boost::Assignable<T>, boost::EqualityComparable<T>
-//{
-//	ros::message_traits::IsMessage
-//};
+#include <boost/filesystem.hpp>
+namespace fs = boost::filesystem;
 
 namespace mps
 {
 
-//struct SensorHistoryBuffer;
-//struct SegmentationInfo;
+std::unique_ptr<DataLog> DataLog::instance;
 
-class TopicTypeQuery
+DataLog::DataLog(const std::string& filename, const ChannelSet& channels, const rosbag::bagmode::BagMode mode)
 {
-public:
-	TopicTypeQuery(const std::string& topic, const std::string& type) : topic_(topic), type_(type) {}
-
-	bool operator()(rosbag::ConnectionInfo const* info) const
+	auto path = (filename.empty() ? getDefaultPath() : filename);
+	if (!fs::exists(path) && mode == rosbag::BagMode::Read)
 	{
-		return (info->datatype == type_) && (info->topic == topic_);
+		throw std::runtime_error("Attempting to read from nonexistant file '" + path + "'.");
 	}
+	bag = std::make_unique<rosbag::Bag>(path, mode);
 
-private:
-	const std::string& topic_;
-	const std::string& type_;
-};
+	activeChannels = channels;
 
-class DataLog
+	ROS_INFO_STREAM("Logging to '" << bag->getFileName() << "'");
+}
+
+DataLog::~DataLog()
 {
-public:
-	using ChannelSet = std::unordered_set<std::string>;
-	ChannelSet activeChannels;
-	std::unique_ptr<rosbag::Bag> bag;
-	std::mutex mtx;
+	bag->close();
+}
 
-	explicit
-	DataLog(const std::string& filename = "", const ChannelSet& channels = {}, const rosbag::BagMode mode = rosbag::bagmode::Write);
-	~DataLog();
+std::string DataLog::getDefaultPath() const
+{
+	fs::path temp_dir = fs::temp_directory_path();
+	fs::path temp_file = temp_dir / fs::path("log.bag");
+	return temp_file.string();
+}
 
-	template <class Msg>
-	void log(const std::string& channel, const Msg& msg)
+ros::Time DataLog::getTime() const
+{
+	if (ros::Time::isValid())
 	{
-		static_assert(ros::message_traits::IsMessage<Msg>::value, "Default log only defined for ROS message types.");
-		std::lock_guard<std::mutex> lock(mtx);
-		if (activeChannels.find(channel) == activeChannels.end()) { return; }
-		bag->write(channel, getTime(), msg);
+		return ros::Time::now();
 	}
-
-	template <class Msg>
-	bool load(const std::string& channel, Msg& msg)
+	else
 	{
-		static_assert(ros::message_traits::IsMessage<Msg>::value, "Default load only defined for ROS message types.");
-		std::lock_guard<std::mutex> lock(mtx);
-		rosbag::View view(*bag, TopicTypeQuery(channel,ros::message_traits::DataType<Msg>::value()));
-
-		// There may be many valid messages matching the request; we return the first one we find.
-		for (const rosbag::MessageInstance& m : view)
-		{
-			auto p = m.instantiate<Msg>();
-			if (p)
-			{
-				msg = *p;
-				return true;
-			}
-		}
-		return false;
+		std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
+		std::time_t tt = std::chrono::system_clock::to_time_t(tp);
+		return ros::Time(tt);
 	}
-
-	std::string getDefaultPath() const;
-	ros::Time getTime() const;
-
-	static std::unique_ptr<DataLog> instance;
-};
+}
 
 template <>
 void DataLog::log<const std::string&>(const std::string& channel, const std::string& msg)
@@ -136,5 +98,3 @@ void DataLog::log<const std::vector<char>>(const std::string& channel, const std
 }
 
 }
-
-#endif // SRC_DATALOGGER_H

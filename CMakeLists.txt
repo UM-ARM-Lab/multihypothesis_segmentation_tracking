@@ -273,7 +273,10 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/VoxelSegmentation.cpp
   src/${PROJECT_NAME}/Scene.cpp
   src/${PROJECT_NAME}/ObjectLogger.cpp
-  src/${PROJECT_NAME}/DataLog.cpp
+  src/${PROJECT_NAME}/logging/DataLog.cpp
+  src/${PROJECT_NAME}/logging/log_cv_mat.cpp
+  src/${PROJECT_NAME}/logging/log_segmentation_info.cpp
+  src/${PROJECT_NAME}/logging/log_sensor_history.cpp
   src/${PROJECT_NAME}/video_graph.cpp
   src/${PROJECT_NAME}/planning/State.cpp
   src/${PROJECT_NAME}/planning/Action.cpp

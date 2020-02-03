@@ -27,56 +27,59 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mps_voxels/DataLog.h"
-
-#include <ros/console.h>
-
-#include <boost/filesystem.hpp>
-namespace fs = boost::filesystem;
+#include "mps_voxels/logging/log_sensor_history.h"
+#include "mps_voxels/logging/log_cv_mat.h"
+#include "mps_voxels/util/macros.h"
 
 namespace mps
 {
 
-std::unique_ptr<DataLog> DataLog::instance;
-
-DataLog::DataLog(const std::string& filename, const ChannelSet& channels, const rosbag::bagmode::BagMode mode)
+template <>
+void DataLog::log<SensorHistoryBuffer>(const std::string& channel, const SensorHistoryBuffer& msg)
 {
-	auto path = (filename.empty() ? getDefaultPath() : filename);
-	if (!fs::exists(path) && mode == rosbag::BagMode::Read)
+	std_msgs::Header header = msg.cameraModel.cameraInfo().header;
+
+	activeChannels.insert(channel + "/camera_model");
+	activeChannels.insert(channel + "/rgb");
+	activeChannels.insert(channel + "/depth");
+
+	log(channel + "/camera_model", msg.cameraModel);
+	for (const auto& pair : msg.rgb)
 	{
-		throw std::runtime_error("Attempting to read from nonexistant file '" + path + "'.");
+		header.stamp = pair.first;
+		log(channel + "/rgb", toMessage(pair.second->image, header));
 	}
-	bag = std::make_unique<rosbag::Bag>(path, mode);
+	for (const auto& pair : msg.depth)
+	{
+		header.stamp = pair.first;
+		log(channel + "/depth", toMessage(pair.second->image, header));
+	}
 
-	activeChannels = channels;
-
-	ROS_INFO_STREAM("Logging to '" << bag->getFileName() << "'");
+	// TODO: Log joints and TFs
 }
 
-DataLog::~DataLog()
+template <>
+bool DataLog::load<SensorHistoryBuffer>(const std::string& channel, SensorHistoryBuffer& msg)
 {
-	bag->close();
-}
+	load(channel + "/camera_model", msg.cameraModel);
 
-std::string DataLog::getDefaultPath() const
-{
-	fs::path temp_dir = fs::temp_directory_path();
-	fs::path temp_file = temp_dir / fs::path("log.bag");
-	return temp_file.string();
-}
+	std::vector<sensor_msgs::Image> msgs;
 
-ros::Time DataLog::getTime() const
-{
-	if (ros::Time::isValid())
+	loadAll(channel + "/rgb", msgs);
+	for (const auto& m : msgs)
 	{
-		return ros::Time::now();
+		msg.rgb.insert(std::make_pair(m.header.stamp, cv_bridge::toCvCopy(m)));
 	}
-	else
+
+	loadAll(channel + "/depth", msgs);
+	for (const auto& m : msgs)
 	{
-		std::chrono::system_clock::time_point tp = std::chrono::system_clock::now();
-		std::time_t tt = std::chrono::system_clock::to_time_t(tp);
-		return ros::Time(tt);
+		msg.depth.insert(std::make_pair(m.header.stamp, cv_bridge::toCvCopy(m)));
 	}
+
+	// TODO: Load joints and TFs
+
+	return true;
 }
 
 }
