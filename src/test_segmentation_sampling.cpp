@@ -40,7 +40,56 @@
 #include "mps_voxels/image_utils.h"
 #include <opencv2/highgui.hpp>
 
+#include <ros/package.h>
+#include <ros/console.h>
+
+#include <fstream>
+#include <sstream>
+
+#include <boost/filesystem.hpp>
+namespace fs = boost::filesystem;
+
 using namespace mps;
+
+const static std::string PACKAGE_PREFIX = "package://";
+
+std::string parsePackageURL(const std::string& url)
+{
+	size_t is_package = url.find(PACKAGE_PREFIX);
+	if (std::string::npos == is_package)
+	{
+		// Not a package path
+		return url;
+	}
+
+	std::string filename = url;
+	filename.erase(0, PACKAGE_PREFIX.length());
+	size_t pos = filename.find('/');
+	if (pos != std::string::npos)
+	{
+		std::string package = filename.substr(0, pos);
+		filename.erase(0, pos);
+		std::string package_path = ros::package::getPath(package);
+		if (package_path.empty())
+		{
+			throw std::runtime_error("Could not find package '" + package + "'.");
+		}
+		filename = package_path + filename;
+	}
+
+	return filename;
+}
+
+std::string packagePathToContents(const std::string& filename)
+{
+	std::string path;
+	path = parsePackageURL(filename);
+	std::ifstream ifs(path);
+	std::stringstream buffer;
+	buffer << ifs.rdbuf();
+	ifs.close();
+	return buffer.str();
+}
 
 
 cv::Mat relabelCut(const Ultrametric& um, const ValueTree& T, const cv::Mat& labels, const TreeCut& cut)
@@ -74,62 +123,119 @@ cv::Mat relabelCut(const Ultrametric& um, const ValueTree& T, const cv::Mat& lab
 	return segmentation;
 }
 
+//template <typename T>
+//using DataGeneratorFn = std::function<bool(T&)>;
+
+template <typename T>
+using DataGeneratorFn = bool(T&);
+
+template <typename T>
+bool loadOrGenerateData(const std::string& bagFileName, const std::string& channelName,
+                        T& data, DataGeneratorFn<T> generator, bool cacheDataIfGenerated = true)
+{
+	// Try to load the data from file
+	if (fs::is_regular_file(bagFileName))
+	{
+		std::shared_ptr<DataLog> log = std::make_shared<DataLog>(bagFileName, std::unordered_set<std::string>{channelName}, rosbag::BagMode::Read);
+		if (log->load(channelName, data))
+		{
+			return true;
+		}
+	}
+
+	// Call the generator function
+	bool res = generator(data);
+	if (!res) { return false; }
+
+	// Write back out to bag file
+	if (cacheDataIfGenerated)
+	{
+		std::shared_ptr<DataLog> log = std::make_shared<DataLog>(bagFileName, std::unordered_set<std::string>{channelName}, rosbag::BagMode::Write);
+		log->log(channelName, data);
+	}
+	return true;
+}
+
+
+const std::string testDirName = "package://mps_test_data/";
+
+bool generateSensorHistory(SensorHistoryBuffer& buff)
+{
+	SensorHistorian::SubscriptionOptions opts;
+	opts.hints = image_transport::TransportHints();
+	auto historian = std::make_unique<SensorHistorian>(500, opts);
+	historian->startCapture();
+	for (int attempt = 0; attempt < 1000; ++attempt)
+	{
+		ros::Duration(0.1).sleep();
+		if (!historian->buffer.rgb.empty()) { break; }
+	}
+	historian->stopCapture();
+	if (historian->buffer.rgb.empty())
+	{
+		ROS_ERROR_STREAM("Failed to get any data.");
+		return false;
+	}
+
+	buff = historian->buffer;
+
+	return true;
+}
+
+bool generateSegmentationInfo(SegmentationInfo& info)
+{
+	std::string bagFileName = parsePackageURL(testDirName) + ros::this_node::getName() + ".bag";
+	SensorHistoryBuffer buff;
+	bool res = loadOrGenerateData(bagFileName, "sensor_history", buff, generateSensorHistory, true);
+	if (!res)
+	{
+		ROS_ERROR_STREAM("Failed to get sensor history.");
+		return false;
+	}
+
+	ros::NodeHandle nh;
+	auto segmentationClient = std::make_shared<RGBDSegmenter>(nh);
+	auto si = segmentationClient->segment(*buff.rgb.begin()->second, *buff.depth.begin()->second, buff.cameraModel.cameraInfo());
+	if (!si)
+	{
+		ROS_ERROR_STREAM("Failed to get segmentation.");
+		return false;
+	}
+
+	info = *si;
+	return true;
+}
+
+
+
 int main(int argc, char* argv[])
 {
 	ros::init(argc, argv, "segmentation_sampling");
 	ros::NodeHandle nh, pnh("~");
 
+	// Check for existence of mps_test_data
+	if (!(fs::is_directory(parsePackageURL(testDirName)) && fs::exists(parsePackageURL(testDirName))))
+	{
+		throw std::runtime_error("Unable to find test data directory.");
+	}
+
+	std::string bagFileName = parsePackageURL(testDirName) + ros::this_node::getName() + ".bag";
+
 	auto si = std::make_shared<SegmentationInfo>();
 
-	std::shared_ptr<DataLog> log;
-	try
+	bool res = loadOrGenerateData(bagFileName, "sensor_history", *si, generateSegmentationInfo, true);
+	if (!res)
 	{
-		log = std::make_shared<DataLog>("", std::unordered_set<std::string>{"segmentation"}, rosbag::BagMode::Read);
-		if (!log->load("segmentation", *si))
-		{
-			throw std::runtime_error("");
-		}
-	}
-	catch (...)
-	{
-		SensorHistoryBuffer buff;
-
-		if (!log || !log->load("sensor_history", buff))
-		{
-			SensorHistorian::SubscriptionOptions opts;
-			opts.hints = image_transport::TransportHints();
-			auto historian = std::make_unique<SensorHistorian>(500, opts);
-			historian->startCapture();
-			for (int attempt = 0; attempt < 1000; ++attempt)
-			{
-				ros::Duration(0.1).sleep();
-				if (!historian->buffer.rgb.empty()) { break; }
-			}
-			historian->stopCapture();
-			if (historian->buffer.rgb.empty()) { throw std::runtime_error("Failed to get any data."); }
-
-			log = std::make_shared<DataLog>("", std::unordered_set<std::string>{"sensor_history"}, rosbag::BagMode::Write);
-			log->log("sensor_history", historian->buffer);
-
-			auto segmentationClient = std::make_shared<RGBDSegmenter>(nh);
-			si = segmentationClient->segment(*historian->buffer.rgb.begin()->second, *historian->buffer.depth.begin()->second, historian->buffer.cameraModel.cameraInfo());
-			if (!si) { throw std::runtime_error("Failed to get segmentation."); }
-		}
-		else
-		{
-			auto segmentationClient = std::make_shared<RGBDSegmenter>(nh);
-			si = segmentationClient->segment(*buff.rgb.begin()->second, *buff.depth.begin()->second, buff.cameraModel.cameraInfo());
-			if (!si) { throw std::runtime_error("Failed to get segmentation."); }
-		}
-
-		if (!log) { log = std::make_shared<DataLog>("", std::unordered_set<std::string>{"segmentation"}, rosbag::BagMode::Write); }
-		log->log("segmentation", *si);
+		ROS_ERROR_STREAM("Failed to get segmentation.");
+		return -1;
 	}
 
 
 	Ultrametric um(si->ucm2, si->labels2);
 	SceneCut sc;
 	ValueTree T = sc.process(um, si->labels);
+
+	// TODO: Cut the ValueTree into a value forest based on free space
 
 	auto cutStar = optimalCut(T);
 	double vStar = value(T, cutStar.second);

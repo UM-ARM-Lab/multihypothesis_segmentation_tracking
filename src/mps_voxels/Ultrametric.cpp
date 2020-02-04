@@ -18,8 +18,8 @@ Ultrametric::Ultrametric(cv::Mat& ucm, cv::Mat& labels)
 		}
 	}
 
-	if (CV_MAT_DEPTH(ucm.type())!=CV_64F) { throw std::runtime_error("UCM must be of type 'float64'"); }
-	if (CV_MAT_DEPTH(small_labels.type())!=CV_16U) { throw std::runtime_error("Labels must be of type 'uint16'"); }
+	if (CV_MAT_DEPTH(ucm.type())!=CV_64FC1) { throw std::runtime_error("UCM must be of type 'float64'"); }
+	if (CV_MAT_DEPTH(small_labels.type())!=CV_16UC1) { throw std::runtime_error("Labels must be of type 'uint16'"); }
 
 	Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> contour_map(ucm.ptr<double>(),
 	                                                                                               ucm.rows, ucm.cols);

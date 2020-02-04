@@ -40,7 +40,7 @@ SensorHistorian::SensorHistorian(const size_t _buffer, SubscriptionOptions _opti
 	options.nh.setCallbackQueue(&callback_queue);
 	options.pnh.setCallbackQueue(&callback_queue);
 
-	buffer.tfs = std::make_unique<tf2_ros::Buffer>(options.buffer_duration);
+	buffer.tfs = std::make_shared<tf2_ros::Buffer>(options.buffer_duration);
 
 	it = std::make_unique<image_transport::ImageTransport>(options.nh);
 	rgb_sub = std::make_unique<image_transport::SubscriberFilter>(*it, options.rgb_topic, options.queue_size, options.hints);

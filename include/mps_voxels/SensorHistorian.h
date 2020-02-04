@@ -60,7 +60,7 @@ struct SensorHistoryBuffer
 	std::map<ros::Time, cv_bridge::CvImagePtr> rgb;
 	std::map<ros::Time, cv_bridge::CvImagePtr> depth;
 	std::map<ros::Time, sensor_msgs::JointStateConstPtr> joint;
-	std::unique_ptr<tf2_ros::Buffer> tfs;
+	std::shared_ptr<tf2_ros::Buffer> tfs;
 };
 
 class SensorHistorian

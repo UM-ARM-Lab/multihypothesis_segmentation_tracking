@@ -32,6 +32,37 @@
 namespace mps
 {
 
+std::string cvType2Str(int type)
+{
+	std::string r;
+	switch (type)
+	{
+	case CV_8UC1:  return sensor_msgs::image_encodings::MONO8;
+	case CV_8UC3:  return sensor_msgs::image_encodings::BGR8;
+	case CV_16UC1: return sensor_msgs::image_encodings::MONO16;
+	default: ; // Do nothing
+	}
+
+	uchar depth = type & CV_MAT_DEPTH_MASK;
+	uchar chans = 1 + (type >> CV_CN_SHIFT);
+
+	switch ( depth ) {
+	case CV_8U:  r = "8U"; break;
+	case CV_8S:  r = "8S"; break;
+	case CV_16U: r = "16U"; break;
+	case CV_16S: r = "16S"; break;
+	case CV_32S: r = "32S"; break;
+	case CV_32F: r = "32F"; break;
+	case CV_64F: r = "64F"; break;
+	default:     r = "User"; break;
+	}
+
+	r += "C";
+	r += (chans+'0');
+
+	return r;
+}
+
 
 sensor_msgs::Image
 ros_message_conversion<cv::Mat>::toMessage(const cv::Mat& t, const nullptr_t)
