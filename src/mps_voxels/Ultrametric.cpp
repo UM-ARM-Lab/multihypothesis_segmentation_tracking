@@ -5,6 +5,8 @@
 #include "mps_voxels/Ultrametric.h"
 #include "mps_voxels/assert.h"
 
+#include <ucm2hier.hpp> // NB: Contains function definitions, so can only be included once per project
+
 Ultrametric::Ultrametric(cv::Mat& ucm, cv::Mat& labels)
 {
 	cv::Mat small_labels(labels.rows/2, labels.cols/2, CV_16UC1);

@@ -27,6 +27,7 @@ struct xycoor{
 struct SegmentationInfo
 {
 	ros::Time t;
+	std::string frame_id;
 	cv::Rect roi; ///< ROI in the parent image
 	cv::Mat rgb;
 	cv::Mat depth;

@@ -47,6 +47,7 @@ RGBDSegmenter::segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& 
 
 	std::shared_ptr<SegmentationInfo> si = std::make_shared<SegmentationInfo>();
 	si->t = cam.header.stamp;
+	si->frame_id = cam.header.frame_id;
 	si->rgb = rgb.image;
 	si->depth = depth.image;
 	si->roi.width = cam.roi.width;
