@@ -220,7 +220,7 @@ void Tracker::siftOnMask(const std::vector<ros::Time>& steps, const SensorHistor
 	cv::VideoWriter video("/home/kunhuang/Videos/source.avi",
 						CV_FOURCC('M', 'J', 'P', 'G'),
 							1, buffer.rgb.at(tFirst)->image.size(), true);
-	cv::VideoWriter tracking("/home/kunhuang/Videos/tracking" + std::to_string((int)label) + ".avi",
+	cv::VideoWriter tracking("/home/kunhuang/Videos/tracking_" + std::to_string((int)label) + ".avi",
 							CV_FOURCC('M', 'J', 'P', 'G'), 1, buffer.rgb.at(tFirst)->image.size(),
 	                         true);
 
