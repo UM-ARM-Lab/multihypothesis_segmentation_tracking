@@ -60,6 +60,8 @@ struct SensorHistoryBuffer
 	std::map<ros::Time, cv_bridge::CvImagePtr> rgb;
 	std::map<ros::Time, cv_bridge::CvImagePtr> depth;
 	std::map<ros::Time, sensor_msgs::JointStateConstPtr> joint;
+	std::vector<tf2_msgs::TFMessagePtr> tf_raw;
+	std::vector<tf2_msgs::TFMessagePtr> tf_static_raw;
 	std::shared_ptr<tf2_ros::Buffer> tfs;
 };
 
@@ -104,8 +106,8 @@ public:
 	std::unique_ptr<message_filters::Subscriber<sensor_msgs::CameraInfo>> cam_sub;
 	std::unique_ptr<message_filters::Synchronizer<SyncPolicy>> sync;
 	std::unique_ptr<ros::Subscriber> joint_sub;
-
-	std::unique_ptr<tf2_ros::TransformListener> listener;
+	std::unique_ptr<ros::Subscriber> tf_sub;
+	std::unique_ptr<ros::Subscriber> tf_static_sub;
 
 	const size_t MAX_BUFFER_LEN;//1000;
 	SubscriptionOptions options;
@@ -115,9 +117,6 @@ public:
 
 
 	SensorHistoryBuffer buffer;
-	bool ifAddtoBuffer = true;
-	ros::Time lastTimeAdded;
-	bool isLastTimeAddedInit = false;
 
 	explicit
 	SensorHistorian(const size_t _buffer = 500,
@@ -136,6 +135,12 @@ public:
 	             const sensor_msgs::CameraInfoConstPtr& cam_msg);
 
 	void jointCb(const sensor_msgs::JointStateConstPtr& joint_msg);
+
+	void tfCb(const ros::MessageEvent<tf2_msgs::TFMessage>& msg_evt);
+
+	void tfStaticCb(const ros::MessageEvent<tf2_msgs::TFMessage>& msg_evt);
+
+	void tfShared(const ros::MessageEvent<tf2_msgs::TFMessage const>& msg_evt, bool is_static);
 
 	void ifTrackAction(const std::shared_ptr<Action>& action);
 

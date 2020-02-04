@@ -29,7 +29,6 @@
 
 #include "mps_voxels/logging/log_sensor_history.h"
 #include "mps_voxels/logging/log_cv_mat.h"
-#include "mps_voxels/util/macros.h"
 
 namespace mps
 {
@@ -43,6 +42,8 @@ void DataLog::log<SensorHistoryBuffer>(const std::string& channel, const SensorH
 	activeChannels.insert(channel + "/rgb");
 	activeChannels.insert(channel + "/depth");
 	activeChannels.insert(channel + "/joint");
+	activeChannels.insert(channel + "/tf");
+	activeChannels.insert(channel + "/tf_static");
 
 	log(channel + "/camera_model", msg.cameraModel);
 	for (const auto& pair : msg.rgb)
@@ -59,8 +60,15 @@ void DataLog::log<SensorHistoryBuffer>(const std::string& channel, const SensorH
 	{
 		log(channel + "/joint", *pair.second);
 	}
+	for (const auto& t : msg.tf_raw)
+	{
+		log(channel + "/tf", *t);
+	}
+	for (const auto& t : msg.tf_static_raw)
+	{
+		log(channel + "/tf_static", *t);
+	}
 
-	// TODO: Log joints and TFs
 }
 
 template <>
@@ -89,6 +97,17 @@ bool DataLog::load<SensorHistoryBuffer>(const std::string& channel, SensorHistor
 		auto js = sensor_msgs::JointStatePtr(new sensor_msgs::JointState);
 		*js = m;
 		msg.joint.insert(std::make_pair(m.header.stamp, js));
+	}
+
+	msg.tfs = std::make_shared<tf2_ros::Buffer>(ros::Duration(tf2_ros::Buffer::DEFAULT_CACHE_TIME));
+	loadAll(channel + "/tf", msg.tf_raw);
+	loadAll(channel + "/tf_static", msg.tf_static_raw);
+	for (const auto& m : msg.tf_static_raw)
+	{
+		for (const auto & transform : m->transforms)
+		{
+			msg.tfs->setTransform(transform, "", true);
+		}
 	}
 
 	// TODO: Load joints and TFs

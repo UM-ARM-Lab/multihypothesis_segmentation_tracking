@@ -70,10 +70,14 @@ void SensorHistorian::startCapture()
 {
 	reset();
 
-	listener = std::make_unique<tf2_ros::TransformListener>(*buffer.tfs);
-
 	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>(options.joint_topic, 2, boost::bind(&SensorHistorian::jointCb, this, _1), ros::VoidPtr(), &callback_queue);
 	joint_sub = std::make_unique<ros::Subscriber>(options.nh.subscribe(joint_sub_options));
+
+	auto tf_sub_options = ros::SubscribeOptions::create<tf2_msgs::TFMessage>("/tf", 100, boost::bind(&SensorHistorian::tfCb, this, _1), ros::VoidPtr(), &callback_queue);
+	tf_sub = std::make_unique<ros::Subscriber>(options.nh.subscribe(tf_sub_options));
+
+	auto tf_static_sub_options = ros::SubscribeOptions::create<tf2_msgs::TFMessage>("/tf_static", 100, boost::bind(&SensorHistorian::tfStaticCb, this, _1), ros::VoidPtr(), &callback_queue);
+	tf_static_sub = std::make_unique<ros::Subscriber>(options.nh.subscribe(tf_static_sub_options));
 
 	rgb_sub->subscribe(*it, options.rgb_topic, options.queue_size, options.hints);
 	depth_sub->subscribe(*it, options.depth_topic, options.queue_size, options.hints);
@@ -90,7 +94,16 @@ void SensorHistorian::stopCapture()
 		joint_sub->shutdown();
 		joint_sub.reset();
 	}
-	listener.reset();
+	if (tf_sub)
+	{
+		tf_sub->shutdown();
+		tf_sub.reset();
+	}
+	if (tf_static_sub)
+	{
+		tf_static_sub->shutdown();
+		tf_static_sub.reset();
+	}
 }
 
 void SensorHistorian::reset()
@@ -100,15 +113,14 @@ void SensorHistorian::reset()
 	buffer.joint.clear();
 	if (buffer.tfs)
 		buffer.tfs->clear();
+	buffer.tf_raw.clear();
+	buffer.tf_static_raw.clear();
 }
 
 void SensorHistorian::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
                       const sensor_msgs::ImageConstPtr& depth_msg,
                       const sensor_msgs::CameraInfoConstPtr& cam_msg)
 {
-	if (!ifAddtoBuffer)
-		return;
-
 	cv_bridge::CvImagePtr cv_rgb_ptr;
 	try
 	{
@@ -185,56 +197,36 @@ void SensorHistorian::imageCb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 void SensorHistorian::jointCb(const sensor_msgs::JointStateConstPtr& joint_msg)
 {
-/*
-	if (isLastTimeAddedInit)
-	{
-		double Posdifference = 0.0;
-		double jointV = 0.0;
-		for (size_t iter = 0; iter < joint_msg->position.size(); iter++)
-		{
-			Posdifference += (joint_msg->position[iter] - buffer.joint[lastTimeAdded]->position[iter]) * (joint_msg->position[iter] - buffer.joint[lastTimeAdded]->position[iter]);
-			jointV += joint_msg->velocity[iter] * joint_msg->velocity[iter];
-		}
-		std::cerr << "Pose Difference = " << Posdifference << std::endl;
-		std::cerr << "Joint Velocity = " << jointV << std::endl;
-		if (Posdifference < 0.04)
-		{
-			ifAddtoBuffer = false;
-			return;
-		}
-		else
-		{
-			ifAddtoBuffer = true;
-			lastTimeAdded = joint_msg->header.stamp;
-			std::cerr << "joint " << buffer.joint.size() << ": " << buffer.joint.rbegin()->first - buffer.joint.begin()->first << std::endl;
-		}
-	}
-	else
-	{
-		ifAddtoBuffer = true;
-		lastTimeAdded = joint_msg->header.stamp;
-		isLastTimeAddedInit = true;
-	}
-*/
-	if (!ifAddtoBuffer)
-		return;
-
 	buffer.joint.insert(buffer.joint.end(), {joint_msg->header.stamp, joint_msg});
 }
 
-void SensorHistorian::ifTrackAction(const std::shared_ptr<Action>& action)
+void SensorHistorian::tfCb(const ros::MessageEvent<tf2_msgs::TFMessage>& msg_evt)
 {
-	auto armAction = std::dynamic_pointer_cast<JointTrajectoryAction>(action);
-	if (armAction)
+	buffer.tf_raw.push_back(msg_evt.getMessage());
+	tfShared(msg_evt, false);
+}
+
+void SensorHistorian::tfStaticCb(const ros::MessageEvent<tf2_msgs::TFMessage>& msg_evt)
+{
+	buffer.tf_static_raw.push_back(msg_evt.getMessage());
+	tfShared(msg_evt, true);
+}
+
+void SensorHistorian::tfShared(const ros::MessageEvent<tf2_msgs::TFMessage const>& msg_evt, bool is_static)
+{
+	const tf2_msgs::TFMessage& msg_in = *(msg_evt.getConstMessage());
+	const std::string& authority = msg_evt.getPublisherName(); // lookup the authority
+	for (const auto & transform : msg_in.transforms)
 	{
-		std::cerr << "armAction->palm_trajectory.size() = " << armAction->palm_trajectory.size() << std::endl;
-		if (armAction->palm_trajectory.size() > 1)
+		try
 		{
-			ifAddtoBuffer = true;
+			assert(buffer.tfs);
+			buffer.tfs->setTransform(transform, authority, is_static);
 		}
-		else
+		catch (tf2::TransformException& ex)
 		{
-			ifAddtoBuffer = false;
+			std::string temp = ex.what();
+			ROS_ERROR("Failure to set recieved transform from %s to %s with error: %s\n", transform.child_frame_id.c_str(), transform.header.frame_id.c_str(), temp.c_str());
 		}
 	}
 }

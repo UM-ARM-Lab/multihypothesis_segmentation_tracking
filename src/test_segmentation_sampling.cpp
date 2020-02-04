@@ -302,7 +302,7 @@ int main(int argc, char* argv[])
 
 //	mcmc.sigmaSquared = 1e10*vStar*vStar; // With proposal ratio
 //	mcmc.nTrials = 100;
-	mcmc.sigmaSquared = vStar*vStar;
+	mcmc.sigmaSquared = 0.2*vStar*vStar;
 	mcmc.nTrials = 25;
 
 	for (int i = 0; i < 10; ++i)

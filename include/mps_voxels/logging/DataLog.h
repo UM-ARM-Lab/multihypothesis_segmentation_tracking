@@ -120,6 +120,25 @@ public:
 		return true;
 	}
 
+	template <class Msg>
+	bool loadAll(const std::string& channel, std::vector<boost::shared_ptr<Msg>>& msg)
+	{
+		static_assert(ros::message_traits::IsMessage<Msg>::value, "Default load only defined for ROS message types.");
+		std::lock_guard<std::mutex> lock(mtx);
+		rosbag::View view(*bag, TopicTypeQuery(channel, ros::message_traits::DataType<Msg>::value()));
+
+		// There may be many valid messages matching the request; we return the first one we find.
+		for (const rosbag::MessageInstance& m : view)
+		{
+			auto p = m.instantiate<Msg>();
+			if (p)
+			{
+				msg.push_back(p);
+			}
+		}
+		return true;
+	}
+
 	std::string getDefaultPath() const;
 	ros::Time getTime() const;
 
