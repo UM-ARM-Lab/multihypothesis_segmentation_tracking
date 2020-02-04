@@ -134,12 +134,19 @@ bool loadOrGenerateData(const std::string& bagFileName, const std::string& chann
                         T& data, DataGeneratorFn<T> generator, bool cacheDataIfGenerated = true)
 {
 	// Try to load the data from file
-	if (fs::is_regular_file(bagFileName))
+	if (fs::exists(bagFileName))
 	{
 		std::shared_ptr<DataLog> log = std::make_shared<DataLog>(bagFileName, std::unordered_set<std::string>{channelName}, rosbag::BagMode::Read);
-		if (log->load(channelName, data))
+		try
 		{
-			return true;
+			if (log->load(channelName, data))
+			{
+				return true;
+			}
+		}
+		catch (...)
+		{
+			// proceed to generator
 		}
 	}
 
@@ -150,7 +157,8 @@ bool loadOrGenerateData(const std::string& bagFileName, const std::string& chann
 	// Write back out to bag file
 	if (cacheDataIfGenerated)
 	{
-		std::shared_ptr<DataLog> log = std::make_shared<DataLog>(bagFileName, std::unordered_set<std::string>{channelName}, rosbag::BagMode::Write);
+		auto mode = fs::exists(bagFileName) ? rosbag::BagMode::Append : rosbag::BagMode::Write;
+		std::shared_ptr<DataLog> log = std::make_shared<DataLog>(bagFileName, std::unordered_set<std::string>{channelName}, mode);
 		log->log(channelName, data);
 	}
 	return true;
@@ -223,7 +231,7 @@ int main(int argc, char* argv[])
 
 	auto si = std::make_shared<SegmentationInfo>();
 
-	bool res = loadOrGenerateData(bagFileName, "sensor_history", *si, generateSegmentationInfo, true);
+	bool res = loadOrGenerateData(bagFileName, "segmentation_info", *si, generateSegmentationInfo, true);
 	if (!res)
 	{
 		ROS_ERROR_STREAM("Failed to get segmentation.");
