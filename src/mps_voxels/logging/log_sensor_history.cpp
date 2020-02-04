@@ -42,6 +42,7 @@ void DataLog::log<SensorHistoryBuffer>(const std::string& channel, const SensorH
 	activeChannels.insert(channel + "/camera_model");
 	activeChannels.insert(channel + "/rgb");
 	activeChannels.insert(channel + "/depth");
+	activeChannels.insert(channel + "/joint");
 
 	log(channel + "/camera_model", msg.cameraModel);
 	for (const auto& pair : msg.rgb)
@@ -53,6 +54,10 @@ void DataLog::log<SensorHistoryBuffer>(const std::string& channel, const SensorH
 	{
 		header.stamp = pair.first;
 		log(channel + "/depth", toMessage(pair.second->image, header));
+	}
+	for (const auto& pair : msg.joint)
+	{
+		log(channel + "/joint", *pair.second);
 	}
 
 	// TODO: Log joints and TFs
@@ -75,6 +80,15 @@ bool DataLog::load<SensorHistoryBuffer>(const std::string& channel, SensorHistor
 	for (const auto& m : msgs)
 	{
 		msg.depth.insert(std::make_pair(m.header.stamp, cv_bridge::toCvCopy(m)));
+	}
+
+	std::vector<sensor_msgs::JointState> joints;
+	loadAll(channel + "/joint", joints);
+	for (const auto& m : joints)
+	{
+		auto js = sensor_msgs::JointStatePtr(new sensor_msgs::JointState);
+		*js = m;
+		msg.joint.insert(std::make_pair(m.header.stamp, js));
 	}
 
 	// TODO: Load joints and TFs
