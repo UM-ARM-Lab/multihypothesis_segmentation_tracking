@@ -28,16 +28,27 @@
  */
 
 #include "mps_voxels/VoxelSegmentation.h"
+#include "mps_voxels/image_utils.h"
+#include "mps_voxels/logging/DataLog.h"
+#include "mps_voxels/logging/log_cv_mat.h"
+#include "mps_voxels/logging/log_cv_roi.h"
+#include "mps_voxels/logging/log_sensor_history.h"
+#include "mps_voxels/logging/log_segmentation_info.h"
+#include "mps_voxels/SensorHistorian.h"
+#include "mps_voxels/Tracker.h"
+#include "mps_voxels/SiamTracker.h"
 
 #include <octomap/octomap.h>
 #include <Eigen/Geometry>
 #include <unordered_set>
+#include <opencv2/highgui.hpp>
 
 
 #include <gtest/gtest.h>
 
 using namespace mps;
 
+/*
 TEST(segmentation, clustering)
 {
 	mps::VoxelSegmentation vox({3, 3, 3});
@@ -91,8 +102,9 @@ TEST(segmentation, clustering)
 	std::cerr << "Yay!" << std::endl;
 
 }
+*/
 
-
+/*
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "cert-flp30-c"
 TEST(segmentation, octree)
@@ -204,12 +216,148 @@ TEST(segmentation, octree)
 
 }
 #pragma clang diagnostic pop
+*/
 
 /* TODO:
  * OcTree is originally used to store occupancy probability, while we don't care about occupancy probability.
  * Changing float to int -> store label? or use ColorOcTree.
  * Some reference:
  * https://answers.ros.org/question/11443/initializing-and-manipulating-octomaps-with-more-than-just-occupancy/ */
+
+/*
+TEST(segmentation, log_buffer)
+{
+	cv::Mat im = cv::imread("/home/kunhuang/Pictures/example.jpg");
+	std::cerr << im.rows << " x " << im.cols << std::endl;
+	std::vector<std::vector<bool>> mask(im.rows, std::vector<bool>(im.cols, false));
+	for (size_t i = 1500; i < 2500; i++)
+	{
+		for (size_t j = 1000; j < 2500; j++)
+		{
+			mask[i][j] = true;
+		}
+	}
+
+	{
+		cv::Mat im_out = maskImage(im, mask);
+		DataLog logger("/home/kunhuang/mps_log/log_1.bag");
+		std_msgs::Header header;
+		logger.activeChannels.insert("image");
+		logger.log("image", toMessage(im_out, header));
+		std::cerr << "Successfully logged." << std::endl;
+	}
+	{
+		DataLog loader("/home/kunhuang/mps_log/log_1.bag", {}, rosbag::bagmode::Read);
+		loader.activeChannels.insert("image");
+		sensor_msgs::Image im_got;
+		loader.load("image" , im_got);
+		cv::Mat final = fromMessage(im_got);
+		cv::imwrite("/home/kunhuang/Pictures/out_" + std::to_string(1) + ".jpg", final);
+		std::cerr << "Successfully loaded." << std::endl;
+	}
+
+	SensorHistoryBuffer buffer;
+	image_geometry::PinholeCameraModel cm;
+	buffer.cameraModel = cm;
+
+	cv_bridge::CvImagePtr imagePtr(new cv_bridge::CvImage());
+	imagePtr->image = im;
+	buffer.rgb.insert({ros::Time(), imagePtr});
+
+	{
+		std::cerr << "start logging" << std::endl;
+		DataLog logger("/home/kunhuang/mps_log/log_2.bag");
+		std_msgs::Header header;
+		logger.activeChannels.insert("buffer");
+		logger.log<SensorHistoryBuffer>("buffer", buffer);
+		std::cerr << "Successfully logged." << std::endl;
+	}
+	{
+		DataLog loader("/home/kunhuang/mps_log/log_2.bag", {}, rosbag::bagmode::Read);
+		loader.activeChannels.insert("buffer");
+		SensorHistoryBuffer buffer_out;
+		loader.load<SensorHistoryBuffer>("buffer", buffer_out);
+		cv::Mat final = buffer_out.rgb.begin()->second->image;
+		cv::imwrite("/home/kunhuang/Pictures/out_" + std::to_string(2) + ".jpg", final);
+		std::cerr << "Successfully loaded." << std::endl;
+	}
+}
+*/
+
+/*
+TEST(segmentation, log_roi)
+{
+	cv::Rect roi;
+	roi.x = 100;
+	roi.y = 300;
+	roi.height = 500;
+	roi.width = 700;
+	{
+		std::cerr << "start logging" << std::endl;
+		DataLog logger("/home/kunhuang/mps_log/log_3.bag");
+		logger.activeChannels.insert("roi");
+		logger.log<cv::Rect>("roi", roi);
+		std::cerr << "Successfully logged." << std::endl;
+	}
+	{
+		DataLog loader("/home/kunhuang/mps_log/log_3.bag", {}, rosbag::bagmode::Read);
+		loader.activeChannels.insert("roi");
+		cv::Rect roi_out;
+		loader.load<cv::Rect>("roi", roi_out);
+		std::cerr << "roi: " << roi_out.x << " " << roi_out.y << " " << roi_out.height << " " << roi_out.width << std::endl;
+		std::cerr << "Successfully loaded." << std::endl;
+	}
+}
+*/
+
+TEST(segmentation, actionModel)
+{
+	SensorHistoryBuffer buffer_out;
+	{
+		DataLog loader("/home/kunhuang/mps_log/explorer_buffer_1.bag", {}, rosbag::bagmode::Read);
+		loader.activeChannels.insert("buffer");
+		loader.load<SensorHistoryBuffer>("buffer", buffer_out);
+		std::cerr << "Successfully loaded." << std::endl;
+	}
+	std::cerr << "number of frames: " << buffer_out.rgb.size() << std::endl;
+
+	SegmentationInfo seg_out;
+	{
+		DataLog loader("/home/kunhuang/mps_log/explorer_segInfo_1.bag", {}, rosbag::bagmode::Read);
+		loader.activeChannels.insert("segInfo");
+		loader.load<SegmentationInfo>("segInfo", seg_out);
+		std::cerr << "Successfully loaded." << std::endl;
+	}
+
+	cv::Rect roi_out;
+	{
+		DataLog loader("/home/kunhuang/mps_log/explorer_roi_1.bag", {}, rosbag::bagmode::Read);
+		loader.activeChannels.insert("roi");
+		loader.load<cv::Rect>("roi", roi_out);
+		std::cerr << "Successfully loaded." << std::endl;
+	}
+	std::cerr << "roi: " << roi_out.x << " " << roi_out.y << " " << roi_out.height << " " << roi_out.width << std::endl;
+
+//	cv::Mat seg = seg_out.objectness_segmentation->image;
+//	cv::imwrite("/home/kunhuang/Pictures/seg_" + std::to_string(1) + ".jpg", seg);
+
+	std::vector<ros::Time> steps; // SiamMask tracks all these time steps except the first frame;
+	for (auto iter = buffer_out.rgb.begin(); iter != buffer_out.rgb.end(); std::advance(iter, 5))
+	{
+		steps.push_back(iter->first);
+	}
+
+	cv::Mat temp_seg = seg_out.objectness_segmentation->image;
+
+	std::unique_ptr<Tracker> tracker = std::make_unique<SiamTracker>();
+	tracker->labelToBBoxLookup = getBBox(temp_seg, roi_out);
+
+	for (auto pair:tracker->labelToBBoxLookup)
+	{
+		tracker->track(steps, buffer_out, pair.first);
+	}
+
+}
 
 int main(int argc, char **argv)
 {

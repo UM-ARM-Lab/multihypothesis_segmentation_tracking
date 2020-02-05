@@ -24,7 +24,7 @@ CudaTracker::CudaTracker(TrackingOptions _track_options)
 
 }
 
-void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label)
+void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks)
 {
 	if (buffer.rgb.empty() || buffer.depth.empty())
 	{
@@ -90,6 +90,11 @@ void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 		img2.Download();
 		cudaSift::ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false);
 
+//		cv::Mat instanceMask;
+//		if (!masks.empty()) { instanceMask = mask & masks.at(tFirst); }
+//		else { instanceMask = mask; }
+
+		// TODO: Apply mask before performing matching
 		cudaSift::MatchSiftData(siftData1, siftData2);
 
 		Flow2D flow2;

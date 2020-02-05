@@ -6,17 +6,35 @@
 #define SRC_SIAMTRACKER_H
 
 #include "mps_voxels/Tracker.h"
-#include "mps_msgs/AABBox2d.h"
+//#include "mps_msgs/AABBox2d.h"
+
+#include <actionlib/client/simple_action_client.h>
+#include <mps_msgs/TrackBBoxAction.h>
 
 namespace mps
 {
 
-class SiamTracker : public Tracker
+class DenseTracker
 {
 public:
-	SiamTracker(TrackingOptions _track_options = TrackingOptions());
+	virtual
+	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks) = 0;
 
-	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label = 0) override;
+	virtual
+	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks) = 0;
+
+};
+
+class SiamTracker : public DenseTracker
+{
+public:
+	SiamTracker();
+
+	actionlib::SimpleActionClient<mps_msgs::TrackBBoxAction> actionClient;
+
+	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks) override;
+
+	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks) override;
 
 	using LabelT = uint16_t;
 

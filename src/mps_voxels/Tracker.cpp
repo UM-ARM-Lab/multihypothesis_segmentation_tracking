@@ -31,7 +31,7 @@ void drawKeypoint(cv::Mat& display, const cv::KeyPoint& kp, const cv::Scalar& co
 Tracker::Tracker(TrackingOptions _options)
 	:track_options(std::move(_options))
 {
-//	vizPub = options.nh.advertise<visualization_msgs::MarkerArray>("flow", 10, true);
+	vizPub = ros::NodeHandle().advertise<visualization_msgs::MarkerArray>("flow", 10, true);
 }
 
 void Tracker::reset()
@@ -67,7 +67,7 @@ cv::Mat& Tracker::getMask(const SensorHistoryBuffer& buffer)
 	return mask;
 }
 
-void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label)
+void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks)
 {
 	if (buffer.rgb.empty() || buffer.depth.empty())
 	{
@@ -77,8 +77,8 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 
 	mask = getMask(buffer);
 
-	cv::imshow("Tracking", mask);
-	cv::waitKey(100);
+//	cv::imshow("Tracking", mask);
+//	cv::waitKey(100);
 
 	////////////////////////////////////////
 	//// Set up Keypoint tracking
@@ -100,8 +100,12 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 //	auto detector = cv::KAZE::create();
 	auto detector = cv::xfeatures2d::SIFT::create();
 
+	cv::Mat instanceMask;
+	if (!masks.empty()) { instanceMask = mask & masks.at(tFirst); }
+	else { instanceMask = mask; }
+
 	cv::cvtColor(buffer.rgb.at(tFirst)->image, gray1, cv::COLOR_BGR2GRAY);
-	detector->detectAndCompute(gray1, mask, kpts1, desc1);
+	detector->detectAndCompute(gray1, instanceMask, kpts1, desc1);
 	for (int i = 1; i < static_cast<int>(steps.size()) && ros::ok(); ++i)
 	{
 		const ros::Time& tPrev = steps[i - 1];
@@ -110,8 +114,11 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 		buffer.rgb.at(tPrev)->image.copyTo(display);
 		cv::cvtColor(buffer.rgb.at(tCurr)->image, gray2, cv::COLOR_BGR2GRAY);
 
+		if (!masks.empty()) { instanceMask = mask & masks.at(tCurr); }
+		else { instanceMask = mask; }
+
 		double detectorStartTime = (double) cv::getTickCount();
-		detector->detectAndCompute(gray2, mask, kpts2, desc2);
+		detector->detectAndCompute(gray2, instanceMask, kpts2, desc2);
 		double detectorEndTime = (double) cv::getTickCount();
 		std::cerr << "Detect: " << (detectorEndTime - detectorStartTime) / cv::getTickFrequency() << std::endl;
 
@@ -172,8 +179,8 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 
 		video.write(buffer.rgb.at(tPrev)->image);
 		tracking.write(display);
-		cv::imshow("Tracking", display);
-		cv::waitKey(1);
+//		cv::imshow("Tracking", display);
+//		cv::waitKey(1);
 
 		std::swap(gray1, gray2);
 		std::swap(kpts1, kpts2);
@@ -191,11 +198,12 @@ void Tracker::siftOnMask(const std::vector<ros::Time>& steps, const SensorHistor
 		ROS_WARN_STREAM("SIFT failed: Capture buffer empty.");
 		return;
 	}
-	if (steps.size() != labelToMasksLookup[label].size())
+	if (steps.size() != labelToMasksLookup[label].size() + 1)
 	{
 		ROS_WARN_STREAM("Timesteps do not match with Masks!!!");
 		std::cerr << "Number of timestamps: " << steps.size() << std::endl;
 		std::cerr << "Number of masks: " << labelToMasksLookup[label].size() << std::endl;
+		return;
 	}
 
 	mask = getMask(buffer);
@@ -230,7 +238,7 @@ void Tracker::siftOnMask(const std::vector<ros::Time>& steps, const SensorHistor
 
 
 	cv::cvtColor(maskImage(buffer.rgb.at(tFirst)->image, labelToMasksLookup[label][0]), gray1, cv::COLOR_BGR2GRAY);
-	detector->detectAndCompute(gray1, mask, kpts1, desc1);
+	detector->detectAndCompute(gray1, mask, kpts1, desc1); // TODO: change mask
 	for (int i = startTimestepIndex+1; i < static_cast<int>(steps.size()) && ros::ok(); ++i)
 	{
 		const ros::Time& tPrev = steps[i - 1];
@@ -242,7 +250,7 @@ void Tracker::siftOnMask(const std::vector<ros::Time>& steps, const SensorHistor
 		double detectorStartTime = (double) cv::getTickCount();
 		detector->detectAndCompute(gray2, mask, kpts2, desc2);
 		double detectorEndTime = (double) cv::getTickCount();
-		std::cerr << "Detect: " << (detectorEndTime - detectorStartTime) / cv::getTickFrequency() << std::endl;
+//		std::cerr << "Detect: " << (detectorEndTime - detectorStartTime) / cv::getTickFrequency() << std::endl;
 
 		double matchStartTime = (double) cv::getTickCount();
 		cv::BFMatcher matcher(cv::NORM_L2);//(cv::NORM_HAMMING);
@@ -250,7 +258,7 @@ void Tracker::siftOnMask(const std::vector<ros::Time>& steps, const SensorHistor
 //	    matcher.knnMatch(desc1, desc2, nn_matches, 3);
 		matcher.radiusMatch(desc1, desc2, nn_matches, track_options.featureRadius);
 		double matchEndTime = (double) cv::getTickCount();
-		std::cerr << "Match: " << (matchEndTime - matchStartTime) / cv::getTickFrequency() << std::endl;
+//		std::cerr << "Match: " << (matchEndTime - matchStartTime) / cv::getTickFrequency() << std::endl;
 
 		Flow2D flow2;
 		Flow3D flow3;
@@ -291,7 +299,7 @@ void Tracker::siftOnMask(const std::vector<ros::Time>& steps, const SensorHistor
 				flow2.push_back({kp1.pt, kp2.pt});
 			}
 		}
-		std::cerr << "Flow computed!" << std::endl;
+//		std::cerr << "Flow computed!" << std::endl;
 
 //		visualization_msgs::MarkerArray ma;
 //		ma.markers.push_back(visualizeFlow(flow3));
@@ -310,7 +318,7 @@ void Tracker::siftOnMask(const std::vector<ros::Time>& steps, const SensorHistor
 		std::swap(kpts1, kpts2);
 		std::swap(desc1, desc2);
 
-		std::cerr << "1 loop finished!" << std::endl;
+//		std::cerr << "1 loop finished!" << std::endl;
 	}
 	std::cerr << "Video ready to be released!" << std::endl;
 

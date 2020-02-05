@@ -17,7 +17,7 @@ class CudaTracker : public Tracker
 public:
 	CudaTracker(TrackingOptions _track_options = TrackingOptions());
 
-	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label = 0) override;
+	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks) override;
 };
 
 }
