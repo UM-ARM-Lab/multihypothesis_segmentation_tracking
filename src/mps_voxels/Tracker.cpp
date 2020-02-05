@@ -67,8 +67,13 @@ cv::Mat& Tracker::getMask(const SensorHistoryBuffer& buffer)
 	return mask;
 }
 
-void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks)
+void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, std::string directory)
 {
+	if (steps.empty())
+	{
+		ROS_WARN_STREAM("Sparse tracking failed: No time steps.");
+		return;
+	}
 	if (buffer.rgb.empty() || buffer.depth.empty())
 	{
 		ROS_WARN_STREAM("Tracking failed: Capture buffer empty.");
@@ -92,8 +97,11 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 	const ros::Time& tLast = steps.back();
 
 	double fps = 1.0;// steps.size() / (tLast - tFirst).toSec();
-	cv::VideoWriter video("source.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(), true);
-	cv::VideoWriter tracking("tracking.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(),
+	std::string sourceVideo, trackingVideo;
+	if (directory == " ") { sourceVideo = "source.avi"; trackingVideo = "tracking.avi"; }
+	else { sourceVideo = directory + "source.avi"; trackingVideo = directory + "tracking.avi"; }
+	cv::VideoWriter video(sourceVideo, CV_FOURCC('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(), true);
+	cv::VideoWriter tracking(trackingVideo, CV_FOURCC('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(),
 	                         true);
 
 //	auto detector = cv::AKAZE::create();
@@ -134,13 +142,13 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 			continue;
 		}
 
-		double matchStartTime = (double) cv::getTickCount();
+//		double matchStartTime = (double) cv::getTickCount();
 		cv::BFMatcher matcher(cv::NORM_L2);//(cv::NORM_HAMMING);
 		std::vector<std::vector<cv::DMatch>> nn_matches;
 //	    matcher.knnMatch(desc1, desc2, nn_matches, 3);
 		matcher.radiusMatch(desc1, desc2, nn_matches, track_options.featureRadius);
-		double matchEndTime = (double) cv::getTickCount();
-		std::cerr << "Match: " << (matchEndTime - matchStartTime) / cv::getTickFrequency() << std::endl;
+//		double matchEndTime = (double) cv::getTickCount();
+//		std::cerr << "Match: " << (matchEndTime - matchStartTime) / cv::getTickFrequency() << std::endl;
 
 		Flow2D flow2;
 		Flow3D flow3;
@@ -202,6 +210,7 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 	tracking.release();
 }
 
+/*
 void Tracker::siftOnMask(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label)
 {
 	if (buffer.rgb.empty() || buffer.depth.empty())
@@ -336,6 +345,7 @@ void Tracker::siftOnMask(const std::vector<ros::Time>& steps, const SensorHistor
 	video.write(buffer.rgb.at(tLast)->image);
 	tracking.release();
 }
+*/
 
 bool estimateRigidTransform(const Tracker::Flow3D& flow, Eigen::Isometry3d& bTa)
 {

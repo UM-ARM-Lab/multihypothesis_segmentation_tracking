@@ -310,55 +310,6 @@ TEST(segmentation, log_roi)
 }
 */
 
-TEST(segmentation, actionModel)
-{
-	SensorHistoryBuffer buffer_out;
-	{
-		DataLog loader("/home/kunhuang/mps_log/explorer_buffer_1.bag", {}, rosbag::bagmode::Read);
-		loader.activeChannels.insert("buffer");
-		loader.load<SensorHistoryBuffer>("buffer", buffer_out);
-		std::cerr << "Successfully loaded." << std::endl;
-	}
-	std::cerr << "number of frames: " << buffer_out.rgb.size() << std::endl;
-
-	SegmentationInfo seg_out;
-	{
-		DataLog loader("/home/kunhuang/mps_log/explorer_segInfo_1.bag", {}, rosbag::bagmode::Read);
-		loader.activeChannels.insert("segInfo");
-		loader.load<SegmentationInfo>("segInfo", seg_out);
-		std::cerr << "Successfully loaded." << std::endl;
-	}
-
-	cv::Rect roi_out;
-	{
-		DataLog loader("/home/kunhuang/mps_log/explorer_roi_1.bag", {}, rosbag::bagmode::Read);
-		loader.activeChannels.insert("roi");
-		loader.load<cv::Rect>("roi", roi_out);
-		std::cerr << "Successfully loaded." << std::endl;
-	}
-	std::cerr << "roi: " << roi_out.x << " " << roi_out.y << " " << roi_out.height << " " << roi_out.width << std::endl;
-
-//	cv::Mat seg = seg_out.objectness_segmentation->image;
-//	cv::imwrite("/home/kunhuang/Pictures/seg_" + std::to_string(1) + ".jpg", seg);
-
-	std::vector<ros::Time> steps; // SiamMask tracks all these time steps except the first frame;
-	for (auto iter = buffer_out.rgb.begin(); iter != buffer_out.rgb.end(); std::advance(iter, 5))
-	{
-		steps.push_back(iter->first);
-	}
-
-	cv::Mat temp_seg = seg_out.objectness_segmentation->image;
-
-	std::unique_ptr<Tracker> tracker = std::make_unique<SiamTracker>();
-	tracker->labelToBBoxLookup = getBBox(temp_seg, roi_out);
-
-	for (auto pair:tracker->labelToBBoxLookup)
-	{
-		tracker->track(steps, buffer_out, pair.first);
-	}
-
-}
-
 int main(int argc, char **argv)
 {
 	::testing::InitGoogleTest(&argc, argv);

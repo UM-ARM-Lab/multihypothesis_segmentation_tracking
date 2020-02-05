@@ -22,9 +22,10 @@ using namespace mps;
 
 void test_track()
 {
+	std::string worldname = "experiment_world";
 	SensorHistoryBuffer buffer_out;
 	{
-		DataLog loader("/home/kunhuang/mps_log/explorer_buffer_cluttered_food.bag", {}, rosbag::bagmode::Read);
+		DataLog loader("/home/kunhuang/mps_log/explorer_buffer_" + worldname + ".bag", {}, rosbag::bagmode::Read);
 		loader.activeChannels.insert("buffer");
 		loader.load<SensorHistoryBuffer>("buffer", buffer_out);
 		std::cerr << "Successfully loaded." << std::endl;
@@ -33,7 +34,7 @@ void test_track()
 
 	SegmentationInfo seg_out;
 	{
-		DataLog loader("/home/kunhuang/mps_log/explorer_segInfo_cluttered_food.bag", {}, rosbag::bagmode::Read);
+		DataLog loader("/home/kunhuang/mps_log/explorer_segInfo_" + worldname + ".bag", {}, rosbag::bagmode::Read);
 		loader.activeChannels.insert("segInfo");
 		loader.load<SegmentationInfo>("segInfo", seg_out);
 		std::cerr << "Successfully loaded." << std::endl;
@@ -41,7 +42,7 @@ void test_track()
 
 	cv::Rect roi_out;
 	{
-		DataLog loader("/home/kunhuang/mps_log/explorer_roi_cluttered_food.bag", {}, rosbag::bagmode::Read);
+		DataLog loader("/home/kunhuang/mps_log/explorer_roi_" + worldname + ".bag", {}, rosbag::bagmode::Read);
 		loader.activeChannels.insert("roi");
 		loader.load<cv::Rect>("roi", roi_out);
 		std::cerr << "Successfully loaded." << std::endl;
@@ -78,7 +79,7 @@ void test_track()
 		subwindow = pair.first == seg_out.objectness_segmentation->image;
 //		cv::imwrite("/home/kunhuang/silly.jpg", startMask); //cv::cvtColor(buffer.rgb.at(tCurr)->image, gray2, cv::COLOR_BGR2GRAY);
 		masks.insert(masks.begin(), {steps.front(), startMask});
-		sparseTracker->track(steps, buffer_out, masks);
+		sparseTracker->track(steps, buffer_out, masks, "/home/kunhuang/Videos/");
 	}
 
 
@@ -100,6 +101,13 @@ void test_track()
 int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "test_track");
+	ros::NodeHandle nh;
+	if (!nh.hasParam("/use_sim_time"))
+	{
+		ROS_INFO("No param named '/use_sim_time'");
+	}
+
+	nh.setParam("/use_sim_time", false);
 	test_track();
 
 	//exit

@@ -490,23 +490,24 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		/////////////////////////////////////////////
 		//// log historian->buffer & scene->segInfo & scene->roi
 		/////////////////////////////////////////////
+		std::string worldname = "experiment_world";
 		{
 			std::cerr << "start logging historian->buffer" << std::endl;
-			DataLog logger("/home/kunhuang/mps_log/explorer_buffer_1.bag");
+			DataLog logger("/home/kunhuang/mps_log/explorer_buffer_" + worldname + ".bag");
 			logger.activeChannels.insert("buffer");
 			logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
 			std::cerr << "Successfully logged." << std::endl;
 		}
 		{
 			std::cerr << "start logging scene->segInfo" << std::endl;
-			DataLog logger("/home/kunhuang/mps_log/explorer_segInfo_1.bag");
+			DataLog logger("/home/kunhuang/mps_log/explorer_segInfo_" + worldname + ".bag");
 			logger.activeChannels.insert("segInfo");
 			logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
 			std::cerr << "Successfully logged." << std::endl;
 		}
 		{
 			std::cerr << "start logging scene->roi" << std::endl;
-			DataLog logger("/home/kunhuang/mps_log/explorer_roi_1.bag");
+			DataLog logger("/home/kunhuang/mps_log/explorer_roi_" + worldname + ".bag");
 			logger.activeChannels.insert("roi");
 			logger.log<cv::Rect>("roi", scene->roi);
 			std::cerr << "Successfully logged." << std::endl;
@@ -900,6 +901,9 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	}
 
+	/////////////////////////////////////////////
+	//// Sample shape particles
+	/////////////////////////////////////////////
 	cv::RNG rng;
 	for (const auto& obj : scene->objects)
 	{
@@ -909,8 +913,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		std::cerr << "Edges in voxel grid: " << seg.num_edges() << std::endl;
 		std::cerr << "Vertices in voxel grid: " << seg.num_vertices() << std::endl;
 
-		// TODO: Sample particles, iter = # of samples
-		for (int iter = 0; iter < 5; ++iter)
+		//// Sample particles, iter = # of samples
+		for (int iter = 0; iter < 1; ++iter)
 		{
 			double weight;
 			mps::VoxelSegmentation::EdgeState edges;

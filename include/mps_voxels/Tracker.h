@@ -118,10 +118,10 @@ public:
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup;
 
 	virtual
-	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks = std::map<ros::Time, cv::Mat>());
+	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks = std::map<ros::Time, cv::Mat>(), std::string directory = " ");
 
-	virtual
-	void siftOnMask(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label);
+//	virtual
+//	void siftOnMask(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label);
 
 	virtual
 	void reset();
