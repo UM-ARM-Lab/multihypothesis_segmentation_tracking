@@ -389,7 +389,8 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 
 	std::unique_ptr<CaptureGuard> captureGuard; ///< RAII-style stopCapture() for various exit paths
 
-	if (compositeAction->primaryAction >= 0){
+//	if (compositeAction->primaryAction >= 0)
+	{
 		captureGuard = std::make_unique<CaptureGuard>(historian.get());
 		auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
 		if (cache) { cache->cache.clear(); }
@@ -401,14 +402,14 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		std::cerr << "Start Action " << a << std::endl;
 		const auto& action = compositeAction->actions[a];
 
-		if ((compositeAction->primaryAction >= 0) && (a == 1 || compositeAction->primaryAction == static_cast<int>(a) || a == compositeAction->actions.size()-1))
-		{
-			historian->ifAddtoBuffer = true;
-		}
-		else
-		{
-			historian->ifAddtoBuffer = false;
-		}
+//		if ((compositeAction->primaryAction >= 0) && (a == 1 || compositeAction->primaryAction == static_cast<int>(a) || a == compositeAction->actions.size()-1))
+//		{
+//			historian->ifAddtoBuffer = true;
+//		}
+//		else
+//		{
+//			historian->ifAddtoBuffer = false;
+//		}
 /*
 		bool isPrimaryAction = ((compositeAction->primaryAction >= 0) && (compositeAction->primaryAction == static_cast<int>(a)));
 
@@ -837,6 +838,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	cv::RNG rng;
 	for (const auto& obj : scene->objects)
 	{
+		if (!ros::ok()) { return; }
+
 		mps::VoxelSegmentation seg(mps::roiToGrid(obj.second->occupancy.get(), obj.second->minExtent.cast<double>(), obj.second->maxExtent.cast<double>()));
 		std::cerr << "Edges in voxel grid: " << seg.num_edges() << std::endl;
 		std::cerr << "Vertices in voxel grid: " << seg.num_vertices() << std::endl;

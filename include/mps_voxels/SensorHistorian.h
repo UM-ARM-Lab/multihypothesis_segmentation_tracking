@@ -142,9 +142,6 @@ public:
 
 	void tfShared(const ros::MessageEvent<tf2_msgs::TFMessage const>& msg_evt, bool is_static);
 
-	void ifTrackAction(const std::shared_ptr<Action>& action);
-
-	// TODO: TF Callback
 };
 
 struct CaptureGuard
