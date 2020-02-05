@@ -76,18 +76,20 @@ bool DataLog::load<SensorHistoryBuffer>(const std::string& channel, SensorHistor
 {
 	load(channel + "/camera_model", msg.cameraModel);
 
-	std::vector<sensor_msgs::Image> msgs;
-
-	loadAll(channel + "/rgb", msgs);
-	for (const auto& m : msgs)
+	std::vector<sensor_msgs::Image> rgbs;
+	loadAll(channel + "/rgb", rgbs);
+	for (const auto& m : rgbs)
 	{
 		msg.rgb.insert(std::make_pair(m.header.stamp, cv_bridge::toCvCopy(m)));
+		assert(msg.rgb.rbegin()->second->image.type() == CV_8UC3);
 	}
 
-	loadAll(channel + "/depth", msgs);
-	for (const auto& m : msgs)
+	std::vector<sensor_msgs::Image> depths;
+	loadAll(channel + "/depth", depths);
+	for (const auto& m : depths)
 	{
 		msg.depth.insert(std::make_pair(m.header.stamp, cv_bridge::toCvCopy(m)));
+		assert(msg.depth.rbegin()->second->image.type() == CV_16UC1);
 	}
 
 	std::vector<sensor_msgs::JointState> joints;
@@ -109,8 +111,6 @@ bool DataLog::load<SensorHistoryBuffer>(const std::string& channel, SensorHistor
 			msg.tfs->setTransform(transform, "", true);
 		}
 	}
-
-	// TODO: Load joints and TFs
 
 	return true;
 }

@@ -30,6 +30,7 @@
 #include "mps_voxels/logging/log_segmentation_info.h"
 #include "mps_voxels/logging/log_cv_mat.h"
 #include "mps_voxels/util/macros.h"
+#include "mps_voxels/assert.h"
 
 namespace mps
 {

@@ -36,7 +36,7 @@ visualization_msgs::Marker visualizeFlow(const std::vector<std::pair<PointT, Poi
 	m.type = visualization_msgs::Marker::LINE_LIST;
 	m.action = visualization_msgs::Marker::ADD;
 	m.frame_locked = true;
-	m.header.frame_id = "kinect2_victor_head_rgb_optical_frame";
+	m.header.frame_id = "kinect2_victor_head_rgb_optical_frame"; // TODO: This is different between robot and simulation
 	m.header.stamp = ros::Time::now();
 	m.pose.orientation.w = 1.0f;
 	m.scale.x = 0.002;

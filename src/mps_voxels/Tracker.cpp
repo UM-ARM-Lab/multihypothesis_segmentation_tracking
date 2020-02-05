@@ -91,7 +91,7 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 	const ros::Time& tFirst = steps.front();
 	const ros::Time& tLast = steps.back();
 
-	double fps = steps.size() / (tLast - tFirst).toSec();
+	double fps = 1.0;// steps.size() / (tLast - tFirst).toSec();
 	cv::VideoWriter video("source.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(), true);
 	cv::VideoWriter tracking("tracking.avi", CV_FOURCC('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(),
 	                         true);
@@ -103,6 +103,9 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 	cv::Mat instanceMask;
 	if (!masks.empty()) { instanceMask = mask & masks.at(tFirst); }
 	else { instanceMask = mask; }
+
+	// TODO: add a visualization flag or something
+	visualization_msgs::MarkerArray ma;
 
 	cv::cvtColor(buffer.rgb.at(tFirst)->image, gray1, cv::COLOR_BGR2GRAY);
 	detector->detectAndCompute(gray1, instanceMask, kpts1, desc1);
@@ -121,6 +124,15 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 		detector->detectAndCompute(gray2, instanceMask, kpts2, desc2);
 		double detectorEndTime = (double) cv::getTickCount();
 		std::cerr << "Detect: " << (detectorEndTime - detectorStartTime) / cv::getTickFrequency() << std::endl;
+
+		if (kpts1.empty() || kpts2.empty())
+		{
+			// No features detected on this pass, skip ahead
+			std::swap(gray1, gray2);
+			std::swap(kpts1, kpts2);
+			std::swap(desc1, desc2);
+			continue;
+		}
 
 		double matchStartTime = (double) cv::getTickCount();
 		cv::BFMatcher matcher(cv::NORM_L2);//(cv::NORM_HAMMING);
@@ -170,7 +182,6 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 			}
 		}
 
-		visualization_msgs::MarkerArray ma;
 		ma.markers.push_back(visualizeFlow(flow3));
 		vizPub.publish(ma);
 
