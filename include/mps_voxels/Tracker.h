@@ -96,7 +96,7 @@ public:
 	};
 
 	cv::Mat mask;
-	std::map<std::pair<ros::Time, ros::Time>, Flow3D> flows3;
+	std::map<std::pair<ros::Time, ros::Time>, Flow3D> flows3; // all R^3 vectors
 	std::map<std::pair<ros::Time, ros::Time>, Flow2D> flows2;
 
 	using LabelT = uint16_t;

@@ -505,13 +505,6 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
 			std::cerr << "Successfully logged." << std::endl;
 		}
-		{
-			std::cerr << "start logging scene->roi" << std::endl;
-			DataLog logger("/home/kunhuang/mps_log/explorer_roi_" + worldname + ".bag");
-			logger.activeChannels.insert("roi");
-			logger.log<cv::Rect>("roi", scene->roi);
-			std::cerr << "Successfully logged." << std::endl;
-		}
 
 		std::vector<ros::Time> steps; // SiamMask tracks all these time steps except the first frame;
 		for (auto iter = historian->buffer.rgb.begin(); iter != historian->buffer.rgb.end(); std::advance(iter, 5))

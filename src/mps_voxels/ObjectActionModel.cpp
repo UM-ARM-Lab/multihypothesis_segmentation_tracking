@@ -12,11 +12,14 @@ sampleActionFromMask(const std::vector<std::vector<bool>>& mask1, const cv::Mat&
                      const std::vector<std::vector<bool>>& mask2, const cv::Mat& depth2,
                      const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera)
 {
-	MPS_ASSERT((int)mask1.size() == depth1.rows);
-	MPS_ASSERT((int)mask1[0].size() == depth1.cols);
+	assert((int)mask1.size() == depth1.rows);
+	assert((int)mask1[0].size() == depth1.cols);
 
-	MPS_ASSERT((int)mask2.size() == depth2.rows);
-	MPS_ASSERT((int)mask2[0].size() == depth2.cols);
+	assert((int)mask2.size() == depth2.rows);
+	assert((int)mask2[0].size() == depth2.cols);
+
+	assert(depth1.type() == CV_16UC1);
+	assert(depth2.type() == CV_16UC1);
 
 	float centerRow1 = 0;
 	float centerCol1 = 0;

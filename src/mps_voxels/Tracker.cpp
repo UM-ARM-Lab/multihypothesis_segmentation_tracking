@@ -69,10 +69,15 @@ cv::Mat& Tracker::getMask(const SensorHistoryBuffer& buffer)
 
 void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, std::string directory)
 {
-	if (steps.empty())
+	if (steps.size() > masks.size())
 	{
-		ROS_WARN_STREAM("Sparse tracking failed: No time steps.");
+		ROS_ERROR_STREAM("Sparse tracking failed: # of timesteps: " << steps.size() << " is more than # of masks: " << masks.size() << ". Return!");
 		return;
+	}
+	for (auto& t : steps)
+	{
+		if (masks.find(t) == masks.end()) { ROS_ERROR_STREAM("Sparse tracking failed: Mask does not contain all requested timesteps. Return!");
+											return; }
 	}
 	if (buffer.rgb.empty() || buffer.depth.empty())
 	{

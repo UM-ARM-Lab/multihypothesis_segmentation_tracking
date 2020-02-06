@@ -39,11 +39,11 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks)
 {
 
-	ROS_INFO("Waiting for action server to start.");
+	ROS_INFO("Waiting for SiamMask server to start.");
 	// wait for the action server to start
 	actionClient.waitForServer(); //will wait for infinite time
 
-	ROS_INFO("Action server started, sending goal.");
+	ROS_INFO("SiamMask server started, sending goal.");
 	// send a goal to the action
 	mps_msgs::TrackBBoxGoal goal;
 	goal.bbox = initRegion;
@@ -87,47 +87,23 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	// each raw tracking result takes around 300Mb at 0.5fps, too large!!!
 	const auto& res = actionClient.getResult();
 
-
 	if (steps.size() !=  res->mask.size() + 1)
 	{
-		ROS_ERROR_STREAM("SiamMask did not return the correct number of frames!!!");
-		return;
+		ROS_ERROR_STREAM("SiamMask only returns the " << res->mask.size() << " frames!!!");
+//		return;
 	}
 
 	std::vector<cv::Mat> ims;
-//	std::vector<std::vector<std::vector<bool>>> masks;
-	std::cerr << "Number of frames returned from SiamMask: " << res->mask.size() << std::endl;
-//	for (auto iter = actionClient.getResult()->mask.begin(); iter != actionClient.getResult()->mask.end(); iter++).
 	for (size_t i = 0; i < res->mask.size(); ++i)
 	{
 		// only store the first frame and the last frame:
 //		if (iter != actionClient.getResult()->mask.begin() && iter != actionClient.getResult()->mask.end()-1) continue;
 
-//		std::vector<std::vector<bool>> maskBool;
-//		maskBool.resize(iter->height, std::vector<bool>(iter->width));
-
-//		auto temp = iter->data;
 		const sensor_msgs::Image& im = res->mask[i];
-//		std::cerr << "Tracking result type: " << iter->encoding << std::endl;
 		cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvCopy(im, im.encoding);
 		cv::Mat mask = cv_ptr->image > 0; // uchar
 		masks.insert(masks.end(), {steps[i+1], mask});
-
-//		cv::imwrite("/home/kunhuang/Pictures/mask.jpg", im);
-//		cv::waitKey(0);
-//		for (size_t i = 0; i < iter->height; i++)
-//		{
-//			for (size_t j = 0; j < iter->width; j++)
-//			{
-//				maskBool[i][j] = (int) im.at<uint8_t>(i, j) > 0;
-//			}
-//		}
-//		ims.push_back(im);
-//		masks.push_back(maskBool);
 	}
-
-//	labelToTrackingLookup.insert({label, ims});
-//	labelToMasksLookup.insert({label, masks});
 }
 
 /*
