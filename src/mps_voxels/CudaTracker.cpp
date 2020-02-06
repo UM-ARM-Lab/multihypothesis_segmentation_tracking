@@ -19,12 +19,12 @@ namespace mps
 {
 
 CudaTracker::CudaTracker(TrackingOptions _track_options)
-	:Tracker(std::move(_track_options))
+	: Tracker(std::move(_track_options))
 {
 
 }
 
-void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, std::string directory)
+void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& /*masks*/, std::string /*directory*/)
 {
 	if (buffer.rgb.empty() || buffer.depth.empty())
 	{

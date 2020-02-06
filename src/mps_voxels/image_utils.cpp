@@ -107,25 +107,19 @@ cv::Mat colorByLabel(const cv::Mat& input)
 	return output;
 }
 
-cv::Mat maskImage(const cv::Mat& im, const std::vector<std::vector<bool>>& mask)
+cv::Mat colorByLabel(const cv::Mat& input, const std::map<uint16_t, cv::Point3_<uint8_t>>& colormap)
 {
-	MPS_ASSERT(im.rows == (int)mask.size());
-	MPS_ASSERT(im.cols == (int)mask[0].size());
-	cv::Mat outIm = im;
-
-#pragma omp parallel for
-	for (int i = 0; i < im.rows; i++)
-	{
-		for (int j = 0; j < im.cols; j++)
+	using ColorPixel = cv::Point3_<uint8_t>;
+	cv::Mat output(input.size(), CV_8UC3);
+	output.forEach<ColorPixel>([&](ColorPixel& px, const int* pos) -> void {
+		uint16_t label = input.at<uint16_t>(pos[0], pos[1]);
+		auto iter = colormap.find(label);
+		if (iter != colormap.end())
 		{
-			auto& color = outIm.at<cv::Vec3b>(i, j);
-			if (!mask[i][j])
-			{
-				color[0] = 0;
-				color[1] = 0;
-				color[2] = 0;
-			}
+			px = iter->second;
 		}
-	}
-	return outIm;
+	});
+
+	return output;
 }
+

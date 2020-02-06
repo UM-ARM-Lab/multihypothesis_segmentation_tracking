@@ -34,6 +34,7 @@
 #include "mps_voxels/MCMCTreeCut.h"
 #include "mps_voxels/JaccardMatch.h"
 
+#include "mps_voxels/util/package_paths.h"
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_segmentation_info.h"
 #include "mps_voxels/logging/log_sensor_history.h"
@@ -41,56 +42,10 @@
 #include "mps_voxels/image_utils.h"
 #include <opencv2/highgui.hpp>
 
-#include <ros/package.h>
-#include <ros/console.h>
-
-#include <fstream>
-#include <sstream>
-
 #include <boost/filesystem.hpp>
 namespace fs = boost::filesystem;
 
 using namespace mps;
-
-const static std::string PACKAGE_PREFIX = "package://";
-
-std::string parsePackageURL(const std::string& url)
-{
-	size_t is_package = url.find(PACKAGE_PREFIX);
-	if (std::string::npos == is_package)
-	{
-		// Not a package path
-		return url;
-	}
-
-	std::string filename = url;
-	filename.erase(0, PACKAGE_PREFIX.length());
-	size_t pos = filename.find('/');
-	if (pos != std::string::npos)
-	{
-		std::string package = filename.substr(0, pos);
-		filename.erase(0, pos);
-		std::string package_path = ros::package::getPath(package);
-		if (package_path.empty())
-		{
-			throw std::runtime_error("Could not find package '" + package + "'.");
-		}
-		filename = package_path + filename;
-	}
-
-	return filename;
-}
-
-std::string packagePathToContents(const std::string& filename)
-{
-	std::string path;
-	path = parsePackageURL(filename);
-	std::ifstream ifs(path);
-	std::stringstream buffer;
-	buffer << ifs.rdbuf();
-	ifs.close();
-	return buffer.str();
-}
 
 
 cv::Mat relabelCut(const Ultrametric& um, const ValueTree& T, const cv::Mat& labels, const TreeCut& cut)
@@ -213,39 +168,6 @@ bool generateSegmentationInfo(SegmentationInfo& info)
 
 	info = *si;
 	return true;
-}
-
-cv::Mat colorByLabel(const cv::Mat& input, const std::map<uint16_t, cv::Point3_<uint8_t>>& colormap)
-{
-	using ColorPixel = cv::Point3_<uint8_t>;
-	cv::Mat output(input.size(), CV_8UC3);
-	output.forEach<ColorPixel>([&](ColorPixel& px, const int* pos) -> void {
-		uint16_t label = input.at<uint16_t>(pos[0], pos[1]);
-		auto iter = colormap.find(label);
-		if (iter != colormap.end())
-		{
-			px = iter->second;
-		}
-	});
-
-	return output;
-}
-
-template <typename Map>
-cv::Mat relabel(const cv::Mat& input, const Map& map)
-{
-	cv::Mat output = cv::Mat::zeros(input.size(), CV_16UC1);
-
-	output.forEach<uint16_t>([&](uint16_t& px, const int* pos) -> void {
-		uint16_t label = input.at<uint16_t>(pos[0], pos[1]);
-		auto iter = map.find(label);
-		if (iter != map.end())
-		{
-			px = iter->second;
-		}
-	});
-
-	return output;
 }
 
 

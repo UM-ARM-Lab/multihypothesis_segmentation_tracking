@@ -275,6 +275,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/LocalOctreeServer.cpp
   src/${PROJECT_NAME}/VoxelSegmentation.cpp
   src/${PROJECT_NAME}/Scene.cpp
+  src/${PROJECT_NAME}/util/package_paths.cpp
   src/${PROJECT_NAME}/ObjectLogger.cpp
   src/${PROJECT_NAME}/logging/DataLog.cpp
   src/${PROJECT_NAME}/logging/log_cv_mat.cpp
