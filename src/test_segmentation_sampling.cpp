@@ -32,7 +32,9 @@
 #include "mps_voxels/Ultrametric.h"
 #include "mps_voxels/SceneCut.h"
 #include "mps_voxels/MCMCTreeCut.h"
+#include "mps_voxels/JaccardMatch.h"
 
+#include "mps_voxels/util/package_paths.h"
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_segmentation_info.h"
 #include "mps_voxels/logging/log_sensor_history.h"
@@ -40,56 +42,10 @@
 #include "mps_voxels/image_utils.h"
 #include <opencv2/highgui.hpp>
 
-#include <ros/package.h>
-#include <ros/console.h>
-
-#include <fstream>
-#include <sstream>
-
 #include <boost/filesystem.hpp>
 namespace fs = boost::filesystem;
 
 using namespace mps;
-
-const static std::string PACKAGE_PREFIX = "package://";
-
-std::string parsePackageURL(const std::string& url)
-{
-	size_t is_package = url.find(PACKAGE_PREFIX);
-	if (std::string::npos == is_package)
-	{
-		// Not a package path
-		return url;
-	}
-
-	std::string filename = url;
-	filename.erase(0, PACKAGE_PREFIX.length());
-	size_t pos = filename.find('/');
-	if (pos != std::string::npos)
-	{
-		std::string package = filename.substr(0, pos);
-		filename.erase(0, pos);
-		std::string package_path = ros::package::getPath(package);
-		if (package_path.empty())
-		{
-			throw std::runtime_error("Could not find package '" + package + "'.");
-		}
-		filename = package_path + filename;
-	}
-
-	return filename;
-}
-
-std::string packagePathToContents(const std::string& filename)
-{
-	std::string path;
-	path = parsePackageURL(filename);
-	std::ifstream ifs(path);
-	std::stringstream buffer;
-	buffer << ifs.rdbuf();
-	ifs.close();
-	return buffer.str();
-}
 
 
 cv::Mat relabelCut(const Ultrametric& um, const ValueTree& T, const cv::Mat& labels, const TreeCut& cut)
@@ -215,7 +171,6 @@ bool generateSegmentationInfo(SegmentationInfo& info)
 }
 
 
-
 int main(int argc, char* argv[])
 {
 	ros::init(argc, argv, "segmentation_sampling");
@@ -236,6 +191,21 @@ int main(int argc, char* argv[])
 	{
 		ROS_ERROR_STREAM("Failed to get segmentation.");
 		return -1;
+	}
+
+//	JaccardMatch jaccardMatch(si->labels, si->labels);
+//	auto pairing = jaccardMatch(si->objectness_segmentation->image, si->objectness_segmentation->image);
+//	const auto& pairing = jaccardMatch.match;
+
+	std::map<uint16_t, cv::Point3_<uint8_t>> colormap;
+	{
+		std::random_device rd;
+		std::default_random_engine re(0);// (rd());
+		std::uniform_int_distribution<> dis(0, 256);
+		for (auto l : unique(si->objectness_segmentation->image))
+		{
+			colormap[l] = cv::Point3_<uint8_t>(dis(re), dis(re), dis(re));
+		}
 	}
 
 
@@ -280,7 +250,7 @@ int main(int argc, char* argv[])
 	cv::imshow("Labels", colorByLabel(si->labels));
 	cv::imshow("Contours", si->display_contours);
 	cv::theRNG().state = seed;
-	cv::imshow("Objectness", colorByLabel(si->objectness_segmentation->image));
+	cv::imshow("Objectness", colorByLabel(si->objectness_segmentation->image, colormap));
 
 	std::string dir = "/tmp/segmentation/";
 	cv::imwrite(dir + "image.png", si->rgb);
@@ -302,7 +272,7 @@ int main(int argc, char* argv[])
 
 //	mcmc.sigmaSquared = 1e10*vStar*vStar; // With proposal ratio
 //	mcmc.nTrials = 100;
-	mcmc.sigmaSquared = 0.2*vStar*vStar;
+	mcmc.sigmaSquared = 0.2*vStar*vStar; // The larger this number, the more permissive exploration is allowed
 	mcmc.nTrials = 25;
 
 	for (int i = 0; i < 10; ++i)
@@ -311,9 +281,11 @@ int main(int argc, char* argv[])
 		std::cerr << cut.first << std::endl;
 		cv::theRNG().state = seed;
 		seg = relabelCut(um, T, si->labels, cut.second);
-		disp = colorByLabel(seg);
+		JaccardMatch jaccard(si->objectness_segmentation->image, seg);
+		disp = colorByLabel(relabel(seg, jaccard.match.second.right), colormap);
 		cv::imshow("Segmentation", disp);
 		cv::imwrite(dir + "c" + std::to_string(i) + ".png", disp);
+		std::cerr << "Match: " << jaccard.match.first << std::endl;
 
 		cv::waitKey(0);
 	}

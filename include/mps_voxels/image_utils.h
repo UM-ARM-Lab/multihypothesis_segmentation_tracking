@@ -21,6 +21,23 @@ std::set<uint16_t> unique(const cv::Mat& input);
 
 cv::Mat colorByLabel(const cv::Mat& input);
 
-cv::Mat maskImage(const cv::Mat& im, const std::vector<std::vector<bool>>& mask);
+cv::Mat colorByLabel(const cv::Mat& input, const std::map<uint16_t, cv::Point3_<uint8_t>>& colormap);
+
+template <typename Map>
+cv::Mat relabel(const cv::Mat& input, const Map& map)
+{
+	cv::Mat output = cv::Mat::zeros(input.size(), CV_16UC1);
+
+	output.forEach<uint16_t>([&](uint16_t& px, const int* pos) -> void {
+		uint16_t label = input.at<uint16_t>(pos[0], pos[1]);
+		auto iter = map.find(label);
+		if (iter != map.end())
+		{
+			px = iter->second;
+		}
+	});
+
+	return output;
+}
 
 #endif // MPS_VOXELS_IMAGE_UTILS_H
