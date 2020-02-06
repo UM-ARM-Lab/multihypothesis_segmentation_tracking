@@ -254,6 +254,8 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/segmentation_utils.cpp
   src/${PROJECT_NAME}/shape_utils.cpp
   src/${PROJECT_NAME}/colormap.cpp
+  src/${PROJECT_NAME}/AABB.cpp
+  src/${PROJECT_NAME}/JaccardMatch.cpp
   src/${PROJECT_NAME}/Ultrametric.cpp
   src/${PROJECT_NAME}/ValueTree.cpp
   src/${PROJECT_NAME}/SceneCut.cpp

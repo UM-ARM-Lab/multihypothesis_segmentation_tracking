@@ -32,6 +32,7 @@
 #include "mps_voxels/Ultrametric.h"
 #include "mps_voxels/SceneCut.h"
 #include "mps_voxels/MCMCTreeCut.h"
+#include "mps_voxels/JaccardMatch.h"
 
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_segmentation_info.h"
@@ -214,6 +215,38 @@ bool generateSegmentationInfo(SegmentationInfo& info)
 	return true;
 }
 
+cv::Mat colorByLabel(const cv::Mat& input, const std::map<uint16_t, cv::Point3_<uint8_t>>& colormap)
+{
+	using ColorPixel = cv::Point3_<uint8_t>;
+	cv::Mat output(input.size(), CV_8UC3);
+	output.forEach<ColorPixel>([&](ColorPixel& px, const int* pos) -> void {
+		uint16_t label = input.at<uint16_t>(pos[0], pos[1]);
+		auto iter = colormap.find(label);
+		if (iter != colormap.end())
+		{
+			px = iter->second;
+		}
+	});
+
+	return output;
+}
+
+template <typename Map>
+cv::Mat relabel(const cv::Mat& input, const Map& map)
+{
+	cv::Mat output = cv::Mat::zeros(input.size(), CV_16UC1);
+
+	output.forEach<uint16_t>([&](uint16_t& px, const int* pos) -> void {
+		uint16_t label = input.at<uint16_t>(pos[0], pos[1]);
+		auto iter = map.find(label);
+		if (iter != map.end())
+		{
+			px = iter->second;
+		}
+	});
+
+	return output;
+}
 
 
 int main(int argc, char* argv[])
@@ -236,6 +269,21 @@ int main(int argc, char* argv[])
 	{
 		ROS_ERROR_STREAM("Failed to get segmentation.");
 		return -1;
+	}
+
+//	JaccardMatch jaccardMatch(si->labels, si->labels);
+//	auto pairing = jaccardMatch(si->objectness_segmentation->image, si->objectness_segmentation->image);
+//	const auto& pairing = jaccardMatch.match;
+
+	std::map<uint16_t, cv::Point3_<uint8_t>> colormap;
+	{
+		std::random_device rd;
+		std::default_random_engine re(0);// (rd());
+		std::uniform_int_distribution<> dis(0, 256);
+		for (auto l : unique(si->objectness_segmentation->image))
+		{
+			colormap[l] = cv::Point3_<uint8_t>(dis(re), dis(re), dis(re));
+		}
 	}
 
 
@@ -280,7 +328,7 @@ int main(int argc, char* argv[])
 	cv::imshow("Labels", colorByLabel(si->labels));
 	cv::imshow("Contours", si->display_contours);
 	cv::theRNG().state = seed;
-	cv::imshow("Objectness", colorByLabel(si->objectness_segmentation->image));
+	cv::imshow("Objectness", colorByLabel(si->objectness_segmentation->image, colormap));
 
 	std::string dir = "/tmp/segmentation/";
 	cv::imwrite(dir + "image.png", si->rgb);
@@ -302,7 +350,7 @@ int main(int argc, char* argv[])
 
 //	mcmc.sigmaSquared = 1e10*vStar*vStar; // With proposal ratio
 //	mcmc.nTrials = 100;
-	mcmc.sigmaSquared = 0.2*vStar*vStar;
+	mcmc.sigmaSquared = 0.2*vStar*vStar; // The larger this number, the more permissive exploration is allowed
 	mcmc.nTrials = 25;
 
 	for (int i = 0; i < 10; ++i)
@@ -311,9 +359,11 @@ int main(int argc, char* argv[])
 		std::cerr << cut.first << std::endl;
 		cv::theRNG().state = seed;
 		seg = relabelCut(um, T, si->labels, cut.second);
-		disp = colorByLabel(seg);
+		JaccardMatch jaccard(si->objectness_segmentation->image, seg);
+		disp = colorByLabel(relabel(seg, jaccard.match.second.right), colormap);
 		cv::imshow("Segmentation", disp);
 		cv::imwrite(dir + "c" + std::to_string(i) + ".png", disp);
+		std::cerr << "Match: " << jaccard.match.first << std::endl;
 
 		cv::waitKey(0);
 	}
