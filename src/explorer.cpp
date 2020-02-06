@@ -18,6 +18,11 @@
 #include "mps_voxels/planning/MotionPlanner.h"
 #include "mps_voxels/ObjectLogger.h"
 #include "mps_voxels/assert.h"
+#include "mps_voxels/ObjectActionModel.h"
+#include "mps_voxels/logging/DataLog.h"
+#include "mps_voxels/logging/log_sensor_history.h"
+#include "mps_voxels/logging/log_segmentation_info.h"
+#include "mps_voxels/logging/log_cv_roi.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
@@ -179,7 +184,8 @@ public:
 	std::shared_ptr<VoxelCompleter> completionClient;
 	std::shared_ptr<RGBDSegmenter> segmentationClient;
 	std::unique_ptr<SensorHistorian> historian;
-	std::unique_ptr<Tracker> tracker;
+	std::unique_ptr<Tracker> sparseTracker;
+	std::unique_ptr<DenseTracker> denseTracker;
 	std::unique_ptr<TargetDetector> targetDetector;
 	std::unique_ptr<TrajectoryClient> trajectoryClient;
 	std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperLPub;
@@ -402,28 +408,6 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		std::cerr << "Start Action " << a << std::endl;
 		const auto& action = compositeAction->actions[a];
 
-//		if ((compositeAction->primaryAction >= 0) && (a == 1 || compositeAction->primaryAction == static_cast<int>(a) || a == compositeAction->actions.size()-1))
-//		{
-//			historian->ifAddtoBuffer = true;
-//		}
-//		else
-//		{
-//			historian->ifAddtoBuffer = false;
-//		}
-/*
-		bool isPrimaryAction = ((compositeAction->primaryAction >= 0) && (compositeAction->primaryAction == static_cast<int>(a)));
-
-		std::unique_ptr<CaptureGuard> captureGuard; ///< RAII-style stopCapture() for various exit paths
-
-		if (isPrimaryAction)
-//		if ((compositeAction->primaryAction >= 0) && a == 1)
-		{
-			captureGuard = std::make_unique<CaptureGuard>(historian.get());
-			auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
-			if (cache) { cache->cache.clear(); }
-			historian->startCapture();
-		}
-*/
 
 		auto armAction = std::dynamic_pointer_cast<JointTrajectoryAction>(action);
 		if (armAction)
@@ -496,53 +480,135 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			}
 			ros::Duration(2.0).sleep();
 		}
-/*
-		if (isPrimaryAction)
-//		if ((compositeAction->primaryAction >= 0) && a == compositeAction->actions.size()-1)
-		{
-			std::cerr << "Start Tracker!" << std::endl;
-			historian->stopCapture();
+	} // end of these sequence of actions
 
-			std::vector<ros::Time> steps;
-			for (auto iter = historian->buffer.rgb.begin(); iter != historian->buffer.rgb.end(); std::advance(iter, 5))
-			{
-				steps.push_back(iter->first);
-			}
-
-//			tracker->track(steps);
-
-			cv::Mat temp_seg = scene->segInfo->objectness_segmentation->image;
-//			scene->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
-			tracker->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
-
-			for(auto pair:tracker->labelToBBoxLookup){
-				tracker->track(steps, historian->buffer, pair.first);
-			}
-
-		}
-*/
-	}
 	if (compositeAction->primaryAction >= 0)
 	{
 		std::cerr << "Start Tracker!" << std::endl;
 		historian->stopCapture();
 
-		std::vector<ros::Time> steps;
+		/////////////////////////////////////////////
+		//// log historian->buffer & scene->segInfo & scene->roi
+		/////////////////////////////////////////////
+		std::string worldname = "experiment_world";
+		{
+			std::cerr << "start logging historian->buffer" << std::endl;
+			DataLog logger("/home/kunhuang/mps_log/explorer_buffer_" + worldname + ".bag");
+			logger.activeChannels.insert("buffer");
+			logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
+			std::cerr << "Successfully logged." << std::endl;
+		}
+		{
+			std::cerr << "start logging scene->segInfo" << std::endl;
+			DataLog logger("/home/kunhuang/mps_log/explorer_segInfo_" + worldname + ".bag");
+			logger.activeChannels.insert("segInfo");
+			logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
+			std::cerr << "Successfully logged." << std::endl;
+		}
+		{
+			std::cerr << "start logging scene->roi" << std::endl;
+			DataLog logger("/home/kunhuang/mps_log/explorer_roi_" + worldname + ".bag");
+			logger.activeChannels.insert("roi");
+			logger.log<cv::Rect>("roi", scene->roi);
+			std::cerr << "Successfully logged." << std::endl;
+		}
+
+		std::vector<ros::Time> steps; // SiamMask tracks all these time steps except the first frame;
 		for (auto iter = historian->buffer.rgb.begin(); iter != historian->buffer.rgb.end(); std::advance(iter, 5))
 		{
 			steps.push_back(iter->first);
 		}
 
-		//			tracker->track(steps);
-
 		cv::Mat temp_seg = scene->segInfo->objectness_segmentation->image;
 		//			scene->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
-		tracker->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
+		std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(temp_seg, scene->roi);
 
-		for (auto pair:tracker->labelToBBoxLookup)
+		for (const auto& pair : labelToBBoxLookup)
 		{
-			tracker->track(steps, historian->buffer, pair.first);
+			std::map<ros::Time, cv::Mat> masks;
+			denseTracker->track(steps, historian->buffer, pair.second, masks);
 		}
+/*
+		/////////////////////////////////////////////
+		//// sample object motions
+		/////////////////////////////////////////////
+		for (auto pair:tracker->labelToMasksLookup)
+		{
+			std::cerr << "mask size = " << pair.second.size() << " x " << pair.second[0].size() << " x " << pair.second[0][0].size() << std::endl;
+
+			Eigen::Vector3d actionSampleCameraFrame =
+			sampleActionFromMask(pair.second[0], historian->buffer.depth[steps[0]]->image,
+								 pair.second[pair.second.size()-1], historian->buffer.depth[steps[steps.size()-1]]->image,
+			                     historian->buffer.cameraModel, scene->worldTcamera);
+			std::cerr << "Label " << pair.first << " action in world frame: " << actionSampleCameraFrame.x() << " " << actionSampleCameraFrame.y() << " " << actionSampleCameraFrame.z() << std::endl;
+
+			//// SIFT
+			tracker->siftOnMask(steps, historian->buffer, pair.first);
+			std::cerr << "SIFT completed!!!" << std::endl;
+
+			//TODO: reconsider Particle storage, here is just a test
+			cv::RNG rng;
+			ObjectIndex objIx = scene->labelToIndexLookup[pair.first];
+			auto& obj = scene->objects[objIx];
+
+			std_msgs::ColorRGBA colorRGBA;
+			colorRGBA.a = 1.0f;
+			colorRGBA.r = rand()/(float)RAND_MAX;
+			colorRGBA.g = rand()/(float)RAND_MAX;
+			colorRGBA.b = rand()/(float)RAND_MAX;
+			visualization_msgs::MarkerArray mOctree = visualizeOctree(obj->occupancy.get(), scene->worldFrame, &colorRGBA);
+			for (visualization_msgs::Marker& m : mOctree.markers)
+			{
+				m.ns = "originalOcTree";
+			}
+
+			std::cerr << "Original octree shown!" << std::endl;
+			octreePub.publish(mOctree);
+			sleep(5);
+
+
+			mps::VoxelSegmentation voxSeg(mps::roiToGrid(obj->occupancy.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>()));
+			std::cerr << "Edges in voxel grid: " << voxSeg.num_edges() << std::endl;
+			std::cerr << "Vertices in voxel grid: " << voxSeg.num_vertices() << std::endl;
+
+			double weight;
+			mps::VoxelSegmentation::EdgeState edges;
+			std::tie(weight, edges) = mps::octreeToGridParticle(obj->occupancy.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>(), rng);
+
+			// Visualize the edges
+			auto markers = voxSeg.visualizeEdgeStateDirectly(edges, obj->occupancy->getResolution(), obj->minExtent.cast<double>(), scene->worldFrame);
+
+			octreePub.publish(markers);
+			std::cerr << "Original particle shown!" << std::endl;
+			sleep(5);
+
+
+			for (int iter = 0; iter < 10; iter++)
+			{
+				std::shared_ptr<octomap::OcTree> newOcTree = moveOcTree(obj->occupancy.get(), actionSampleCameraFrame);
+
+				colorRGBA.r = rand()/(float)RAND_MAX;
+				colorRGBA.g = rand()/(float)RAND_MAX;
+				colorRGBA.b = rand()/(float)RAND_MAX;
+				auto m = visualizeOctree(newOcTree.get(), scene->worldFrame, &colorRGBA);
+				for (visualization_msgs::Marker& marker : m.markers)
+				{
+					marker.ns = "newOcTree";
+				}
+				std::cerr << "Generated new octree " << iter << std::endl;
+
+//				double w;
+//				mps::VoxelSegmentation::EdgeState e;
+//				std::tie(w, e) = mps::octreeToGridParticle(newOcTree.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>(), rng);
+//
+//				// Visualize the edges
+//				auto m = voxSeg.visualizeEdgeStateDirectly(e, obj->occupancy->getResolution(), obj->minExtent.cast<double>(), scene->worldFrame);
+
+				octreePub.publish(m);
+				sleep(2);
+			}
+		}
+		*/
 	}
 	return true;
 }
@@ -740,7 +806,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	std::cerr << "Completed segments: " << scene->objects.size() << __FILE__ << ": " << __LINE__ << std::endl;
+	std::cerr << "Completed segments: " << scene->objects.size() << " " << __FILE__ << ": " << __LINE__ << std::endl;
 
 //	{
 //
@@ -835,6 +901,9 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	}
 
+	/////////////////////////////////////////////
+	//// Sample shape particles
+	/////////////////////////////////////////////
 	cv::RNG rng;
 	for (const auto& obj : scene->objects)
 	{
@@ -844,7 +913,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		std::cerr << "Edges in voxel grid: " << seg.num_edges() << std::endl;
 		std::cerr << "Vertices in voxel grid: " << seg.num_vertices() << std::endl;
 
-		for (int iter = 0; iter < 10; ++iter)
+		//// Sample particles, iter = # of samples
+		for (int iter = 0; iter < 1; ++iter)
 		{
 			double weight;
 			mps::VoxelSegmentation::EdgeState edges;
@@ -1379,11 +1449,11 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	setIfMissing(pnh, "use_completion", "optional");
 
 #ifdef USE_CUDA_SIFT
-	tracker = std::make_unique<CudaTracker>();
+	sparseTracker = std::make_unique<CudaTracker>();
 #else
-	// tracker = std::make_unique<Tracker>();
-	tracker = std::make_unique<SiamTracker>();
+	sparseTracker = std::make_unique<Tracker>();
 #endif
+	denseTracker = std::make_unique<SiamTracker>();
 	historian = std::make_unique<SensorHistorian>();
 	historian->stopCapture();
 
@@ -1592,7 +1662,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	SensorHistorian::SubscriptionOptions options(topic_prefix);
 
 	visualization_msgs::MarkerArray ma;
-	ma.markers.push_back(tracker->track_options.roi.getMarker());
+	ma.markers.push_back(sparseTracker->track_options.roi.getMarker());
 	vizPub.publish(ma);
 
 	image_transport::ImageTransport it(nh);

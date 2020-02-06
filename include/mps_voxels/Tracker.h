@@ -8,6 +8,8 @@
 #include "mps_voxels/ROI.h"
 #include "mps_voxels/colormap.h"
 #include "mps_voxels/SensorHistorian.h"
+#include "mps_voxels/image_utils.h"
+#include "mps_voxels/assert.h"
 
 #include "mps_msgs/AABBox2d.h"
 
@@ -34,7 +36,7 @@ visualization_msgs::Marker visualizeFlow(const std::vector<std::pair<PointT, Poi
 	m.type = visualization_msgs::Marker::LINE_LIST;
 	m.action = visualization_msgs::Marker::ADD;
 	m.frame_locked = true;
-	m.header.frame_id = "kinect2_victor_head_rgb_optical_frame";
+	m.header.frame_id = "kinect2_victor_head_rgb_optical_frame"; // TODO: This is different between robot and simulation
 	m.header.stamp = ros::Time::now();
 	m.pose.orientation.w = 1.0f;
 	m.scale.x = 0.002;
@@ -116,7 +118,10 @@ public:
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup;
 
 	virtual
-	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label = 0);
+	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks = std::map<ros::Time, cv::Mat>(), std::string directory = " ");
+
+//	virtual
+//	void siftOnMask(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label);
 
 	virtual
 	void reset();

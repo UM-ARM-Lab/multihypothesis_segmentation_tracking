@@ -106,3 +106,26 @@ cv::Mat colorByLabel(const cv::Mat& input)
 
 	return output;
 }
+
+cv::Mat maskImage(const cv::Mat& im, const std::vector<std::vector<bool>>& mask)
+{
+	MPS_ASSERT(im.rows == (int)mask.size());
+	MPS_ASSERT(im.cols == (int)mask[0].size());
+	cv::Mat outIm = im;
+
+#pragma omp parallel for
+	for (int i = 0; i < im.rows; i++)
+	{
+		for (int j = 0; j < im.cols; j++)
+		{
+			auto& color = outIm.at<cv::Vec3b>(i, j);
+			if (!mask[i][j])
+			{
+				color[0] = 0;
+				color[1] = 0;
+				color[2] = 0;
+			}
+		}
+	}
+	return outIm;
+}

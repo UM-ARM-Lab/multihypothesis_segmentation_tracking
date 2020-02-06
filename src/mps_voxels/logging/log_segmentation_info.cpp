@@ -29,7 +29,9 @@
 
 #include "mps_voxels/logging/log_segmentation_info.h"
 #include "mps_voxels/logging/log_cv_mat.h"
+#include "mps_voxels/logging/log_cv_roi.h"
 #include "mps_voxels/util/macros.h"
+#include "mps_voxels/assert.h"
 
 namespace mps
 {
@@ -45,6 +47,9 @@ void DataLog::log<SegmentationInfo>(const std::string& channel, const Segmentati
 
 	activeChannels.insert(channel + "/objectness_segmentation"); \
 	log(channel + "/objectness_segmentation", *msg.objectness_segmentation->toImageMsg());
+
+	activeChannels.insert(channel + "/roi"); \
+	log(channel + "/roi", msg.roi);
 }
 
 #define LOAD_IMAGE_MESSAGE(var_name) \
@@ -58,6 +63,10 @@ bool DataLog::load<SegmentationInfo>(const std::string& channel, SegmentationInf
 
 	load(channel + "/objectness_segmentation" , im);
 	msg.objectness_segmentation = cv_bridge::toCvCopy(im);
+
+	cv::Rect roi;
+	load(channel + "/roi", roi);
+	msg.roi = roi;
 
 	assert(msg.ucm2.type() == CV_64FC1);
 	assert(msg.rgb.type() == CV_8UC3);

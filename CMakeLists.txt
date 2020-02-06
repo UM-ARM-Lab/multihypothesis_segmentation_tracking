@@ -264,6 +264,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/VictorManipulator.cpp
   src/${PROJECT_NAME}/MotionModel.cpp
   src/${PROJECT_NAME}/OctreeMotionModel.cpp
+  src/${PROJECT_NAME}/ObjectActionModel.cpp
   src/${PROJECT_NAME}/ROI.cpp
   src/${PROJECT_NAME}/SensorHistorian.cpp
   src/${PROJECT_NAME}/Tracker.cpp
@@ -277,6 +278,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/ObjectLogger.cpp
   src/${PROJECT_NAME}/logging/DataLog.cpp
   src/${PROJECT_NAME}/logging/log_cv_mat.cpp
+  src/${PROJECT_NAME}/logging/log_cv_roi.cpp
   src/${PROJECT_NAME}/logging/log_segmentation_info.cpp
   src/${PROJECT_NAME}/logging/log_sensor_history.cpp
   src/${PROJECT_NAME}/video_graph.cpp
@@ -356,6 +358,14 @@ cuda_add_executable(${PROJECT_NAME}_test_segmentation_sampling src/test_segmenta
 set_target_properties(${PROJECT_NAME}_test_segmentation_sampling PROPERTIES OUTPUT_NAME test_segmentation_sampling PREFIX "")
 add_dependencies(${PROJECT_NAME}_test_segmentation_sampling ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME}_test_segmentation_sampling
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+
+add_executable(${PROJECT_NAME}_test_object_action_model src/test_object_action_model.cpp)
+set_target_properties(${PROJECT_NAME}_test_object_action_model PROPERTIES OUTPUT_NAME test_object_action_model PREFIX "")
+add_dependencies(${PROJECT_NAME}_test_object_action_model ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_test_object_action_model
   ${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )

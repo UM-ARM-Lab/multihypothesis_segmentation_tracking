@@ -6,6 +6,7 @@
 #define MPS_VOXELS_IMAGE_UTILS_H
 
 #include "mps_voxels/PointT.h"
+#include "mps_voxels/assert.h"
 
 #include <opencv2/core.hpp>
 #include <image_geometry/pinhole_camera_model.h>
@@ -19,5 +20,7 @@ cv::Scalar randomColor( cv::RNG& rng );
 std::set<uint16_t> unique(const cv::Mat& input);
 
 cv::Mat colorByLabel(const cv::Mat& input);
+
+cv::Mat maskImage(const cv::Mat& im, const std::vector<std::vector<bool>>& mask);
 
 #endif // MPS_VOXELS_IMAGE_UTILS_H
