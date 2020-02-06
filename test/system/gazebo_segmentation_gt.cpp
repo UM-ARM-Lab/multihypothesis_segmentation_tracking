@@ -4,12 +4,15 @@
 
 #include "mps_interactive_segmentation/GazeboMocap.h"
 #include "mps_interactive_segmentation/GazeboModel.h"
+#include "mps_interactive_segmentation/paths.h"
 
 #include "geometric_shapes/shapes.h"
 #include <geometric_shapes/shape_operations.h>
 #include <geometric_shapes/mesh_operations.h>
 #include <geometric_shapes/body_operations.h>
 #include <geometric_shapes/shape_to_marker.h>
+
+#include <actionlib/server/simple_action_server.h>
 
 #include <image_geometry/pinhole_camera_model.h>
 #include <sensor_msgs/CameraInfo.h>
@@ -33,7 +36,6 @@
 
 #include <regex>
 #include <iterator>
-#include <actionlib/server/simple_action_server.h>
 
 #define DEBUG_MESH_LOADING true
 
@@ -42,6 +44,8 @@
                                                            CV_VERSION_REVISION>=z))))
 
 using mps::GazeboModel;
+using mps::parseModelURL;
+using mps::parsePackageURL;
 
 typedef actionlib::SimpleActionServer<mps_msgs::SegmentRGBDAction> GTServer;
 
@@ -317,7 +321,7 @@ public:
 //		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*scene->cv_rgb_cropped.image;
 		cv::waitKey(1);
 		cv::imshow("segmentation", labelColorsMap);
-		cv::waitKey(10);
+		cv::waitKey(0);
 
 
 		return labels;
@@ -368,8 +372,7 @@ int main(int argc, char** argv)
 //	cv::namedWindow("segmentation", /*cv::WINDOW_AUTOSIZE | cv::WINDOW_KEEPRATIO | */cv::WINDOW_GUI_EXPANDED);
 
     // Load Gazebo world file and get meshes
-//	const std::string gazeboWorldFilename = "/home/kunhuang/armlab_ws/src/mps_interactive_segmentation/worlds/cluttered_food.world";
-	const std::string gazeboWorldFilename = "/home/kunhuang/armlab_ws/src/mps_interactive_segmentation/worlds/experiment_world.world";
+	const std::string gazeboWorldFilename = parsePackageURL("package://mps_interactive_segmentation/worlds/experiment_world.world");
 
 	// TODO: Poses for shapes
 	std::vector<GazeboModel> shapeModels;
@@ -593,20 +596,11 @@ int main(int argc, char** argv)
 			else if (xMesh)
 			{
 				std::cerr << "Is Mesh!" << std::endl;
-				const std::string model_path = "/home/kunhuang/.gazebo/models/";
 				std::string pathuri = xMesh->FirstChildElement("uri")->GetText();
-				std::stringstream ss;
-				ss << pathuri;
-				for (int k = 0; k < 8; k++) // get rid of "model://"
-				{
-					char temp;
-					ss >> temp;
-				}
-				ss >> pathuri;
-				std::cerr << pathuri << std::endl;
-//				pathuri = "cinder_block_2/meshes/cinder_block.dae";
 
-				shapes::Mesh* m = shapes::createMeshFromResource("file://" + model_path + pathuri);
+				const std::string model_path = parseModelURL(pathuri);
+
+				shapes::Mesh* m = shapes::createMeshFromResource("file://" + model_path);
 				shapes::ShapePtr shapePtr(m);
 				if (name.find("coke_can") != std::string::npos)
 				{

@@ -26,10 +26,13 @@ use_openmp()
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   cv_bridge
+  gazebo_dev
   gazebo_msgs
   image_geometry
   moveit_core
   mps_msgs
+  roscpp
+  roslib
   tf_conversions
 )
 
@@ -161,6 +164,7 @@ include_directories(SYSTEM
 
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
+  src/${PROJECT_NAME}/paths.cpp
   src/${PROJECT_NAME}/GazeboModel.cpp
   src/${PROJECT_NAME}/GazeboMocap.cpp
 )
