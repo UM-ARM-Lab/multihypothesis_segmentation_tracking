@@ -103,6 +103,13 @@ bool DataLog::load<SensorHistoryBuffer>(const std::string& channel, SensorHistor
 
 	msg.tfs = std::make_shared<tf2_ros::Buffer>(ros::Duration(tf2_ros::Buffer::DEFAULT_CACHE_TIME));
 	loadAll(channel + "/tf", msg.tf_raw);
+	for (const auto& m : msg.tf_raw)
+	{
+		for (const auto & transform : m->transforms)
+		{
+			msg.tfs->setTransform(transform, "", false);
+		}
+	}
 	loadAll(channel + "/tf_static", msg.tf_static_raw);
 	for (const auto& m : msg.tf_static_raw)
 	{
