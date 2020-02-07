@@ -484,13 +484,13 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 
 	if (compositeAction->primaryAction >= 0)
 	{
-		std::cerr << "Start Tracker!" << std::endl;
+		std::cerr << "Start Historian!" << std::endl;
 		historian->stopCapture();
 
 		/////////////////////////////////////////////
 		//// log historian->buffer & scene->segInfo & scene->roi
 		/////////////////////////////////////////////
-		std::string worldname = "experiment_world";
+		std::string worldname = "experiment_world_02_07";
 		{
 			std::cerr << "start logging historian->buffer" << std::endl;
 			DataLog logger("/home/kunhuang/mps_log/explorer_buffer_" + worldname + ".bag");
@@ -506,6 +506,56 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			std::cerr << "Successfully logged." << std::endl;
 		}
 
+		/////////////////////////////////////////////
+		//// sample object motions (new)
+		/////////////////////////////////////////////
+		cv::Mat temp_seg = scene->segInfo->objectness_segmentation->image;
+		std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(temp_seg, scene->roi);
+
+		std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>();
+		for (auto& pair : labelToBBoxLookup)
+		{
+			oam->sampleAction(historian->buffer, *scene->segInfo, sparseTracker, denseTracker, pair.first, pair.second);
+
+			cv::RNG rng;
+			ObjectIndex objIx = scene->labelToIndexLookup[pair.first];
+			auto& obj = scene->objects[objIx];
+
+			std_msgs::ColorRGBA colorRGBA;
+			colorRGBA.a = 1.0f;
+			colorRGBA.r = rand()/(float)RAND_MAX;
+			colorRGBA.g = rand()/(float)RAND_MAX;
+			colorRGBA.b = rand()/(float)RAND_MAX;
+			visualization_msgs::MarkerArray mOctree = visualizeOctree(obj->occupancy.get(), scene->worldFrame, &colorRGBA);
+			for (visualization_msgs::Marker& m : mOctree.markers)
+			{
+				m.ns = "originalOcTree";
+			}
+
+			std::cerr << "Original octree shown!" << std::endl;
+			octreePub.publish(mOctree);
+			sleep(5);
+
+			for (auto& rbt : oam->actionSamples)
+			{
+				std::shared_ptr<octomap::OcTree> newOcTree = moveOcTree(obj->occupancy.get(), rbt.linear);
+
+				colorRGBA.r = rand()/(float)RAND_MAX;
+				colorRGBA.g = rand()/(float)RAND_MAX;
+				colorRGBA.b = rand()/(float)RAND_MAX;
+				auto m = visualizeOctree(newOcTree.get(), scene->worldFrame, &colorRGBA);
+				for (visualization_msgs::Marker& marker : m.markers)
+				{
+					marker.ns = "newOcTree";
+				}
+				std::cerr << "Generated new octree " << std::endl;
+
+				octreePub.publish(m);
+				sleep(5);
+			}
+
+		}
+/*
 		std::vector<ros::Time> steps; // SiamMask tracks all these time steps except the first frame;
 		for (auto iter = historian->buffer.rgb.begin(); iter != historian->buffer.rgb.end(); std::advance(iter, 5))
 		{
@@ -521,7 +571,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			std::map<ros::Time, cv::Mat> masks;
 			denseTracker->track(steps, historian->buffer, pair.second, masks);
 		}
-/*
+
 		/////////////////////////////////////////////
 		//// sample object motions
 		/////////////////////////////////////////////

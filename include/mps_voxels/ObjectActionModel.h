@@ -6,6 +6,7 @@
 #define ARMLAB_WS_OBJECTACTIONMODEL_H
 
 #include "mps_voxels/Tracker.h"
+#include "mps_voxels/SiamTracker.h"
 #include "mps_voxels/SensorHistorian.h"
 #include "mps_voxels/assert.h"
 #include "mps_voxels/PointT.h"
@@ -21,11 +22,22 @@
 
 namespace mps
 {
+struct rigidTF
+{
+	Eigen::Vector3d linear;
+	Eigen::Vector3d angular;
+	int numInliers;
+};
 
 class objectActionModel
 {
 public:
-	objectActionModel();
+	explicit objectActionModel(int n=1);
+
+	std::vector<rigidTF> possibleRigidTFs;
+
+	int numSamples;
+	std::vector<rigidTF> actionSamples;
 
 	Eigen::Vector3d
 	sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& depth1,
@@ -38,7 +50,9 @@ public:
 
 	actionlib::SimpleActionClient<mps_msgs::ClusterRigidMotionsAction> jlinkageActionClient;
 
-	void clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const moveit::Pose& worldTcamera);
+	bool clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const moveit::Pose& worldTcamera);
+
+	void sampleAction(SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox);
 };
 
 

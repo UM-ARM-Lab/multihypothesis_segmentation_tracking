@@ -25,31 +25,8 @@
 
 using namespace mps;
 
-void test_track()
+void test_track(SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out)
 {
-	/////////////////////////////////////////////
-	//// Load sensor history and segInfo
-	/////////////////////////////////////////////
-	std::string worldname = "experiment_world";
-	SensorHistoryBuffer buffer_out;
-	{
-		DataLog loader("/home/kunhuang/mps_log/explorer_buffer_" + worldname + ".bag", {}, rosbag::bagmode::Read);
-		loader.activeChannels.insert("buffer");
-		loader.load<SensorHistoryBuffer>("buffer", buffer_out);
-		std::cerr << "Successfully loaded." << std::endl;
-	}
-	std::cerr << "number of frames: " << buffer_out.rgb.size() << std::endl;
-
-	SegmentationInfo seg_out;
-	{
-		DataLog loader("/home/kunhuang/mps_log/test_segInfo_" + worldname + ".bag", {}, rosbag::bagmode::Read);
-		loader.activeChannels.insert("segInfo");
-		loader.load<SegmentationInfo>("segInfo", seg_out);
-		std::cerr << "Successfully loaded." << std::endl;
-	}
-	std::cerr << "roi in loaded segInfo: " << seg_out.roi.x << " " << seg_out.roi.y << " " << seg_out.roi.height << " " << seg_out.roi.width << std::endl;
-
-
 	/////////////////////////////////////////////
 	//// Construct tracking time steps
 	/////////////////////////////////////////////
@@ -108,17 +85,18 @@ void test_track()
 		sparseTracker->track(timeStartEnd, buffer_out, masks, "/home/kunhuang/Videos/" + std::to_string((int)pair.first) + "_");
 
 		/////////////////////////////////////////////
-		//// send request to jlinkage server
+		//// send request to jlinkage server & sample object motions
 		/////////////////////////////////////////////
-		oam->clusterRigidBodyTransformation(sparseTracker->flows3, worldTcamera);
+		if (oam->clusterRigidBodyTransformation(sparseTracker->flows3, worldTcamera))
+		{
+
+		}
+		else
+		{
+
+		}
+
 	}
-
-
-	/////////////////////////////////////////////
-	//// sample object motions
-	/////////////////////////////////////////////
-
-
 }
 
 int main(int argc, char **argv)
@@ -129,9 +107,43 @@ int main(int argc, char **argv)
 	{
 		ROS_INFO("No param named '/use_sim_time'");
 	}
-
 	nh.setParam("/use_sim_time", false);
-	test_track();
+
+	/////////////////////////////////////////////
+	//// Load sensor history and segInfo
+	/////////////////////////////////////////////
+	std::string worldname = "experiment_world";
+	SensorHistoryBuffer buffer_out;
+	{
+		DataLog loader("/home/kunhuang/mps_log/explorer_buffer_" + worldname + ".bag", {}, rosbag::bagmode::Read);
+		loader.activeChannels.insert("buffer");
+		loader.load<SensorHistoryBuffer>("buffer", buffer_out);
+		std::cerr << "Successfully loaded." << std::endl;
+	}
+	std::cerr << "number of frames: " << buffer_out.rgb.size() << std::endl;
+
+	SegmentationInfo seg_out;
+	{
+		DataLog loader("/home/kunhuang/mps_log/test_segInfo_" + worldname + ".bag", {}, rosbag::bagmode::Read);
+		loader.activeChannels.insert("segInfo");
+		loader.load<SegmentationInfo>("segInfo", seg_out);
+		std::cerr << "Successfully loaded." << std::endl;
+	}
+	std::cerr << "roi in loaded segInfo: " << seg_out.roi.x << " " << seg_out.roi.y << " " << seg_out.roi.height << " " << seg_out.roi.width << std::endl;
+
+//	test_track(buffer_out, seg_out);
+	std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>();
+	std::unique_ptr<Tracker> sparseTracker = std::make_unique<Tracker>();
+	std::unique_ptr<DenseTracker> denseTracker = std::make_unique<SiamTracker>();
+
+	cv::Mat temp_seg = seg_out.objectness_segmentation->image;
+	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(temp_seg, seg_out.roi);
+
+	for (auto& pair : labelToBBoxLookup)
+	{
+		oam->sampleAction(buffer_out, seg_out, sparseTracker, denseTracker, pair.first, pair.second);
+		std::cerr << "possible rbts: " << oam->possibleRigidTFs.size() << std::endl;
+	}
 
 	return 0;
 }
