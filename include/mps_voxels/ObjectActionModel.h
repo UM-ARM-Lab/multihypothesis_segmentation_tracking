@@ -17,14 +17,30 @@
 #include <opencv2/highgui.hpp>
 #include <image_geometry/pinhole_camera_model.h>
 #include <octomap/OcTree.h>
+#include <mps_msgs/ClusterRigidMotionsAction.h>
 
 namespace mps
 {
 
-Eigen::Vector3d
-sampleActionFromMask(const std::vector<std::vector<bool>>& mask1, const cv::Mat& depth1,
-                     const std::vector<std::vector<bool>>& mask2, const cv::Mat& depth2,
-                     const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera);
+class objectActionModel
+{
+public:
+	objectActionModel();
+
+	Eigen::Vector3d
+	sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& depth1,
+	                     const cv::Mat& mask2, const cv::Mat& depth2,
+	                     const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera);
+	Eigen::Vector3d
+	sampleActionFromMask(const std::vector<std::vector<bool>>& mask1, const cv::Mat& depth1,
+	                     const std::vector<std::vector<bool>>& mask2, const cv::Mat& depth2,
+	                     const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera);
+
+	actionlib::SimpleActionClient<mps_msgs::ClusterRigidMotionsAction> jlinkageActionClient;
+
+	void clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const moveit::Pose& worldTcamera);
+};
+
 
 mps::VoxelSegmentation
 moveParticle(const mps::VoxelSegmentation& particle, const Eigen::Vector3d& action);

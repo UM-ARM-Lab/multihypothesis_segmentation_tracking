@@ -10,12 +10,14 @@
 #include "mps_voxels/SensorHistorian.h"
 #include "mps_voxels/Tracker.h"
 #include "mps_voxels/SiamTracker.h"
+#include "mps_voxels/ObjectActionModel.h"
 
 #include <mps_msgs/ClusterRigidMotionsAction.h>
 
 #include <octomap/octomap.h>
 #include <unordered_set>
 #include <opencv2/highgui.hpp>
+#include <tf_conversions/tf_eigen.h>
 
 #include <ros/ros.h>
 #include <actionlib/client/terminal_state.h>
@@ -25,6 +27,9 @@ using namespace mps;
 
 void test_track()
 {
+	/////////////////////////////////////////////
+	//// Load sensor history and segInfo
+	/////////////////////////////////////////////
 	std::string worldname = "experiment_world";
 	SensorHistoryBuffer buffer_out;
 	{
@@ -45,6 +50,9 @@ void test_track()
 	std::cerr << "roi in loaded segInfo: " << seg_out.roi.x << " " << seg_out.roi.y << " " << seg_out.roi.height << " " << seg_out.roi.width << std::endl;
 
 
+	/////////////////////////////////////////////
+	//// Construct tracking time steps
+	/////////////////////////////////////////////
 	std::vector<ros::Time> steps; // SiamMask tracks all these time steps except the first frame;
 	for (auto iter = buffer_out.rgb.begin(); iter != buffer_out.rgb.end(); std::advance(iter, 5))
 	{
@@ -60,69 +68,49 @@ void test_track()
 	std::unique_ptr<DenseTracker> denseTracker = std::make_unique<SiamTracker>();
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(temp_seg, seg_out.roi);
 
-//#ifdef USE_CUDA_SIFT
-//	sparseTracker = std::make_unique<CudaTracker>();
-//#else
 	sparseTracker = std::make_unique<Tracker>();
 	sparseTracker->track_options.featureRadius = 400.0f;
 	sparseTracker->track_options.pixelRadius = 100.0f;
 	sparseTracker->track_options.meterRadius = 1.0f;
-//#endif
 
-	actionlib::SimpleActionClient<mps_msgs::ClusterRigidMotionsAction> jlinkageActionClient("cluster_flow", true);
+	/////////////////////////////////////////////
+	//// Look up worldTcamera
+	/////////////////////////////////////////////
+	const std::string tableFrame = "table_surface";
+	tf::StampedTransform worldTcameraTF;
+	geometry_msgs::TransformStamped wTc = buffer_out.tfs->lookupTransform(tableFrame, buffer_out.cameraModel.tfFrame(), ros::Time(0));
+	tf::transformStampedMsgToTF(wTc, worldTcameraTF);
+	moveit::Pose worldTcamera;
+	tf::transformTFToEigen(worldTcameraTF, worldTcamera);
+
+	std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>();
 
 	for (const auto& pair : labelToBBoxLookup)
 	{
+		std::cout << "-------------------------------------------------------------------------------------" << std::endl;
 		//// SiamMask tracking
 		std::map<ros::Time, cv::Mat> masks;
 		denseTracker->track(steps, buffer_out, pair.second, masks);
 
-		//// Sift on SimaMask result
+		//// Fill in the first frame mask
 		cv::Mat startMask = cv::Mat::zeros(buffer_out.rgb.begin()->second->image.size(), CV_8UC1);
 		cv::Mat subwindow(startMask, seg_out.roi);
 		subwindow = pair.first == seg_out.objectness_segmentation->image;
 		masks.insert(masks.begin(), {steps.front(), startMask});
+
+		//// Estimate motion using SiamMask
+		Eigen::Vector3d roughMotion = oam->sampleActionFromMask(masks[steps[0]], buffer_out.depth[steps[0]]->image,
+		                                                   masks[steps[steps.size()-1]], buffer_out.depth[steps[steps.size()-1]]->image,
+		                                                   buffer_out.cameraModel, worldTcamera);
+		std::cerr << "Rough Motion from SiamMask: " << roughMotion.x() << " " << roughMotion.y() << " " << roughMotion.z() << std::endl;
+
+		//// SIFT
 		sparseTracker->track(timeStartEnd, buffer_out, masks, "/home/kunhuang/Videos/" + std::to_string((int)pair.first) + "_");
 
 		/////////////////////////////////////////////
 		//// send request to jlinkage server
 		/////////////////////////////////////////////
-
-		// TODO: matlab action server
-		for (auto& t2f : sparseTracker->flows3) // go through all time steps
-		{
-			mps_msgs::ClusterRigidMotionsGoal goal;
-			mps_msgs::ClusterRigidMotionsResultConstPtr response;
-			for (auto& f : t2f.second)
-			{
-				mps_msgs::FlowVector fv;
-				fv.pos.x = f.first.x();
-				fv.pos.y = f.first.y();
-				fv.pos.z = f.first.z();
-				fv.vel.x = f.second.x();
-				fv.vel.y = f.second.y();
-				fv.vel.z = f.second.z();
-				goal.flow_field.push_back(fv);
-			}
-			if (!jlinkageActionClient.isServerConnected())
-			{
-				std::cerr << "jlinkage server not connected" << std::endl;
-			}
-
-			auto success = jlinkageActionClient.sendGoalAndWait(goal);
-			if (!success.isDone())
-			{
-				std::cerr << "jlinkage not done" << std::endl;
-			}
-
-			const auto& res = jlinkageActionClient.getResult();
-			for (auto& t : res->motions)
-			{
-				std::cerr << "Linear: " << t.linear.x << " " << t.linear.y << " " << t.linear.z << std::endl;
-				std::cerr << "Angular: " << t.angular.x << " " << t.angular.y << " " << t.angular.z << std::endl;
-			}
-
-		}
+		oam->clusterRigidBodyTransformation(sparseTracker->flows3, worldTcamera);
 	}
 
 
