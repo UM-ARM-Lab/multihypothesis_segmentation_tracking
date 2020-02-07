@@ -20,6 +20,7 @@
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/image_encodings.h>
 #include <cv_bridge/cv_bridge.h>
+#include <image_transport/image_transport.h>
 
 #include <visualization_msgs/MarkerArray.h>
 
@@ -36,6 +37,7 @@
 
 #include <regex>
 #include <iterator>
+#include <mutex>
 
 #define DEBUG_MESH_LOADING true
 
@@ -115,6 +117,9 @@ public:
 	std::unique_ptr<tf::TransformBroadcaster> broadcaster;
 	std::unique_ptr<GTServer> actionServer;
 
+	std::unique_ptr<image_transport::Publisher> segmentationPub;
+
+	std::mutex stateMtx;
 	std::vector<GazeboModel> models;
 	std::vector<GazeboModelState> states;
 
@@ -124,8 +129,11 @@ public:
 		broadcaster = std::make_unique<tf::TransformBroadcaster>();
 		cam_sub = std::make_unique<ros::Subscriber>(nh.subscribe<sensor_msgs::CameraInfo>("/kinect2_victor_head/hd/camera_info", 1, boost::bind(&Segmenter::cam_cb, this, _1)));
 
+		image_transport::ImageTransport it(ros::NodeHandle("~"));
+		segmentationPub = std::make_unique<image_transport::Publisher>(it.advertise("segmentation", 1));
+
 		actionServer = std::make_unique<GTServer>(nh, "gazebo_segmentation", boost::bind(&Segmenter::execute, this, _1), false);
-		actionServer->start();
+//		actionServer->start();
 	}
 
 	void cam_cb (const sensor_msgs::CameraInfoConstPtr& cam_msg)
@@ -154,7 +162,6 @@ public:
 
 		Eigen::Isometry3d worldTcamera;
 		tf::transformTFToEigen(cameraPose, worldTcamera);
-//		Eigen::Isometry3d cameraTworld = worldTcamera.inverse(Eigen::Isometry);
 
 		auto roi = cameraModel.rectifiedRoi();
 
@@ -162,16 +169,6 @@ public:
 		using DepthT = float;
 		cv::Mat labels = cv::Mat::zeros(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_16U);
 		cv::Mat depthBuf(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_32F, std::numeric_limits<DepthT>::max());
-
-//		labels.at<LabelT>(10, 10) = 25;
-//		labels.at<LabelT>(100, 100) = 250;
-
-//		//		double alpha = 0.75;
-//		cv::Mat labelColorsMap = colorByLabel(labels);
-//		labelColorsMap.setTo(0, 0 == labels);
-////		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*scene->cv_rgb_cropped.image;
-//		cv::imshow("segmentation", labelColorsMap);
-//		cv::waitKey(0);
 
 
 //		for (size_t m = 0; m < models.size(); ++m)
@@ -204,13 +201,13 @@ public:
 //			}
 //		}
 
+		std::lock_guard<std::mutex> lock(stateMtx);
+		if (states.size() != models.size())
+		{
+			throw std::logic_error("Model/State size mismatch!");
+		}
+
 		const int step = 1;
-
-		// TODO: Remove after debugging
-//		roi.y = 750; roi.height = 100;
-//		roi.x = 1400; roi.width = 100;
-
-
 
 #pragma omp parallel for
 		for (int v = roi.y; v < roi.y+roi.height; /*++v*/v+=step)
@@ -221,7 +218,7 @@ public:
 //				fb.progress = static_cast<float>(v)/roi.height;
 //				actionServer->publishFeedback(fb);
 //			}
-			std::cerr << v << std::endl;
+//			std::cerr << v << std::endl;
 
 			for (int u = roi.x; u < roi.x + roi.width; /*++u*/u+=step)
 			{
@@ -319,26 +316,35 @@ public:
 		cv::Mat labelColorsMap = colorByLabel(labels);
 		labelColorsMap.setTo(0, 0 == labels);
 //		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*scene->cv_rgb_cropped.image;
-		cv::waitKey(1);
-		cv::imshow("segmentation", labelColorsMap);
-		cv::waitKey(0);
 
+		if (segmentationPub->getNumSubscribers() > 0)
+		{
+			std_msgs::Header h; h.frame_id = cameraFrame; h.stamp = ros::Time::now();
+			segmentationPub->publish(cv_bridge::CvImage(h, "bgr8", labelColorsMap).toImageMsg());
+		}
+
+//		cv::waitKey(1);
+//		cv::imshow("segmentation", labelColorsMap);
+//		cv::waitKey(0);
 
 		return labels;
 	}
 
 	void execute(const mps_msgs::SegmentRGBDGoalConstPtr& /*goal*/)
 	{
+		std::cerr << "Executing segmentation callback." << std::endl;
 		mps_msgs::SegmentRGBDResult result_;
 
 		if (cameraFrame.empty())
 		{
 			actionServer->setAborted(result_, "No camera data.");
+			return;
 		}
 
 		if (states.empty())
 		{
 			actionServer->setAborted(result_, "No state data.");
+			return;
 		}
 
 		cv::Mat labels = segment();
@@ -346,6 +352,7 @@ public:
 		if (labels.empty())
 		{
 			actionServer->setAborted(result_, "Labelling failed.");
+			return;
 		}
 
 		sensor_msgs::Image seg;
@@ -370,7 +377,7 @@ double getUnitScaling(const std::string& filename)
 	std::string ext = fs::path(filename).extension().string();
 	std::transform(ext.begin(), ext.end(), ext.begin(),
 	               [](unsigned char c){ return std::tolower(c); });
-	if (ext == "dae")
+	if (ext == ".dae")
 	{
 		// For some reason, createMeshFromResource doesn't use the <units> from a DAE
 		// Use the resource retriever to get the data.
@@ -415,8 +422,14 @@ int main(int argc, char** argv)
 
 //	cv::namedWindow("segmentation", /*cv::WINDOW_AUTOSIZE | cv::WINDOW_KEEPRATIO | */cv::WINDOW_GUI_EXPANDED);
 
+	std::string worldFileParam;
+	if (!pnh.getParam("/simulation_world", worldFileParam))
+	{
+		ROS_FATAL_STREAM("Unable to read world file name from parameter server '" << worldFileParam << "'");
+		return -1;
+	}
     // Load Gazebo world file and get meshes
-	const std::string gazeboWorldFilename = parsePackageURL("package://mps_interactive_segmentation/worlds/experiment_world.world");
+	const std::string gazeboWorldFilename = parsePackageURL(worldFileParam);
 
 	// TODO: Poses for shapes
 	std::vector<GazeboModel> shapeModels;
@@ -645,6 +658,8 @@ int main(int argc, char** argv)
 				const std::string model_path = parseModelURL(pathuri);
 				double unitScale = getUnitScaling(model_path);
 
+				std::cerr << "Scaling: '" << model_path << "': " << unitScale << std::endl;
+
 				shapes::Mesh* m = shapes::createMeshFromResource("file://" + model_path);
 				for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
 				{
@@ -757,6 +772,11 @@ int main(int argc, char** argv)
 	Segmenter seg(pnh, shapeModels);
     seg.worldFrame = mocap.gazeboTmocap.frame_id_;
 
+    // Wait for camera
+    ros::Duration(1.0).sleep();
+    ros::spinOnce();
+    seg.actionServer->start();
+
     ros::Rate r(10.0);
     while(ros::ok())
     {
@@ -770,6 +790,7 @@ int main(int argc, char** argv)
         mocap.getTransforms();
 //        mocap.sendTransforms(false);
 
+	    std::lock_guard<std::mutex> lock(seg.stateMtx);
 		seg.states.clear();
 	    for (const auto& shape : shapeModels)
 	    {

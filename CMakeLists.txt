@@ -29,6 +29,7 @@ find_package(catkin REQUIRED COMPONENTS
   gazebo_dev
   gazebo_msgs
   image_geometry
+  image_transport
   moveit_core
   mps_msgs
   roscpp

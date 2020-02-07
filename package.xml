@@ -53,6 +53,7 @@
   <depend>gazebo_dev</depend>
   <depend>gazebo_msgs</depend>
   <depend>image_geometry</depend>
+  <depend>image_transport</depend>
   <depend>moveit_core</depend>
   <depend>mps_msgs</depend>
   <depend>roscpp</depend>
