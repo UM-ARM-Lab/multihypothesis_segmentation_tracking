@@ -30,7 +30,6 @@
 #include "mps_voxels/util/package_paths.h"
 
 #include <ros/package.h>
-#include <ros/console.h>
 
 #include <fstream>
 #include <sstream>
