@@ -106,6 +106,52 @@ struct GazeboModelState
 	EIGEN_MAKE_ALIGNED_OPERATOR_NEW_IF(NeedsToAlign)
 };
 
+using Pose = Eigen::Isometry3d;
+Pose parsePose(TiXmlElement* xPose)
+{
+	if (!xPose)
+	{
+		return Pose::Identity();
+	}
+
+	if (xPose->Attribute("frame"))
+	{
+		std::string frame;
+		if (xPose->QueryStringAttribute("frame", &frame) == TIXML_SUCCESS)
+		{
+			if (!frame.empty())
+			{
+				throw std::runtime_error("This code cannot handle arbitrary frame parents in the SDF.");
+			}
+		}
+	}
+
+	std::cerr << xPose->GetText() << std::endl;
+	std::vector<double> posexyz = splitParams(xPose->GetText());
+
+	Pose pose;
+	pose.translation() = Eigen::Map<Eigen::Vector3d>(posexyz.data());
+	pose.linear() = Eigen::Matrix3d(Eigen::AngleAxisd(posexyz[3], Eigen::Vector3d::UnitZ())
+	                                * Eigen::AngleAxisd(posexyz[4], Eigen::Vector3d::UnitY())
+	                                * Eigen::AngleAxisd(posexyz[5], Eigen::Vector3d::UnitX()));
+	return pose;
+}
+
+geometry_msgs::Pose toMsg(const Pose& P)
+{
+	geometry_msgs::Pose msg;
+	msg.position.x = P.translation().x();
+	msg.position.y = P.translation().y();
+	msg.position.z = P.translation().z();
+	Eigen::Quaterniond q(P.linear());
+	msg.orientation.x = q.x();
+	msg.orientation.y = q.y();
+	msg.orientation.z = q.z();
+	msg.orientation.w = q.w();
+
+	return msg;
+}
+
 class Segmenter
 {
 public:
@@ -166,9 +212,9 @@ public:
 		auto roi = cameraModel.rectifiedRoi();
 
 		using LabelT = uint16_t;
-		using DepthT = float;
+		using DepthT = double;
 		cv::Mat labels = cv::Mat::zeros(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_16U);
-		cv::Mat depthBuf(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_32F, std::numeric_limits<DepthT>::max());
+		cv::Mat depthBuf(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_64F, std::numeric_limits<DepthT>::max());
 
 
 //		for (size_t m = 0; m < models.size(); ++m)
@@ -464,65 +510,51 @@ int main(int argc, char** argv)
 			continue;
 		}
 
+		// Load the model scale from the state
+		Eigen::Vector3d modScale = Eigen::Vector3d::Ones();
+		TiXmlElement* xMods = xModState->FirstChildElement("model");
+		while (true)
+		{
+			if (!xMods)
+			{
+				std::cerr << "No corresponding scale found!" << std::endl;
+				break;
+			}
+			else if(xMods->Attribute("name") == mod.name)
+			{
+				std::cerr << "scale: " << xMods->FirstChildElement("scale")->GetText() << std::endl;
+				std::vector<double> temp = splitParams(xMods->FirstChildElement("scale")->GetText());
+				modScale[0] = temp[0];
+				modScale[1] = temp[1];
+				modScale[2] = temp[2];
+				break;
+			}
+			xMods = xMods->NextSiblingElement("model");
+		}
+
+		Eigen::Isometry3d modelTvisual;
+		shapes::ShapePtr shapePtr;
+		bodies::BodyPtr bodyPtr;
+
 		// Loop through all links in model
 		TiXmlElement* xLink = xModel->FirstChildElement("link");
 		while (xLink)
 		{
 			std::string linkName(xLink->Attribute("name"));
 
-			Eigen::Isometry3d eigenPose;
-			geometry_msgs::Pose pose;
-			pose.orientation.w = 1;
-			TiXmlElement* xPose = xLink->FirstChildElement("pose");
-			if (xPose)
-			{
-				std::cerr << xPose->GetText() << std::endl;
-				std::vector<double> posexyz = splitParams(xPose->GetText());
-//				assert(posexyz.size() == 6);
-
-				// Load scale
-				std::vector<double> modScale (3,1.0);
-				TiXmlElement* xMods = xModState->FirstChildElement("model");
-				while (true)
-				{
-					if (!xMods)
-					{
-						std::cerr << "No corresponding scale found!" << std::endl;
-						break;
-					}
-					else if(xMods->Attribute("name") == mod.name)
-					{
-						std::cerr << "scale: " << xMods->FirstChildElement("scale")->GetText() << std::endl;
-						std::vector<double> temp = splitParams(xMods->FirstChildElement("scale")->GetText());
-						modScale[0] = temp[0];
-						modScale[1] = temp[1];
-						modScale[2] = temp[2];
-						break;
-					}
-					xMods = xMods->NextSiblingElement("model");
-				}
-
-				pose.position.x = posexyz[0] * modScale[0];
-				pose.position.y = posexyz[1] * modScale[1];
-				pose.position.z = posexyz[2] * modScale[2];
-
-				Eigen::Quaterniond q(Eigen::AngleAxisd(posexyz[3], Eigen::Vector3d::UnitZ())
-			                       * Eigen::AngleAxisd(posexyz[4], Eigen::Vector3d::UnitY())
-				                   * Eigen::AngleAxisd(posexyz[5], Eigen::Vector3d::UnitX()));
-
-				pose.orientation.x = q.x();
-				pose.orientation.y = q.y();
-				pose.orientation.z = q.z();
-				pose.orientation.w = q.w();
-
-				eigenPose.translation() = Eigen::Map<Eigen::Vector3d>(posexyz.data());
-				eigenPose.linear() = q.matrix();
-			}
+			Eigen::Isometry3d modelTlink = parsePose(xLink->FirstChildElement("pose"));
 
 			TiXmlElement* xVisual = xLink->FirstChildElement("visual");
-			if (!xVisual) { continue; }
+			if (!xVisual) { xLink = xLink->NextSiblingElement("link"); continue; }
+			Eigen::Isometry3d linkTvisual = parsePose(xVisual->FirstChildElement("pose"));
+
 			TiXmlElement* xGeometry = xVisual->FirstChildElement("geometry");
-			if (!xGeometry) { continue; }
+			if (!xGeometry) { xLink = xLink->NextSiblingElement("link"); continue; }
+			// No offset is allowed in SDF between the visual and the geometry
+			// TODO: Geometry.Scale is not handled
+
+			modelTvisual = modelTlink * linkTvisual;
+			modelTvisual.translation() = modelTvisual.translation().cwiseProduct(modScale); // Apply model scale
 
 			TiXmlElement* xBox = xGeometry->FirstChildElement("box");
 			TiXmlElement* xCylinder = xGeometry->FirstChildElement("cylinder");
@@ -537,60 +569,13 @@ int main(int argc, char** argv)
 				primitive.dimensions.resize(3);
 				std::vector<double> BoxXYZ = splitParams(xBox->FirstChildElement("size")->GetText());
 
-				// Load scale
-				std::vector<double> modScale (3,1.0);
-				TiXmlElement* xMods = xModState->FirstChildElement("model");
-				while (true)
-				{
-					if (!xMods)
-					{
-						std::cerr << "No corresponding scale found!" << std::endl;
-						break;
-					}
-					else if(xMods->Attribute("name") == mod.name)
-					{
-						std::cerr << "scale: " << xMods->FirstChildElement("scale")->GetText() << std::endl;
-						std::vector<double> temp = splitParams(xMods->FirstChildElement("scale")->GetText());
-						modScale[0] = temp[0];
-						modScale[1] = temp[1];
-						modScale[2] = temp[2];
-						break;
-					}
-					xMods = xMods->NextSiblingElement("model");
-				}
-
 				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_X] = BoxXYZ[0] * modScale[0];
 				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_Y] = BoxXYZ[1] * modScale[1];
 				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_Z] = BoxXYZ[2] * modScale[2];
 
-				shapes::ShapePtr shapePtr(shapes::constructShapeFromMsg(primitive));
+				shapePtr = shapes::ShapePtr(shapes::constructShapeFromMsg(primitive));
+				bodyPtr = bodies::BodyPtr(bodies::constructBodyFromMsg(primitive, toMsg(modelTvisual)));
 
-				if (name.find("table") != std::string::npos)
-				{
-					std::cerr << "table pose: " << pose.position.x << " " << pose.position.y << " " << pose.position.z << std::endl;
-					pose.position.z += 1; // why??? The <pose> should be put in the correct place in .world
-				}
-
-#if DEBUG_MESH_LOADING
-				visualization_msgs::Marker marker;
-				shapes::constructMarkerFromShape(shapePtr.get(), marker, true);
-				// Do some more marker stuff here
-				marker.color.a = 1.0;
-				marker.color.r=rand()/(float)RAND_MAX;
-				marker.color.g=rand()/(float)RAND_MAX;
-				marker.color.b=rand()/(float)RAND_MAX;
-				marker.pose = pose;
-				marker.header.frame_id = "mocap_" + name; //"table_surface";
-				marker.header.stamp = ros::Time::now();
-				marker.ns = name;
-				marker.id = 1;
-				marker.frame_locked = true;
-				debugShapes.markers.push_back(marker);
-#endif
-
-				mod.shapes.insert({linkName, shapePtr});
-				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::constructBodyFromMsg(primitive, pose))});
-				shapeModels.push_back(mod);
 			}
 			else if (xCylinder)
 			{
@@ -600,55 +585,15 @@ int main(int argc, char** argv)
 				primitive.dimensions.resize(2);
 				char* end_ptr;
 
-				// Load scale
-				std::vector<double> modScale (3,1.0);
-				TiXmlElement* xMods = xModState->FirstChildElement("model");
-				while (true)
-				{
-					if (!xMods)
-					{
-						std::cerr << "No corresponding scale found!" << std::endl;
-						break;
-					}
-					else if(xMods->Attribute("name") == mod.name)
-					{
-						std::cerr << "scale: " << xMods->FirstChildElement("scale")->GetText() << std::endl;
-						std::vector<double> temp = splitParams(xMods->FirstChildElement("scale")->GetText());
-						modScale[0] = temp[0];
-						modScale[1] = temp[1];
-						modScale[2] = temp[2];
-						break;
-					}
-					xMods = xMods->NextSiblingElement("model");
-				}
-
 				primitive.dimensions[shape_msgs::SolidPrimitive::CYLINDER_HEIGHT] = std::strtod(xCylinder->FirstChildElement("length")->GetText(), &end_ptr) * modScale[2];
 				primitive.dimensions[shape_msgs::SolidPrimitive::CYLINDER_RADIUS] = std::strtod(xCylinder->FirstChildElement("radius")->GetText(), &end_ptr) * std::max(modScale[0], modScale[1]);
 
-				shapes::ShapePtr shapePtr(shapes::constructShapeFromMsg(primitive));
-
-#if DEBUG_MESH_LOADING
-				visualization_msgs::Marker marker;
-				shapes::constructMarkerFromShape(shapePtr.get(), marker, true);
-				// Do some more marker stuff here
-				marker.color.a = 1.0;
-				marker.color.r=rand()/(float)RAND_MAX;
-				marker.color.g=rand()/(float)RAND_MAX;
-				marker.color.b=rand()/(float)RAND_MAX;
-				marker.pose = pose;
-				marker.header.frame_id = "mocap_" + name; //"table_surface";
-				marker.header.stamp = ros::Time::now();
-				marker.ns = name;
-				marker.id = 1;
-				marker.frame_locked = true;
-				debugShapes.markers.push_back(marker);
-#endif
+				shapePtr = shapes::ShapePtr(shapes::constructShapeFromMsg(primitive));
+				bodyPtr = bodies::BodyPtr(bodies::constructBodyFromMsg(primitive, toMsg(modelTvisual)));
 
 //				shapes::Cylinder* s = dynamic_cast<shapes::Cylinder*>(shapes::constructShapeFromMsg(primitive));
 //				s->print(std::cerr);
-				mod.shapes.insert({linkName, shapePtr});
-				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::constructBodyFromMsg(primitive, pose))});
-				shapeModels.push_back(mod);
+
 			}
 			else if (xMesh)
 			{
@@ -661,33 +606,13 @@ int main(int argc, char** argv)
 				std::cerr << "Scaling: '" << model_path << "': " << unitScale << std::endl;
 
 				shapes::Mesh* m = shapes::createMeshFromResource("file://" + model_path);
+				// Apply unit scaling
 				for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
 				{
 					m->vertices[i] *= unitScale;
 				}
-				shapes::ShapePtr shapePtr(m);
 
-				// Load scale
-				std::vector<double> modScale (3,1.0);
-				TiXmlElement* xMods = xModState->FirstChildElement("model");
-				while (true)
-				{
-					if (!xMods)
-					{
-						std::cerr << "No corresponding scale found!" << std::endl;
-						break;
-					}
-					else if(xMods->Attribute("name") == mod.name)
-					{
-						std::cerr << "scale: " << xMods->FirstChildElement("scale")->GetText() << std::endl;
-						std::vector<double> temp = splitParams(xMods->FirstChildElement("scale")->GetText());
-						modScale[0] = temp[0];
-						modScale[1] = temp[1];
-						modScale[2] = temp[2];
-						break;
-					}
-					xMods = xMods->NextSiblingElement("model");
-				}
+				// Apply state scaling
 				for (unsigned i = 0; i <  m->vertex_count; ++i)
 				{
 					m->vertices[3 * i] *= modScale[0];
@@ -695,37 +620,19 @@ int main(int argc, char** argv)
 					m->vertices[3 * i + 2] *= modScale[2];
 				}
 
+				shapePtr = shapes::ShapePtr(m);
+
 				m->computeTriangleNormals();
 				m->computeVertexNormals();
 				std::cerr << "Vertices: " << m->vertex_count << ", Faces: " << m->triangle_count << std::endl;
 
 				shapes::ShapeMsg mesh;
 				constructMsgFromShape(m, mesh);
-				bodies::BodyPtr bodyPtr(bodies::constructBodyFromMsg(mesh, pose));
+				bodyPtr = bodies::BodyPtr(bodies::constructBodyFromMsg(mesh, toMsg(modelTvisual)));
 
 				auto* cvx = dynamic_cast<bodies::ConvexMesh*>(bodyPtr.get());
 				if (cvx) { std::cerr << "Converted to convex mesh. :(" << std::endl; }
 
-#if DEBUG_MESH_LOADING
-				visualization_msgs::Marker marker;
-				shapes::constructMarkerFromShape(m, marker, true);
-				// Do some more marker stuff here
-				marker.color.a = 1.0;
-				marker.color.r=rand()/(float)RAND_MAX;
-				marker.color.g=rand()/(float)RAND_MAX;
-				marker.color.b=rand()/(float)RAND_MAX;
-				marker.pose = pose;
-				marker.header.frame_id = "mocap_" + name; //"table_surface";
-				marker.header.stamp = ros::Time::now();
-				marker.ns = name;
-				marker.id = 1;
-				marker.frame_locked = true;
-				debugShapes.markers.push_back(marker);
-#endif
-
-				mod.shapes.insert({linkName, shapePtr});
-				mod.bodies.insert({linkName, bodyPtr});
-				shapeModels.push_back(mod);
 			}
 			else if (xPlane)
 			{
@@ -736,13 +643,36 @@ int main(int argc, char** argv)
 //				plane.coef[1] = planeNormal[1];
 //				plane.coef[2] = planeNormal[2];
 //				plane.coef[3] = 0.0;
-//				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::constructBodyFromMsg(plane, pose))});
+//				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::constructBodyFromMsg(plane, toMsg(modelTvisual)))});
 //				shapeModels.push_back(mod);
+				xLink = xLink->NextSiblingElement("link"); continue;
 			}
 			else
 			{
 				ROS_WARN_STREAM("Unknown shape type: " << name << ".");
+				xLink = xLink->NextSiblingElement("link"); continue;
 			}
+
+			#if DEBUG_MESH_LOADING
+			visualization_msgs::Marker marker;
+			shapes::constructMarkerFromShape(shapePtr.get(), marker, true);
+			// Do some more marker stuff here
+			marker.color.a = 1.0;
+			marker.color.r=rand()/(float)RAND_MAX;
+			marker.color.g=rand()/(float)RAND_MAX;
+			marker.color.b=rand()/(float)RAND_MAX;
+			marker.pose = toMsg(modelTvisual);
+			marker.header.frame_id = "mocap_" + name; //"table_surface";
+			marker.header.stamp = ros::Time::now();
+			marker.ns = name;
+			marker.id = 1;
+			marker.frame_locked = true;
+			debugShapes.markers.push_back(marker);
+			#endif
+
+			mod.shapes.insert({linkName, shapePtr});
+			mod.bodies.insert({linkName, bodyPtr});
+			shapeModels.push_back(mod);
 
 			xLink = xLink->NextSiblingElement("link");
 		}
