@@ -361,6 +361,50 @@ public:
 
 };
 
+// Pilfered from RViz
+#include <boost/filesystem.hpp>
+namespace fs = boost::filesystem;
+double getUnitScaling(const std::string& filename)
+{
+	float unit_scale = 1.0;
+	std::string ext = fs::path(filename).extension().string();
+	std::transform(ext.begin(), ext.end(), ext.begin(),
+	               [](unsigned char c){ return std::tolower(c); });
+	if (ext == "dae")
+	{
+		// For some reason, createMeshFromResource doesn't use the <units> from a DAE
+		// Use the resource retriever to get the data.
+		TiXmlDocument xmlDoc(filename);
+		xmlDoc.LoadFile();
+
+		// Find the appropriate element if it exists
+		if(!xmlDoc.Error())
+		{
+			TiXmlElement * colladaXml = xmlDoc.FirstChildElement("COLLADA");
+			if(colladaXml)
+			{
+				TiXmlElement *assetXml = colladaXml->FirstChildElement("asset");
+				if(assetXml)
+				{
+					TiXmlElement *unitXml = assetXml->FirstChildElement("unit");
+					if (unitXml && unitXml->Attribute("meter"))
+					{
+						// Failing to convert leaves unit_scale as the default.
+						if(unitXml->QueryFloatAttribute("meter", &unit_scale) != 0)
+							ROS_WARN_STREAM("getMeshUnitRescale::Failed to convert unit element meter attribute to determine scaling. unit element: "
+								                << *unitXml);
+					}
+				}
+			}
+		}
+		return unit_scale;
+	}
+	else
+	{
+		return 1.0;
+	}
+}
+
 int main(int argc, char** argv)
 {
     ros::init(argc, argv, "gazebo_segmentation_gt");
@@ -599,31 +643,14 @@ int main(int argc, char** argv)
 				std::string pathuri = xMesh->FirstChildElement("uri")->GetText();
 
 				const std::string model_path = parseModelURL(pathuri);
+				double unitScale = getUnitScaling(model_path);
 
 				shapes::Mesh* m = shapes::createMeshFromResource("file://" + model_path);
+				for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
+				{
+					m->vertices[i] *= unitScale;
+				}
 				shapes::ShapePtr shapePtr(m);
-				if (name.find("coke_can") != std::string::npos)
-				{
-					for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
-					{
-						m->vertices[i] /= 1000.0;
-					}
-				}
-				if (name.find("disk_part") != std::string::npos)
-				{
-					xLink = xLink->NextSiblingElement("link"); continue;
-					for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
-					{
-						m->vertices[i] /= 1000.0;
-					}
-				}
-				if (name.find("hammer") != std::string::npos)
-				{
-					for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
-					{
-						m->vertices[i] *= 0.0254;
-					}
-				}
 
 				// Load scale
 				std::vector<double> modScale (3,1.0);
