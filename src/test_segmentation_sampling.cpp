@@ -38,9 +38,12 @@
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_segmentation_info.h"
 #include "mps_voxels/logging/log_sensor_history.h"
+#include "mps_voxels/logging/log_cv_mat.h"
 
 #include "mps_voxels/image_utils.h"
 #include <opencv2/highgui.hpp>
+
+#include <fstream>
 
 #include <boost/filesystem.hpp>
 namespace fs = boost::filesystem;
@@ -77,6 +80,43 @@ cv::Mat relabelCut(const Ultrametric& um, const ValueTree& T, const cv::Mat& lab
 	}
 
 	return segmentation;
+}
+
+namespace mps
+{
+using Colormap = std::map<uint16_t, cv::Point3_<uint8_t>>;
+}
+
+Colormap createColormap(const std::set<uint16_t>& labels, std::default_random_engine& re)
+{
+	Colormap colormap;
+	std::uniform_int_distribution<> dis(0, 256);
+	for (auto label : labels)
+	{
+		colormap[label] = cv::Point3_<uint8_t>(dis(re), dis(re), dis(re));
+	}
+	return colormap;
+}
+Colormap createColormap(const cv::Mat& labels, std::default_random_engine& re)
+{
+	return createColormap(unique(labels), re);
+}
+
+void extendColormap(Colormap& colormap, const std::set<uint16_t>& labels, std::default_random_engine& re)
+{
+	std::uniform_int_distribution<> dis(0, 256);
+	for (auto label : labels)
+	{
+		auto iter = colormap.find(label);
+		if (iter == colormap.end())
+		{
+			colormap[label] = cv::Point3_<uint8_t>(dis(re), dis(re), dis(re));
+		}
+	}
+}
+void extendColormap(Colormap& colormap, const cv::Mat& labels, std::default_random_engine& re)
+{
+	extendColormap(colormap, unique(labels), re);
 }
 
 //template <typename T>
@@ -148,7 +188,8 @@ bool generateSensorHistory(SensorHistoryBuffer& buff)
 
 bool generateSegmentationInfo(SegmentationInfo& info)
 {
-	std::string bagFileName = parsePackageURL(testDirName) + ros::this_node::getName() + ".bag";
+//	std::string bagFileName = parsePackageURL(testDirName) + ros::this_node::getName() + ".bag";
+	std::string bagFileName = parsePackageURL(testDirName) + "experiment_world.bag";
 	SensorHistoryBuffer buff;
 	bool res = loadOrGenerateData(bagFileName, "sensor_history", buff, generateSensorHistory, true);
 	if (!res)
@@ -179,10 +220,12 @@ int main(int argc, char* argv[])
 	// Check for existence of mps_test_data
 	if (!(fs::is_directory(parsePackageURL(testDirName)) && fs::exists(parsePackageURL(testDirName))))
 	{
-		throw std::runtime_error("Unable to find test data directory.");
+		ROS_ERROR_STREAM("Unable to find test data directory.");
+		return -1;
 	}
 
-	std::string bagFileName = parsePackageURL(testDirName) + ros::this_node::getName() + ".bag";
+//	std::string bagFileName = parsePackageURL(testDirName) + ros::this_node::getName() + ".bag";
+	std::string bagFileName = parsePackageURL(testDirName) + "experiment_world.bag";
 
 	auto si = std::make_shared<SegmentationInfo>();
 
@@ -193,20 +236,34 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
+	// Load ground truth labels
+	std::shared_ptr<DataLog> log = std::make_shared<DataLog>(bagFileName, std::unordered_set<std::string>{"ground_truth/labels"}, rosbag::BagMode::Read);
+	cv::Mat gt_labels;
+	try
+	{
+		sensor_msgs::Image im;
+		if (!log->load("ground_truth/labels", im))
+		{
+			ROS_FATAL_STREAM("Failed to load ground truth.");
+			return -1;
+		}
+		gt_labels = fromMessage(im);
+		assert(gt_labels.type() == CV_16UC1);
+	}
+	catch (...)
+	{
+		ROS_FATAL_STREAM("Exception while loading ground truth.");
+		return -1;
+	}
+
+
 //	JaccardMatch jaccardMatch(si->labels, si->labels);
 //	auto pairing = jaccardMatch(si->objectness_segmentation->image, si->objectness_segmentation->image);
 //	const auto& pairing = jaccardMatch.match;
 
-	std::map<uint16_t, cv::Point3_<uint8_t>> colormap;
-	{
-		std::random_device rd;
-		std::default_random_engine re(0);// (rd());
-		std::uniform_int_distribution<> dis(0, 256);
-		for (auto l : unique(si->objectness_segmentation->image))
-		{
-			colormap[l] = cv::Point3_<uint8_t>(dis(re), dis(re), dis(re));
-		}
-	}
+	std::random_device rd;
+	std::default_random_engine re(0);// (rd());
+	Colormap colormap = createColormap(gt_labels, re);
 
 
 	Ultrametric um(si->ucm2, si->labels2);
@@ -222,8 +279,8 @@ int main(int argc, char* argv[])
 
 	MCMCTreeCut mcmc(T, sigmaSquared);
 
-	std::random_device rd;
-	std::default_random_engine re(rd());
+//	std::random_device rd;
+//	std::default_random_engine re(rd());
 
 	cutStar = mcmc.sample(re, Belief<TreeCut>::SAMPLE_TYPE::MAXIMUM);
 
@@ -245,18 +302,21 @@ int main(int argc, char* argv[])
 	cv::namedWindow("Contours", cv::WINDOW_NORMAL);
 	cv::namedWindow("Objectness", cv::WINDOW_NORMAL);
 	cv::namedWindow("Segmentation", cv::WINDOW_NORMAL);
+	cv::namedWindow("Ground Truth", cv::WINDOW_NORMAL);
 
 	cv::imshow("Image", si->rgb);
+	cv::imshow("Ground Truth", colorByLabel(gt_labels, colormap));
 	cv::imshow("Labels", colorByLabel(si->labels));
 	cv::imshow("Contours", si->display_contours);
 	cv::theRNG().state = seed;
-	cv::imshow("Objectness", colorByLabel(si->objectness_segmentation->image, colormap));
+	cv::imshow("Objectness", colorByLabel(si->objectness_segmentation->image));
 
 	std::string dir = "/tmp/segmentation/";
 	cv::imwrite(dir + "image.png", si->rgb);
 	cv::imwrite(dir + "contours.png", si->display_contours);
 	cv::theRNG().state = seed;
 	cv::imwrite(dir + "objectness.png", colorByLabel(si->objectness_segmentation->image));
+	cv::imwrite(dir + "ground.png", colorByLabel(gt_labels, colormap));
 
 	std::cerr << "# original objects: " << unique(si->objectness_segmentation->image).size() << std::endl;
 	std::cerr << "# new objects: " << cutStar.second.size() << std::endl;
@@ -268,6 +328,9 @@ int main(int argc, char* argv[])
 	cv::imshow("Segmentation", disp);
 	cv::imwrite(dir + "cStar.png", disp);
 
+	cv::Mat maskInv = (gt_labels == 0); // All irrelevant pixels
+	cv::imshow("Mask", maskInv);
+
 	cv::waitKey(0);
 
 //	mcmc.sigmaSquared = 1e10*vStar*vStar; // With proposal ratio
@@ -275,20 +338,38 @@ int main(int argc, char* argv[])
 	mcmc.sigmaSquared = 0.2*vStar*vStar; // The larger this number, the more permissive exploration is allowed
 	mcmc.nTrials = 25;
 
-	for (int i = 0; i < 10; ++i)
+	std::ofstream csv;
+	csv.open(dir + "data.csv", std::ios::out);
+
+	csv << "Trial\tlogp(cut)\tJaccard\tCover" << std::endl;
+
+	for (int i = 0; i < 100; ++i)
 	{
-		auto cut = mcmc.sample(re, Belief<TreeCut>::SAMPLE_TYPE::RANDOM);
-		std::cerr << cut.first << std::endl;
-		cv::theRNG().state = seed;
+		std::pair<double, TreeCut> cut;
+		if (0 == i)
+		{
+			cut = cutStar;
+		}
+		else
+		{
+			cut = mcmc.sample(re, Belief<TreeCut>::SAMPLE_TYPE::RANDOM);
+		}
 		seg = relabelCut(um, T, si->labels, cut.second);
-		JaccardMatch jaccard(si->objectness_segmentation->image, seg);
-		disp = colorByLabel(relabel(seg, jaccard.match.second.right), colormap);
+		seg.setTo(0, maskInv);
+		JaccardMatch jaccard(gt_labels, seg);
+		Colormap cmap = colormap;
+		extendColormap(cmap, seg, re);
+		disp = colorByLabel(relabel(seg, jaccard.match.second.right), cmap);
 		cv::imshow("Segmentation", disp);
 		cv::imwrite(dir + "c" + std::to_string(i) + ".png", disp);
-		std::cerr << "Match: " << jaccard.match.first << std::endl;
+		csv << i << "\t" << cut.first << "\t" << jaccard.match.first << "\t" << jaccard.symmetricCover() << std::endl;
 
-		cv::waitKey(0);
+//		cv::waitKey(10);
 	}
+
+	csv.close();
+
+	cv::waitKey(0);
 	return 0;
 
 }

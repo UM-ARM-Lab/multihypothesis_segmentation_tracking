@@ -43,14 +43,23 @@ namespace mps
 class JaccardMatch
 {
 public:
-	using Match = std::pair<double, boost::bimap<uint16_t, uint16_t>>;
-	using LabelBounds = std::map<uint16_t, AABB>;
+	using LabelT = uint16_t;
+	using Match = std::pair<double, boost::bimap<LabelT, LabelT>>;
+	using LabelBounds = std::map<LabelT, AABB>;
 	Match match;
 	JaccardMatch(const cv::Mat& labels1, const cv::Mat& labels2);
 
 	// Intermediate calculations
 	LabelBounds boxes1, boxes2;
 	Eigen::MatrixXd D;
+
+	boost::bimap<LabelT, int> lblIndex1;
+	boost::bimap<LabelT, int> lblIndex2;
+
+	std::map<LabelT, int> iSizes;
+	std::map<LabelT, int> jSizes;
+
+	double symmetricCover() const;
 };
 
 }

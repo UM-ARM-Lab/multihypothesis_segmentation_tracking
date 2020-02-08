@@ -38,7 +38,6 @@ namespace mps
 
 JaccardMatch::JaccardMatch(const cv::Mat& labels1, const cv::Mat& labels2)
 {
-	using LabelT = uint16_t;
 
 	if (labels1.channels() > 1 || labels1.type() != CV_16U || labels2.channels() > 1 || labels2.type() != CV_16U)
 	{
@@ -49,21 +48,20 @@ JaccardMatch::JaccardMatch(const cv::Mat& labels1, const cv::Mat& labels2)
 	boxes2 = getBBoxes(labels2);
 
 	int count = 0;
-	boost::bimap<LabelT, int> lblIndex1; for (const auto i : boxes1) { lblIndex1.insert({i.first, count++}); }
+	for (const auto i : boxes1) { lblIndex1.insert({i.first, count++}); }
 	count = 0;
-	boost::bimap<LabelT, int> lblIndex2; for (const auto j : boxes2) { lblIndex2.insert({j.first, count++}); }
+	for (const auto j : boxes2) { lblIndex2.insert({j.first, count++}); }
 
 	double smoothing = 1.0;
 
 	size_t dSize = std::max(boxes1.size(), boxes2.size());
 	D = Eigen::MatrixXd::Zero(dSize, dSize);
 
-	std::map<LabelT, int> jSizes;
-
 	for (const auto i : boxes1)
 	{
 		cv::Mat mask1 = (labels1 == i.first);
 		int count1 = cv::countNonZero(mask1);
+		iSizes.insert({i.first, count1});
 		for (const auto j : boxes2)
 		{
 			double iou = 0;
@@ -108,6 +106,24 @@ JaccardMatch::JaccardMatch(const cv::Mat& labels1, const cv::Mat& labels2)
 	}
 
 	match = {-H.getSolutionCost(), matches};
+}
+
+double JaccardMatch::symmetricCover() const
+{
+	double score = 0.0;
+	Eigen::VectorXd iMax = -(D.rowwise().minCoeff()); // D is -iou
+	for (const auto& pair : lblIndex1.left)
+	{
+		// pair is (label, index)
+		score += iSizes.at(pair.first) * iMax[pair.second];
+	}
+	Eigen::RowVectorXd jMax = -(D.colwise().minCoeff());
+	for (const auto& pair : lblIndex2.left)
+	{
+		// pair is (label, index)
+		score += jSizes.at(pair.first) * jMax[pair.second];
+	}
+	return score;
 }
 
 }
