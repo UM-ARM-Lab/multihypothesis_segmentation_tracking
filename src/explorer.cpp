@@ -512,7 +512,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		cv::Mat temp_seg = scene->segInfo->objectness_segmentation->image;
 		std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(temp_seg, scene->roi);
 
-		std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>();
+		std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>(10);
 		for (auto& pair : labelToBBoxLookup)
 		{
 			oam->sampleAction(historian->buffer, *scene->segInfo, sparseTracker, denseTracker, pair.first, pair.second);
@@ -534,11 +534,14 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 
 			std::cerr << "Original octree shown!" << std::endl;
 			octreePub.publish(mOctree);
-			sleep(5);
+			sleep(2);
 
 			for (auto& rbt : oam->actionSamples)
 			{
-				std::shared_ptr<octomap::OcTree> newOcTree = moveOcTree(obj->occupancy.get(), rbt.linear);
+				std::cerr << "Linear: " << rbt.linear.x() << " " << rbt.linear.y() << " " << rbt.linear.z();
+				std::cerr << "\t Angular: " << rbt.angular.x() << " " << rbt.angular.y() << " " << rbt.angular.z() << std::endl;
+
+				std::shared_ptr<octomap::OcTree> newOcTree = moveOcTree(obj->occupancy.get(), rbt);
 
 				colorRGBA.r = rand()/(float)RAND_MAX;
 				colorRGBA.g = rand()/(float)RAND_MAX;
@@ -548,110 +551,13 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 				{
 					marker.ns = "newOcTree";
 				}
-				std::cerr << "Generated new octree " << std::endl;
+				std::cerr << "Generated new octree" << std::endl;
 
 				octreePub.publish(m);
 				sleep(5);
 			}
 
 		}
-/*
-		std::vector<ros::Time> steps; // SiamMask tracks all these time steps except the first frame;
-		for (auto iter = historian->buffer.rgb.begin(); iter != historian->buffer.rgb.end(); std::advance(iter, 5))
-		{
-			steps.push_back(iter->first);
-		}
-
-		cv::Mat temp_seg = scene->segInfo->objectness_segmentation->image;
-		//			scene->labelToBBoxLookup = getBBox(temp_seg, scene->roi);
-		std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(temp_seg, scene->roi);
-
-		for (const auto& pair : labelToBBoxLookup)
-		{
-			std::map<ros::Time, cv::Mat> masks;
-			denseTracker->track(steps, historian->buffer, pair.second, masks);
-		}
-
-		/////////////////////////////////////////////
-		//// sample object motions
-		/////////////////////////////////////////////
-		for (auto pair:tracker->labelToMasksLookup)
-		{
-			std::cerr << "mask size = " << pair.second.size() << " x " << pair.second[0].size() << " x " << pair.second[0][0].size() << std::endl;
-
-			Eigen::Vector3d actionSampleCameraFrame =
-			sampleActionFromMask(pair.second[0], historian->buffer.depth[steps[0]]->image,
-								 pair.second[pair.second.size()-1], historian->buffer.depth[steps[steps.size()-1]]->image,
-			                     historian->buffer.cameraModel, scene->worldTcamera);
-			std::cerr << "Label " << pair.first << " action in world frame: " << actionSampleCameraFrame.x() << " " << actionSampleCameraFrame.y() << " " << actionSampleCameraFrame.z() << std::endl;
-
-			//// SIFT
-			tracker->siftOnMask(steps, historian->buffer, pair.first);
-			std::cerr << "SIFT completed!!!" << std::endl;
-
-			//TODO: reconsider Particle storage, here is just a test
-			cv::RNG rng;
-			ObjectIndex objIx = scene->labelToIndexLookup[pair.first];
-			auto& obj = scene->objects[objIx];
-
-			std_msgs::ColorRGBA colorRGBA;
-			colorRGBA.a = 1.0f;
-			colorRGBA.r = rand()/(float)RAND_MAX;
-			colorRGBA.g = rand()/(float)RAND_MAX;
-			colorRGBA.b = rand()/(float)RAND_MAX;
-			visualization_msgs::MarkerArray mOctree = visualizeOctree(obj->occupancy.get(), scene->worldFrame, &colorRGBA);
-			for (visualization_msgs::Marker& m : mOctree.markers)
-			{
-				m.ns = "originalOcTree";
-			}
-
-			std::cerr << "Original octree shown!" << std::endl;
-			octreePub.publish(mOctree);
-			sleep(5);
-
-
-			mps::VoxelSegmentation voxSeg(mps::roiToGrid(obj->occupancy.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>()));
-			std::cerr << "Edges in voxel grid: " << voxSeg.num_edges() << std::endl;
-			std::cerr << "Vertices in voxel grid: " << voxSeg.num_vertices() << std::endl;
-
-			double weight;
-			mps::VoxelSegmentation::EdgeState edges;
-			std::tie(weight, edges) = mps::octreeToGridParticle(obj->occupancy.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>(), rng);
-
-			// Visualize the edges
-			auto markers = voxSeg.visualizeEdgeStateDirectly(edges, obj->occupancy->getResolution(), obj->minExtent.cast<double>(), scene->worldFrame);
-
-			octreePub.publish(markers);
-			std::cerr << "Original particle shown!" << std::endl;
-			sleep(5);
-
-
-			for (int iter = 0; iter < 10; iter++)
-			{
-				std::shared_ptr<octomap::OcTree> newOcTree = moveOcTree(obj->occupancy.get(), actionSampleCameraFrame);
-
-				colorRGBA.r = rand()/(float)RAND_MAX;
-				colorRGBA.g = rand()/(float)RAND_MAX;
-				colorRGBA.b = rand()/(float)RAND_MAX;
-				auto m = visualizeOctree(newOcTree.get(), scene->worldFrame, &colorRGBA);
-				for (visualization_msgs::Marker& marker : m.markers)
-				{
-					marker.ns = "newOcTree";
-				}
-				std::cerr << "Generated new octree " << iter << std::endl;
-
-//				double w;
-//				mps::VoxelSegmentation::EdgeState e;
-//				std::tie(w, e) = mps::octreeToGridParticle(newOcTree.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>(), rng);
-//
-//				// Visualize the edges
-//				auto m = voxSeg.visualizeEdgeStateDirectly(e, obj->occupancy->getResolution(), obj->minExtent.cast<double>(), scene->worldFrame);
-
-				octreePub.publish(m);
-				sleep(2);
-			}
-		}
-		*/
 	}
 	return true;
 }
@@ -957,7 +863,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		std::cerr << "Vertices in voxel grid: " << seg.num_vertices() << std::endl;
 
 		//// Sample particles, iter = # of samples
-		for (int iter = 0; iter < 1; ++iter)
+		for (int iter = 0; iter < 0; ++iter)
 		{
 			double weight;
 			mps::VoxelSegmentation::EdgeState edges;
@@ -1495,6 +1401,9 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	sparseTracker = std::make_unique<CudaTracker>();
 #else
 	sparseTracker = std::make_unique<Tracker>();
+	sparseTracker->track_options.featureRadius = 200.0f;
+	sparseTracker->track_options.pixelRadius = 1000.0f;
+	sparseTracker->track_options.meterRadius = 1.0f;
 #endif
 	denseTracker = std::make_unique<SiamTracker>();
 	historian = std::make_unique<SensorHistorian>();

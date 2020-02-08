@@ -4,6 +4,7 @@
 
 #include "mps_voxels/ObjectActionModel.h"
 #include <tf_conversions/tf_eigen.h>
+#include <random>
 
 namespace mps
 {
@@ -24,6 +25,7 @@ objectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& dep
 	assert(depth1.type() == CV_16UC1);
 	assert(depth2.type() == CV_16UC1);
 
+	// TODO: ICP
 	float centerRow1 = 0;
 	float centerCol1 = 0;
 	float centerRow2 = 0;
@@ -169,9 +171,11 @@ bool objectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 
 		const auto& res = jlinkageActionClient.getResult();
 		assert(res->motions.size() <= res->labels.size());
+
+		// Label starts with 1!!!
 		for (size_t i = 0; i < res->motions.size(); ++i)
 		{
-			int count = std::count(res->labels.begin(), res->labels.end(), (int) i);
+			int count = std::count(res->labels.begin(), res->labels.end(), (int) i+1);
 			if (count >= 3)
 			{
 				isClusterExist = true;
@@ -205,10 +209,6 @@ void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, Segmentati
 	std::vector<ros::Time> timeStartEnd;
 	timeStartEnd.push_back(steps[0]);
 	timeStartEnd.push_back(steps[steps.size()-1]);
-
-	sparseTracker->track_options.featureRadius = 400.0f;
-	sparseTracker->track_options.pixelRadius = 100.0f;
-	sparseTracker->track_options.meterRadius = 1.0f;
 
 	/////////////////////////////////////////////
 	//// Look up worldTcamera
@@ -254,7 +254,11 @@ void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, Segmentati
 	if (clusterRigidBodyTransformation(sparseTracker->flows3, worldTcamera))
 	{
 		std::cerr << "use sift" << std::endl;
-		actionSamples.push_back(possibleRigidTFs[0]);
+		weightedSampleSIFT(numSamples-1);
+		rigidTF rbt;
+		rbt.linear = roughMotion;
+		rbt.angular = {0, 0, 0};
+		actionSamples.push_back(rbt);
 	}
 	else
 	{
@@ -266,17 +270,44 @@ void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, Segmentati
 	}
 }
 
-std::shared_ptr<octomap::OcTree>
-moveOcTree(const octomap::OcTree* octree, const Eigen::Vector3d& action)
+void objectActionModel::weightedSampleSIFT(int n)
 {
+	std::default_random_engine generator;
+	std::vector<int> weightBar;
+
+	for (auto& rbt : possibleRigidTFs)
+	{
+		weightBar.push_back(rbt.numInliers);
+	}
+	std::discrete_distribution<int> distribution(weightBar.begin(), weightBar.end());
+	std::cout << "Probabilities: ";
+	for (double x:distribution.probabilities()) std::cout << x << " ";
+	std::cout << std::endl;
+
+	for (int i=0; i<n; ++i) {
+		int index = distribution(generator);
+		actionSamples.push_back(possibleRigidTFs[index]);
+	}
+}
+
+std::shared_ptr<octomap::OcTree>
+moveOcTree(const octomap::OcTree* octree, const rigidTF& action)
+{
+	double theta = action.angular.norm();
+	std::cerr << "rotation theta = " << theta << std::endl;
+	Eigen::Vector3d e;
+	if (theta == 0) { e = {0, 0, 0}; }
+	else { e = action.angular / theta; }
+
 	std::shared_ptr<octomap::OcTree> resOcTree = std::make_shared<octomap::OcTree>(octree->getResolution());
 	for (auto node = octree->begin_leafs(); node != octree->end_leafs(); node++){
 		auto originalCoord = node.getCoordinate();
-//		std::cerr << "Node center: " << originalCoord;
-//		std::cerr << " value: " << node->getValue() << "\n";
-
-		resOcTree->updateNode(originalCoord.x()+action.x(), originalCoord.y()+action.y(), originalCoord.z()+action.z(), true);
-		resOcTree->setNodeValue(originalCoord.x()+action.x(), originalCoord.y()+action.y(), originalCoord.z()+action.z(), node->getValue());
+		Eigen::Vector3d oCoord(originalCoord.x(), originalCoord.y(), originalCoord.z());
+		Eigen::Vector3d newCoord;
+		newCoord = cos(theta) *  oCoord + sin(theta) * e.cross(oCoord) + (1 - cos(theta)) * e.dot(oCoord) * e;
+		newCoord += action.linear;
+		resOcTree->updateNode(newCoord.x(), newCoord.y(), newCoord.z(), true);
+		resOcTree->setNodeValue(newCoord.x(), newCoord.y(), newCoord.z(), node->getValue());
 	}
 	resOcTree->setOccupancyThres(octree->getOccupancyThres());
 	return resOcTree;

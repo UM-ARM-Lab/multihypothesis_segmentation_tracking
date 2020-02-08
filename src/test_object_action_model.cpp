@@ -112,7 +112,8 @@ int main(int argc, char **argv)
 	/////////////////////////////////////////////
 	//// Load sensor history and segInfo
 	/////////////////////////////////////////////
-	std::string worldname = "experiment_world";
+	std::string worldname = "singleBeer_02_07";
+//	std::string worldname = "experiment_world_02_07";
 	SensorHistoryBuffer buffer_out;
 	{
 		DataLog loader("/home/kunhuang/mps_log/explorer_buffer_" + worldname + ".bag", {}, rosbag::bagmode::Read);
@@ -124,7 +125,7 @@ int main(int argc, char **argv)
 
 	SegmentationInfo seg_out;
 	{
-		DataLog loader("/home/kunhuang/mps_log/test_segInfo_" + worldname + ".bag", {}, rosbag::bagmode::Read);
+		DataLog loader("/home/kunhuang/mps_log/explorer_segInfo_" + worldname + ".bag", {}, rosbag::bagmode::Read);
 		loader.activeChannels.insert("segInfo");
 		loader.load<SegmentationInfo>("segInfo", seg_out);
 		std::cerr << "Successfully loaded." << std::endl;
@@ -132,8 +133,11 @@ int main(int argc, char **argv)
 	std::cerr << "roi in loaded segInfo: " << seg_out.roi.x << " " << seg_out.roi.y << " " << seg_out.roi.height << " " << seg_out.roi.width << std::endl;
 
 //	test_track(buffer_out, seg_out);
-	std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>();
+	std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>(10);
 	std::unique_ptr<Tracker> sparseTracker = std::make_unique<Tracker>();
+	sparseTracker->track_options.featureRadius = 200.0f;
+	sparseTracker->track_options.pixelRadius = 1000.0f;
+	sparseTracker->track_options.meterRadius = 1.0f;
 	std::unique_ptr<DenseTracker> denseTracker = std::make_unique<SiamTracker>();
 
 	cv::Mat temp_seg = seg_out.objectness_segmentation->image;
@@ -142,7 +146,12 @@ int main(int argc, char **argv)
 	for (auto& pair : labelToBBoxLookup)
 	{
 		oam->sampleAction(buffer_out, seg_out, sparseTracker, denseTracker, pair.first, pair.second);
-		std::cerr << "possible rbts: " << oam->possibleRigidTFs.size() << std::endl;
+		std::cerr << "action samples: " << std::endl;
+		for (auto& as : oam->actionSamples)
+		{
+			std::cerr << "Linear: " << as.linear.x() << " " << as.linear.y() << " " << as.linear.z();
+			std::cerr << "\t Angular: " << as.angular.x() << " " << as.angular.y() << " " << as.angular.z() << std::endl;
+		}
 	}
 
 	return 0;

@@ -67,7 +67,7 @@ cv::Mat& Tracker::getMask(const SensorHistoryBuffer& buffer)
 	return mask;
 }
 
-void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, std::string directory)
+void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const std::string directory)
 {
 	if (steps.size() > masks.size())
 	{

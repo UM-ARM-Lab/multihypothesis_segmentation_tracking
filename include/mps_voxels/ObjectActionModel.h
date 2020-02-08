@@ -53,6 +53,8 @@ public:
 	bool clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const moveit::Pose& worldTcamera);
 
 	void sampleAction(SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox);
+
+	void weightedSampleSIFT(int n = 1);
 };
 
 
@@ -60,7 +62,7 @@ mps::VoxelSegmentation
 moveParticle(const mps::VoxelSegmentation& particle, const Eigen::Vector3d& action);
 
 std::shared_ptr<octomap::OcTree>
-moveOcTree(const octomap::OcTree* octree, const Eigen::Vector3d& action);
+moveOcTree(const octomap::OcTree* octree, const rigidTF& action);
 }
 
 
