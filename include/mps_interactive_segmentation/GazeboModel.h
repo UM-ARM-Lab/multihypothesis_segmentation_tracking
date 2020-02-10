@@ -16,8 +16,8 @@ class GazeboModel
 public:
 	std::string name;
 
-	std::map<std::string, shapes::ShapePtr> shapes;
-	std::map<std::string, bodies::BodyPtr> bodies;
+	std::map<std::string, shapes::ShapePtr> shapes; ///< Link Geometry
+	std::map<std::string, bodies::BodyPtr> bodies; ///< Geometry scale, padding, and pose
 	bodies::BoundingSphere bSphere;
 
 	void computeBoundingSphere();

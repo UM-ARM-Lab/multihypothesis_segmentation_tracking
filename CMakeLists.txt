@@ -166,6 +166,7 @@ include_directories(SYSTEM
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/paths.cpp
+  src/${PROJECT_NAME}/loading.cpp
   src/${PROJECT_NAME}/GazeboModel.cpp
   src/${PROJECT_NAME}/GazeboMocap.cpp
 )
