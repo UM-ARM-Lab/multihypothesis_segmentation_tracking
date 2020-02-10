@@ -1,6 +1,7 @@
 <launch>
     <arg name="gui" default="false"/>
-   	<arg name="world" default="victor_table"/>
+    <arg name="world" default="victor_table"/>
+    <arg name="ignore" default="[table, kinect2_victor_head, ground_plane]"/>
 
     <!-- Startup simulation world -->
     <include file="$(find mps_interactive_segmentation)/test/system/test_domain.launch">
@@ -9,7 +10,8 @@
     </include>
 
     <node pkg="mps_interactive_segmentation" type="gazebo_segmentation_gt" name="gazebo_segmentation_gt">
-    	<remap from="gazebo_segmentation_gt/gazebo_segmentation" to="/segment_rgbd"/>
+        <remap from="gazebo_segmentation_gt/gazebo_segmentation" to="/segment_rgbd"/>
+        <rosparam param="ignore" subst_value="True">$(arg ignore)</rosparam>
     </node>
 
     <param name="/use_sim_time" value="true"/>

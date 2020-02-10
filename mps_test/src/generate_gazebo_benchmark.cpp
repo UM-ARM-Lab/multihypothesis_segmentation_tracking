@@ -89,18 +89,21 @@ segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& depth, const se
 
 	if (!segmentClient.isServerConnected())
 	{
+		ROS_ERROR("Segmentation server not connected.");
 		return std::shared_ptr<SegmentationInfo>();
 	}
 
 	auto success = segmentClient.sendGoalAndWait(request);
 	if (!success.isDone())
 	{
+		ROS_ERROR("Segmentation server did not report finished.");
 		return std::shared_ptr<SegmentationInfo>();
 	}
 
 	response = segmentClient.getResult();
 	if (response->segmentation.data.empty())
 	{
+		ROS_ERROR("Segmentation results empty.");
 		return std::shared_ptr<SegmentationInfo>();
 	}
 
