@@ -36,7 +36,7 @@
 #include <iterator>
 #include <mutex>
 
-#define DEBUG_MESH_LOADING true
+#define DEBUG_MESH_LOADING false
 
 #define CV_VERSION_AT_LEAST(x,y,z) (CV_VERSION_MAJOR>x || (CV_VERSION_MAJOR>=x && \
                                    (CV_VERSION_MINOR>y || (CV_VERSION_MINOR>=y && \
@@ -362,8 +362,10 @@ int main(int argc, char** argv)
     ros::init(argc, argv, "gazebo_segmentation_gt");
     ros::NodeHandle pnh("~");
 
+#if DEBUG_MESH_LOADING
 	ros::Publisher debugPub = pnh.advertise<visualization_msgs::MarkerArray>("debug_shapes", 10, true);
 	visualization_msgs::MarkerArray debugShapes;
+#endif
 
 //	cv::namedWindow("segmentation", /*cv::WINDOW_AUTOSIZE | cv::WINDOW_KEEPRATIO | */cv::WINDOW_GUI_EXPANDED);
 
@@ -431,10 +433,6 @@ int main(int argc, char** argv)
         r.sleep();
         ros::spinOnce();
 
-#if DEBUG_MESH_LOADING
-        debugPub.publish(debugShapes);
-#endif
-
         mocap.getTransforms();
 //        mocap.sendTransforms(false);
 
@@ -461,6 +459,10 @@ int main(int argc, char** argv)
 		    }
 
 	    }
+
+#if DEBUG_MESH_LOADING
+	    debugPub.publish(debugShapes);
+#endif
     }
 
     return 0;
