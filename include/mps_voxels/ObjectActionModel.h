@@ -34,7 +34,7 @@ class objectActionModel
 public:
 	explicit objectActionModel(int n=1);
 
-	std::vector<rigidTF> possibleRigidTFs;
+	std::vector<rigidTF> possibleRigidTFs; // clustered by Jlinkage
 
 	int numSamples;
 	std::vector<rigidTF> actionSamples;
@@ -47,6 +47,8 @@ public:
 	sampleActionFromMask(const std::vector<std::vector<bool>>& mask1, const cv::Mat& depth1,
 	                     const std::vector<std::vector<bool>>& mask2, const cv::Mat& depth2,
 	                     const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera);
+
+	rigidTF icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera);
 
 	actionlib::SimpleActionClient<mps_msgs::ClusterRigidMotionsAction> jlinkageActionClient;
 

@@ -3,8 +3,15 @@
 //
 
 #include "mps_voxels/ObjectActionModel.h"
+#include "mps_voxels/segmentation_utils.h"
+#include "mps_voxels/pointcloud_utils.h"
+
 #include <tf_conversions/tf_eigen.h>
 #include <random>
+
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
+#include <pcl/registration/icp.h>
 
 namespace mps
 {
@@ -132,8 +139,53 @@ objectActionModel::sampleActionFromMask(const std::vector<std::vector<bool>>& ma
 	return objectAction;
 }
 
+rigidTF objectActionModel::icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera)
+{
+	//// Construct PointCloud Segments
+	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer.rgb.at(steps[0])->image, buffer.depth.at(steps[0])->image,
+	                                                                buffer.cameraModel, masks.at(steps[0]));
+	assert(!initCloudSegment->empty());
+	pcl::PointCloud<PointT>::Ptr lastCloudSegment = make_PC_segment(buffer.rgb.at(steps[ steps.size()-1 ])->image,
+	                                                                buffer.depth.at(steps[ steps.size()-1 ])->image,
+	                                                                buffer.cameraModel,
+	                                                                masks.at(steps[ steps.size()-1 ]));
+	assert(!lastCloudSegment->empty());
+
+	//// ICP
+	pcl::IterativeClosestPoint<PointT, PointT> icp;
+	icp.setInputSource(initCloudSegment);
+	icp.setInputTarget(lastCloudSegment);
+	pcl::PointCloud<PointT> Final;
+	icp.align(Final);
+	std::cout << "Converged:" << icp.hasConverged() << " score: " << icp.getFitnessScore() << std::endl;
+	Eigen::Matrix<float, 4, 4> Mcamera = icp.getFinalTransformation();
+	Eigen::Matrix<double, 4, 4> Mworld = worldTcamera.matrix() * Mcamera.cast<double>() * worldTcamera.inverse().matrix();
+//	std::cout << Mworld << std::endl;
+
+	rigidTF twist;
+	twist.linear = {Mworld(0, 3), Mworld(1, 3), Mworld(2, 3)};
+	double theta = acos((Mworld(0, 0) + Mworld(1, 1) + Mworld(2, 2) - 1) / 2.0);
+	if (theta == 0) twist.angular = {0, 0, 0};
+	else
+	{
+		Eigen::Vector3d temp = {Mworld(2, 1)-Mworld(1, 2), Mworld(0, 2)-Mworld(2, 0), Mworld(1, 0)-Mworld(0,1)};
+		Eigen::Vector3d omega = 1/(2 * sin(theta)) * temp;
+		twist.angular = theta * omega;
+	}
+	std::cerr << "ICP TF: ";
+	std::cerr << "\t Linear: " << twist.linear.x() << " " << twist.linear.y() << " " << twist.linear.z();
+	std::cerr << "\t Angular: " << twist.angular.x() << " " << twist.angular.y() << " " << twist.angular.z() << std::endl;
+	return twist;
+}
+
 bool objectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const moveit::Pose& worldTcamera)
 {
+	ROS_INFO("Waiting for Jlinkage server to start.");
+	// wait for the action server to start
+	jlinkageActionClient.waitForServer(); //will wait for infinite time
+
+	ROS_INFO("SiamMask server started, sending goal.");
+
 	bool isClusterExist = false;
 	possibleRigidTFs.clear();
 	for (auto& t2f : flows3camera) // go through all time steps
@@ -253,20 +305,22 @@ void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, Segmentati
 	/////////////////////////////////////////////
 	if (clusterRigidBodyTransformation(sparseTracker->flows3, worldTcamera))
 	{
-		std::cerr << "use sift" << std::endl;
-		weightedSampleSIFT(numSamples-1);
-		rigidTF rbt;
-		rbt.linear = roughMotion;
-		rbt.angular = {0, 0, 0};
-		actionSamples.push_back(rbt);
+		std::cerr << "USE sift" << std::endl;
+		weightedSampleSIFT((int)(numSamples * 0.6));
+		for (int i = 0; i < numSamples - (int)(numSamples * 0.6); ++i)
+		{
+			rigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
+			actionSamples.push_back(rbt);
+		}
 	}
 	else
 	{
-		std::cerr << "use SiamMask" << std::endl;
-		rigidTF rbt;
-		rbt.linear = roughMotion;
-		rbt.angular = {0, 0, 0};
-		actionSamples.push_back(rbt);
+		std::cerr << "USE SiamMask Manifold" << std::endl;
+		for (int i = 0; i < numSamples; ++i)
+		{
+			rigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
+			actionSamples.push_back(rbt);
+		}
 	}
 }
 

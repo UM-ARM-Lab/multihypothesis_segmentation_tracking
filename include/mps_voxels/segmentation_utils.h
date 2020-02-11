@@ -86,4 +86,6 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 
 std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels,const cv::Rect& roi);
 
+pcl::PointCloud<PointT>::Ptr make_PC_segment(const cv::Mat& rgb, const cv::Mat& depth,
+                                             const image_geometry::PinholeCameraModel& cameraModel, const cv::Mat& mask);
 #endif // MPS_VOXELS_SEGMENTATION_UTILS_H

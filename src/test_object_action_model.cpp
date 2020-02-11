@@ -4,15 +4,12 @@
 
 #include "mps_voxels/VoxelSegmentation.h"
 #include "mps_voxels/logging/DataLog.h"
-#include "mps_voxels/logging/log_cv_roi.h"
 #include "mps_voxels/logging/log_sensor_history.h"
 #include "mps_voxels/logging/log_segmentation_info.h"
 #include "mps_voxels/SensorHistorian.h"
 #include "mps_voxels/Tracker.h"
 #include "mps_voxels/SiamTracker.h"
 #include "mps_voxels/ObjectActionModel.h"
-
-#include <mps_msgs/ClusterRigidMotionsAction.h>
 
 #include <octomap/octomap.h>
 #include <unordered_set>
@@ -21,11 +18,10 @@
 
 #include <ros/ros.h>
 #include <actionlib/client/terminal_state.h>
-#include <actionlib/client/simple_action_client.h>
 
 using namespace mps;
 
-void test_track(SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out)
+void test_action_model(SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out)
 {
 	/////////////////////////////////////////////
 	//// Construct tracking time steps
@@ -132,7 +128,7 @@ int main(int argc, char **argv)
 	}
 	std::cerr << "roi in loaded segInfo: " << seg_out.roi.x << " " << seg_out.roi.y << " " << seg_out.roi.height << " " << seg_out.roi.width << std::endl;
 
-//	test_track(buffer_out, seg_out);
+//	test_action_model(buffer_out, seg_out);
 	std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>(10);
 	std::unique_ptr<Tracker> sparseTracker = std::make_unique<Tracker>();
 	sparseTracker->track_options.featureRadius = 200.0f;

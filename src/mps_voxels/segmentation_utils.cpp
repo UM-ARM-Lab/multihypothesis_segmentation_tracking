@@ -6,6 +6,7 @@
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
 #include "mps_voxels/assert.h"
+#include "mps_voxels/SensorHistorian.h"
 
 RGBDSegmenter::RGBDSegmenter(ros::NodeHandle& nh)
 	: segmentClient(nh, "/segment_rgbd", true)
@@ -246,4 +247,30 @@ std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels,const cv::R
 		labelToBBoxLookup.insert({label, bbox});
 	}
 	return labelToBBoxLookup;
+}
+
+pcl::PointCloud<PointT>::Ptr make_PC_segment(const cv::Mat& rgb, const cv::Mat& depth,
+                                             const image_geometry::PinholeCameraModel& cameraModel, const cv::Mat& mask)
+{
+	assert(rgb.rows == (int)cameraModel.cameraInfo().height);
+	assert(rgb.cols == (int)cameraModel.cameraInfo().width);
+
+	pcl::PointCloud<PointT>::Ptr segment_cloud(new pcl::PointCloud<PointT>());
+
+	for (int v = 0; v < (int)cameraModel.cameraInfo().height; ++v)
+	{
+		for (int u = 0; u < (int)cameraModel.cameraInfo().width; ++u)
+		{
+			if (mask.at<uint8_t>(v, u) == 0) continue;
+
+			auto color = rgb.at<cv::Vec3b>(v, u);
+			auto dVal = depth.at<uint16_t>(v, u);
+
+			float depthVal = mps::SensorHistorian::DepthTraits::toMeters(dVal);
+			PointT pt(color[2], color[1], color[0]);
+			pt.getVector3fMap() = toPoint3D<Eigen::Vector3f>(u, v, depthVal, cameraModel);
+			segment_cloud->push_back(pt);
+		}
+	}
+	return segment_cloud;
 }
