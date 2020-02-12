@@ -52,10 +52,9 @@ JaccardMatch::JaccardMatch(const cv::Mat& labels1, const cv::Mat& labels2)
 	count = 0;
 	for (const auto j : boxes2) { lblIndex2.insert({j.first, count++}); }
 
-	double smoothing = 1.0;
-
+	intersection = Eigen::MatrixXi::Zero(boxes1.size(), boxes2.size());
 	size_t dSize = std::max(boxes1.size(), boxes2.size());
-	D = Eigen::MatrixXd::Zero(dSize, dSize);
+	IOU = Eigen::MatrixXd::Zero(dSize, dSize);
 
 	for (const auto i : boxes1)
 	{
@@ -64,6 +63,7 @@ JaccardMatch::JaccardMatch(const cv::Mat& labels1, const cv::Mat& labels2)
 		iSizes.insert({i.first, count1});
 		for (const auto j : boxes2)
 		{
+			int intersectionCount = 0;
 			double iou = 0;
 			// Prune actual comparisons by starting with bounding boxes
 			if (intersect(i.second, j.second))
@@ -84,18 +84,18 @@ JaccardMatch::JaccardMatch(const cv::Mat& labels1, const cv::Mat& labels2)
 
 				cv::Mat intersectionMask = (mask1 & mask2);
 
-				int intersectionCount = cv::countNonZero(intersectionMask);
+				intersectionCount = cv::countNonZero(intersectionMask);
 				int unionCount = count1 + count2 - intersectionCount;
 //			    cv::Mat unionMask = (mask1 | mask2); // Optimized to be (|A|+|B|-|AB|)
-				iou = (intersectionCount + smoothing) /
-				      static_cast<double>(unionCount + smoothing);
+				iou = (intersectionCount) / static_cast<double>(unionCount);
 			}
-			D(lblIndex1.left.at(i.first), lblIndex2.left.at(j.first)) = -iou;
+			IOU(lblIndex1.left.at(i.first), lblIndex2.left.at(j.first)) = iou;
+			intersection(lblIndex1.left.at(i.first), lblIndex2.left.at(j.first)) = intersectionCount;
 		}
 	}
 
 	// Compute the optimal assignment of patches
-	Hungarian H(D);
+	Hungarian H(-IOU);
 	const auto& A = H.getAssignment();
 	boost::bimap<LabelT, LabelT> matches;
 	for (size_t i = 0; i < A.size(); ++i)
@@ -111,13 +111,13 @@ JaccardMatch::JaccardMatch(const cv::Mat& labels1, const cv::Mat& labels2)
 double JaccardMatch::symmetricCover() const
 {
 	double score = 0.0;
-	Eigen::VectorXd iMax = -(D.rowwise().minCoeff()); // D is -iou
+	Eigen::VectorXd iMax = IOU.rowwise().maxCoeff();
 	for (const auto& pair : lblIndex1.left)
 	{
 		// pair is (label, index)
 		score += iSizes.at(pair.first) * iMax[pair.second];
 	}
-	Eigen::RowVectorXd jMax = -(D.colwise().minCoeff());
+	Eigen::RowVectorXd jMax = IOU.colwise().maxCoeff();
 	for (const auto& pair : lblIndex2.left)
 	{
 		// pair is (label, index)

@@ -68,8 +68,6 @@ SensorHistorian::~SensorHistorian()
 
 void SensorHistorian::startCapture()
 {
-	reset();
-
 	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>(options.joint_topic, 2, boost::bind(&SensorHistorian::jointCb, this, _1), ros::VoidPtr(), &callback_queue);
 	joint_sub = std::make_unique<ros::Subscriber>(options.nh.subscribe(joint_sub_options));
 

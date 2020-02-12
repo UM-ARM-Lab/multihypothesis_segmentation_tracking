@@ -29,156 +29,36 @@
 
 #include "mps_voxels/MCMCTreeCut.h"
 #include "mps_voxels/UniformRandomSelector.hpp"
-
-#include <algorithm>
-#include <random>
+#include "mps_voxels/MCMCTreeCut.hpp"
+#include "mps_voxels/ValueTree.hpp"
 
 namespace mps
 {
 
-TreeCut apply(const ValueTree& T, const TreeCut& original, const MoveCut& move)
+namespace tree
 {
-	TreeCut newCut = original;
-	newCut.erase(move.index);
 
-	if (move.up)
-	{
-		newCut.insert(T.parent[move.index]);
+template class MCMCTreeCut<DenseValueTree>;
+template class MCMCTreeCut<SparseValueTree>;
 
-		// Prune any orphaned cuts
-		TreeCut orphans;
-		for (const int n : newCut)
-		{
-			// Check if this node has any ancestors in the cut
-			auto A = ancestors(T, n);
-			std::vector<int> intersection;
-			std::set_intersection(newCut.begin(), newCut.end(),
-			                      A.begin(), A.end(),
-			                      std::back_inserter(intersection));
-			if (!intersection.empty())
-			{
-				orphans.insert(n);
-			}
-		}
 
-		for (const int n : orphans)
-		{
-			newCut.erase(n);
-		}
-	}
-	else
-	{
-		const auto& children = T.children[move.index];
-		for (const int c : children)
-		{
-			newCut.insert(c);
-		}
-	}
-	return newCut;
-}
-
-std::vector<MoveCut> enumerateMoves(const ValueTree& T, const TreeCut& original)
+DenseValueTree test_tree_1()
 {
-	std::vector<MoveCut> moves;
-	for (const int n : original)
-	{
-		if (T.parent[n] != n)
-		{
-			moves.push_back({n, true});
-		}
-		if (!T.children[n].empty())
-		{
-			moves.push_back({n, false});
-		}
-	}
-	return moves;
-}
-
-double returnProbability(const ValueTree& T, const TreeCut& original, const MoveCut& proposal)
-{
-	TreeCut newCut = apply(T, original, proposal);
-
-	int returns = 0;
-	std::vector<MoveCut> successors = enumerateMoves(T, newCut);
-	for (const auto& m : successors)
-	{
-		auto C = apply(T, newCut, m);
-		if (C == original)
-		{
-			++returns;
-		}
-	}
-
-	return static_cast<double>(returns)/static_cast<double>(successors.size());
-}
-
-double logProbCut(const double optVal, const double cutVal, const double sigmaSquared)
-{
-	double delta = optVal - cutVal;
-
-	return -(delta*delta)/sigmaSquared;
-}
-
-std::vector<std::pair<double, TreeCut>> sampleCuts(const ValueTree& T)
-{
-	std::vector<std::pair<double, TreeCut>> cuts;
-	TreeCut cStar;
-	double cStarVal;
-	std::tie(cStarVal, cStar) = optimalCut(T);
-
-	cuts.push_back({0.0, cStar});
-
-	uniform_random_selector<> randomSelector;
-	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
-	std::random_device rd;
-	std::default_random_engine re(rd());
-
-	const double sigmaSquared = 10.0;
-	const int nTrials = 100;
-	TreeCut cut_i = cStar;
-	for (int i = 0; i < nTrials; ++i)
-	{
-		auto moves = enumerateMoves(T, cut_i);
-		auto move = randomSelector(moves);
-
-		TreeCut cut_prime = apply(T, cut_i, move);
-		double value_prime = value(T, cut_prime);
-
-		double logprob_i = logProbCut(cStarVal, value(T, cut_i), sigmaSquared);
-		double logprob_prime = logProbCut(cStarVal, value_prime, sigmaSquared);
-
-		double proposal_prob = 1.0/static_cast<double>(moves.size());
-		double return_prob = returnProbability(T, cut_i, move);
-
-		double acceptance = std::exp(logprob_prime + std::log(return_prob) - (logprob_i + std::log(proposal_prob)));
-
-		if (uni(rd) < acceptance)
-		{
-			cuts.push_back({logprob_prime, cut_prime});
-			cut_i = cut_prime;
-		}
-	}
-
-	return cuts;
-}
-
-ValueTree test_tree_1()
-{
-	ValueTree T;
-	T.parent = {0, 0, 0, 1, 1, 2, 2, 6, 6, 6 };
-	T.children = {{1, 2}, {3, 4}, {5, 6}, {}, {}, {}, {7, 8, 9}, {}, {}, {}};
-	T.value = {1.0, 5.0, 3.0, 2.0, 2.0, 2.0, 6.0, 1.0, 2.0, 1.0};
+	DenseValueTree T;
+	T.parent_ = {0, 0, 0, 1, 1, 2, 2, 6, 6, 6 };
+	T.children_ = {{1, 2}, {3, 4}, {5, 6}, {}, {}, {}, {7, 8, 9}, {}, {}, {}};
+	T.value_ = {1.0, 5.0, 3.0, 2.0, 2.0, 2.0, 6.0, 1.0, 2.0, 1.0};
 
 	return T;
 }
 
 void test_optimal_cut()
 {
-	ValueTree T = test_tree_1();
+	DenseValueTree T = test_tree_1();
 
 	assert(root(T) == 0);
-	assert(T.parent.size() == T.children.size());
-	assert(T.parent.size() == T.value.size());
+	assert(T.parent_.size() == T.children_.size());
+	assert(T.parent_.size() == T.value_.size());
 
 	auto opt = optimalCut(T);
 	assert(opt.first == 13);
@@ -195,56 +75,6 @@ void test_optimal_cut()
 	assert(res == opt.second);
 }
 
-std::pair<double, TreeCut> MCMCTreeCut::sample(RNG& rng, const Belief<TreeCut>::SAMPLE_TYPE type)
-{
-	if (Belief<TreeCut>::SAMPLE_TYPE::RANDOM == type)
-	{
-		TreeCut cut_i = cStar;
-		double logprob_i = 0.0;
-		for (int i = 0; i < nTrials; ++i)
-		{
-			auto moves = enumerateMoves(T, cut_i);
-			auto move = randomSelector(moves);
-
-			TreeCut cut_prime = apply(T, cut_i, move);
-			double value_prime = value(T, cut_prime);
-
-			assert(value_prime <= vStar);
-
-//			double logprob_i = logProbCut(vStar, value(T, cut_i), sigmaSquared);
-			double logprob_prime = logProbCut(vStar, value_prime, sigmaSquared);
-
-//			double proposal_prob = 1.0/static_cast<double>(moves.size());
-//			double return_prob = returnProbability(T, cut_i, move);
-			double proposal_prob = 1.0;///static_cast<double>(moves.size());
-			double return_prob = 1.0;//returnProbability(T, cut_i, move);
-
-			double acceptance = std::exp(logprob_prime + std::log(return_prob) - (logprob_i + std::log(proposal_prob)));
-//			double acceptance = 1.0;
-
-			if (uni(rng) < acceptance)
-			{
-//				cuts.push_back({logprob_prime, cut_prime});
-				cut_i = cut_prime;
-				logprob_i = logprob_prime;
-			}
-		}
-		return {logprob_i, cut_i};
-	}
-	else
-	{
-		auto cutStar = optimalCut(T);
-		return {0.0, cutStar.second};
-	}
-}
-
-MCMCTreeCut::MCMCTreeCut(ValueTree t, const double sigSquared)
-	: Belief<TreeCut>(),
-	  T(std::move(t)),
-	  uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max())),
-	  sigmaSquared(sigSquared)
-{
-	std::tie(vStar, cStar) = optimalCut(T);
 }
 
 }

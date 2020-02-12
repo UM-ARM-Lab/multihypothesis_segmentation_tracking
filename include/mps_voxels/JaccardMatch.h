@@ -51,7 +51,8 @@ public:
 
 	// Intermediate calculations
 	LabelBounds boxes1, boxes2;
-	Eigen::MatrixXd D;
+	Eigen::MatrixXi intersection;
+	Eigen::MatrixXd IOU;
 
 	boost::bimap<LabelT, int> lblIndex1;
 	boost::bimap<LabelT, int> lblIndex2;

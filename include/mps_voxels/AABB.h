@@ -57,6 +57,12 @@ struct AABB
 	{
 		return xMin <= x && x <= xMax && yMin <= y && y <= yMax;
 	}
+
+	explicit
+	operator cv::Rect() const
+	{
+		return {xMin, yMin, xMax-xMin, yMax-yMin};
+	}
 };
 
 
@@ -67,6 +73,15 @@ bool intersect(const AABB& a, const AABB& b)
 	         || a.xMax < b.xMin
 	         || a.yMax < b.yMin
 	         || a.yMin > b.yMax);
+}
+
+inline
+AABB merge(const AABB& a, const AABB& b)
+{
+	AABB c = a;
+	c.grow(b.xMin, b.yMin);
+	c.grow(b.xMax, b.yMax);
+	return c;
 }
 
 std::map<uint16_t, AABB> getBBoxes(const cv::Mat& labels);
