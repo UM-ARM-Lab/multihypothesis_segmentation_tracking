@@ -113,4 +113,7 @@ optimalCut(const ValueTree& T);
 
 }
 
+// TODO: Why is this necessary? Removing creates a linker error in RELEASE
+#include "mps_voxels/ValueTree.hpp"
+
 #endif // SRC_VALUETREE_H

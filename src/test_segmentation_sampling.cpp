@@ -91,11 +91,13 @@ namespace tree
 template <typename ValueTree>
 SparseValueTree extractSubtree(const ValueTree& T, const std::set<NodeID>& leaves)
 {
+#ifndef NDEBUG
 	// Verify leaves-only input
 	for (const NodeID& n : leaves)
 	{
 		assert(T.children_.at(n).empty());
 	}
+#endif
 
 	std::deque<NodeID> q; q.insert(q.end(), leaves.begin(), leaves.end());
 
@@ -127,6 +129,7 @@ SparseValueTree extractSubtree(const ValueTree& T, const std::set<NodeID>& leave
 		}
 	}
 
+#ifndef NDEBUG
 	// Validation
 	for (const auto& pair : subtree.value_)
 	{
@@ -139,6 +142,7 @@ SparseValueTree extractSubtree(const ValueTree& T, const std::set<NodeID>& leave
 			assert(subtree.value_.find(c) != subtree.value_.end());
 		}
 	}
+#endif
 
 	return subtree;
 }
@@ -413,8 +417,6 @@ int main(int argc, char* argv[])
 	SceneCut sc;
 	tree::DenseValueTree T = sc.process(um, si->labels);
 
-	// TODO: Cut the ValueTree into a value forest based on free space
-
 	auto cutStar = optimalCut(T);
 	double vStar = value(T, cutStar.second);
 	const double sigmaSquared = vStar*vStar;
@@ -515,6 +517,7 @@ int main(int argc, char* argv[])
 	}
 
 	std::map<LabelT, tree::SparseValueTree> subtrees;
+	std::map<LabelT, cv::Rect> subregions;
 	for (const auto& pair1 : J.lblIndex1.left)
 	{
 		LabelT label = pair1.first;
@@ -523,7 +526,7 @@ int main(int argc, char* argv[])
 
 		AABB bounds;
 		std::set<tree::NodeID> leaves;
-		cv::Mat M = cv::Mat::zeros(si->labels.size(), si->labels.type());
+//		cv::Mat M = cv::Mat::zeros(si->labels.size(), si->labels.type());
 		for (const auto& pair2 : J.lblIndex2.left)
 		{
 			int j = pair2.second;
@@ -532,68 +535,87 @@ int main(int argc, char* argv[])
 			{
 				bounds = merge(bounds, J.boxes2.at(pair2.first));
 				leaves.insert(um.label_to_index.at(pair2.first));
-				auto m = (si->labels == pair2.first);
-				M.setTo(label, m);
+//				auto m = (si->labels == pair2.first);
+//				M.setTo(label, m);
 			}
 		}
 
 		auto subtree = tree::extractSubtree(T, leaves);
-		std::cerr << "Tree size: " << size(T) << " -> " << size(subtree) << std::endl;
-		tree::compressTree(subtree);
-		std::cerr << " -> " << size(subtree) << std::endl;
-
-		tree::MCMCTreeCut<tree::SparseValueTree> mcLocal(subtree, sigmaSquared);
-		auto cutStarLocal = mcLocal.sample(re, Belief<tree::TreeCut>::SAMPLE_TYPE::MAXIMUM);
-
-		cv::Mat seg = relabelCut(um, subtree, si->labels, cutStarLocal.second);
-
-		cv::Rect crop(bounds);
-		cv::Mat subregion(si->rgb, crop);
-		cv::imshow("Crop", subregion);
-		cv::imshow("Mask", colorByLabel(M));
-		cv::imshow("Segmentation", colorByLabel(seg));
-		cv::waitKey();
+//		std::cerr << "Tree size: " << size(T) << " -> " << size(subtree) << std::endl;
+//		tree::compressTree(subtree);
+//		std::cerr << " -> " << size(subtree) << std::endl;
+//
+//		tree::MCMCTreeCut<tree::SparseValueTree> mcLocal(subtree, sigmaSquared);
+//		auto cutStarLocal = mcLocal.sample(re, Belief<tree::TreeCut>::SAMPLE_TYPE::MAXIMUM);
+//
+//		cv::Mat seg = relabelCut(um, subtree, si->labels, cutStarLocal.second);
+//
+//		cv::Rect crop(bounds);
+//		cv::Mat subregion(si->rgb, crop);
+//		cv::imshow("Crop", subregion);
+//		cv::imshow("Mask", colorByLabel(M));
+//		cv::imshow("Segmentation", colorByLabel(seg));
+//		cv::waitKey();
+		subtrees.insert({label, subtree});
+		subregions.emplace(label, cv::Rect(bounds));
 	}
+//	subtrees.insert({0, T});
 
-	cv::waitKey(0);
+//	cv::waitKey(0);
 
 //	mcmc.sigmaSquared = 1e10*vStar*vStar; // With proposal ratio
 //	mcmc.nTrials = 100;
-	mcmc.sigmaSquared = 0.2*vStar*vStar; // The larger this number, the more permissive exploration is allowed
-	mcmc.nTrials = 25;
+	mcmc.sigmaSquared = 0.5*vStar*vStar; // The larger this number, the more permissive exploration is allowed
+	mcmc.nTrials = 50;
 
-	std::ofstream csv;
-	csv.open(dir + "data.csv", std::ios::out);
-
-	csv << "Trial\tlogp(cut)\tJaccard\tCover" << std::endl;
-
-	for (int i = 0; i < 100; ++i)
+	const int nSamples = 100;
+	for (const auto& pair : subtrees)
 	{
-		std::pair<double, tree::TreeCut> cut;
-		if (0 == i)
+		LabelT subProblem = pair.first;
+		const auto& subTree = pair.second;
+
+		cv::Mat subLabels(si->labels, subregions.at(subProblem));
+		cv::Mat subLabelGT(gt_labels, subregions.at(subProblem));
+
+		tree::MCMCTreeCut<tree::SparseValueTree> mcLocal(subTree, sigmaSquared);
+		cutStar = mcLocal.sample(re, Belief<tree::TreeCut>::SAMPLE_TYPE::MAXIMUM);
+
+		std::string subDir = dir + "/" + std::to_string(subProblem) + "/";
+		fs::create_directory(subDir);
+		std::ofstream csv;
+		csv.open(subDir + "data.csv", std::ios::out);
+
+		csv << "Trial\tlogp(cut)\tJaccard\tCover" << std::endl;
+
+		for (int i = 0; i < nSamples; ++i)
 		{
-			cut = cutStar;
-		}
-		else
-		{
-			cut = mcmc.sample(re, Belief<tree::TreeCut>::SAMPLE_TYPE::RANDOM);
-		}
-		cv::Mat seg = relabelCut(um, T, si->labels, cut.second);
-		seg.setTo(0, maskInv);
-		JaccardMatch jaccard(gt_labels, seg);
-		Colormap cmap = colormap;
-		extendColormap(cmap, seg, re);
-		cv::Mat disp = colorByLabel(relabel(seg, jaccard.match.second.right), cmap);
-		cv::imshow("Segmentation", disp);
-		cv::imwrite(dir + "c" + std::to_string(i) + ".png", disp);
-		csv << i << "\t" << cut.first << "\t" << jaccard.match.first << "\t" << jaccard.symmetricCover() << std::endl;
+			std::pair<double, tree::TreeCut> cut;
+			if (0 == i)
+			{
+				cut = cutStar;
+			}
+			else
+			{
+				cut = mcLocal.sample(re, Belief<tree::TreeCut>::SAMPLE_TYPE::RANDOM);
+			}
+
+			cv::Mat seg = relabelCut(um, subTree, subLabels, cut.second);
+//			seg.setTo(0, maskInv);
+			JaccardMatch jaccard(subLabelGT, seg);
+			Colormap cmap = colormap;
+			extendColormap(cmap, seg, re);
+			cv::Mat disp = colorByLabel(relabel(seg, jaccard.match.second.right), cmap);
+			cv::imshow("Segmentation", disp);
+			cv::imwrite(subDir + "c" + std::to_string(i) + ".png", disp);
+			csv << i << "\t" << cut.first << "\t" << jaccard.match.first << "\t" << jaccard.symmetricCover() << std::endl;
 
 //		cv::waitKey(10);
+		}
 	}
 
-	csv.close();
+//	csv.close();
 
-	cv::waitKey(0);
+//	cv::waitKey(0);
 	return 0;
 
 }
