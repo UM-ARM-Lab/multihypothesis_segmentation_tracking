@@ -69,7 +69,7 @@ public:
 
 	Parameters parameters;
 
-	ValueTree process(const Ultrametric& um, const cv::Mat& labels) const;
+	tree::DenseValueTree process(const Ultrametric& um, const cv::Mat& labels) const;
 };
 
 }

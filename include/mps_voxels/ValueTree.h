@@ -32,26 +32,65 @@
 
 #include <vector>
 #include <set>
+#include <map>
 
 namespace mps
 {
 
-struct ValueTree
+namespace tree
 {
-	std::vector<int> parent;
-	std::vector<std::vector<int>> children;
-	std::vector<double> value;
+
+using NodeID = int;
+using TreeCut = std::set<NodeID>;
+
+struct DenseValueTree
+{
+	std::vector<NodeID> parent_;
+	std::vector<std::vector<NodeID>> children_;
+	std::vector<double> value_;
 };
 
-using TreeCut = std::set<int>;
+struct SparseValueTree
+{
+	std::map<NodeID, NodeID> parent_;
+	std::map<NodeID, std::vector<NodeID>> children_;
+	std::map<NodeID, double> value_;
+};
 
-int root(const ValueTree& T);
+template <typename ValueTree>
+size_t size(const ValueTree& T);
 
-std::set<int>
-ancestors(const ValueTree& T, const int node);
+template <typename ValueTree>
+const NodeID& parent(const ValueTree& T, const NodeID node);
 
-void descendants(const ValueTree& T, const int node, std::set<int>& nodes);
+template <typename ValueTree>
+NodeID& parent(ValueTree& T, const NodeID node);
 
+template <typename ValueTree>
+const std::vector<NodeID>& children(const ValueTree& T, const NodeID node);
+
+template <typename ValueTree>
+std::vector<NodeID>& children(ValueTree& T, const NodeID node);
+
+template <typename ValueTree>
+double value(const ValueTree& T, const NodeID node);
+
+template <typename ValueTree>
+double& value(ValueTree& T, const NodeID node);
+
+template <typename ValueTree>
+NodeID first(const ValueTree& T);
+
+template <typename ValueTree>
+NodeID root(const ValueTree& T);
+
+template <typename ValueTree>
+std::set<NodeID> ancestors(const ValueTree& T, const NodeID node);
+
+template <typename ValueTree>
+void descendants(const ValueTree& T, const NodeID node, std::set<NodeID>& nodes);
+
+template <typename ValueTree>
 double value(const ValueTree& T, const TreeCut& C);
 
 /**
@@ -60,12 +99,17 @@ double value(const ValueTree& T, const TreeCut& C);
  * @param node
  * @param best_child_cut_value The maximum value of a cut existing below this node
  */
-void bottomup_pass(const ValueTree& T, const int node, std::vector<double>& best_child_cut_value);
+template <typename ValueTree>
+void bottomup_pass(const ValueTree& T, const NodeID node, std::vector<double>& best_child_cut_value);
 
-void topdown_pass(const ValueTree& T, const int node, const std::vector<double>& best_child_cut_value, TreeCut& C);
+template <typename ValueTree>
+void topdown_pass(const ValueTree& T, const NodeID node, const std::vector<double>& best_child_cut_value, TreeCut& C);
 
+template <typename ValueTree>
 std::pair<double, TreeCut>
 optimalCut(const ValueTree& T);
+
+}
 
 }
 

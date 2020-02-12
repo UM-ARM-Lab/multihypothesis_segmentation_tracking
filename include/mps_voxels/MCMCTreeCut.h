@@ -40,6 +40,10 @@
 namespace mps
 {
 
+namespace tree
+{
+
+template <typename ValueTree>
 class MCMCTreeCut : public Belief<TreeCut>
 {
 public:
@@ -66,21 +70,30 @@ struct MoveCut
 	bool up;
 };
 
+template <typename ValueTree>
 TreeCut apply(const ValueTree& T, const TreeCut& original, const MoveCut& move);
 
+template <typename ValueTree>
 std::vector<MoveCut> enumerateMoves(const ValueTree& T, const TreeCut& original);
 
+template <typename ValueTree>
 double returnProbability(const ValueTree& T, const TreeCut& original, const MoveCut& proposal);
 
 double logProbCut(const double optVal, const double cutVal, const double sigmaSquared);
 
+template <typename ValueTree>
 std::vector<std::pair<double, TreeCut>> sampleCuts(const ValueTree& T);
 
-
-ValueTree
+DenseValueTree
 test_tree_1();
 
 void test_optimal_cut();
+
+extern template class MCMCTreeCut<DenseValueTree>;
+extern template class MCMCTreeCut<SparseValueTree>;
+
+}
+
 }
 
 #endif // MPS_MCMCTREECUT_H

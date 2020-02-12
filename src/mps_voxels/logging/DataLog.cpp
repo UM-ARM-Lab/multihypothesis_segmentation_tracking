@@ -50,7 +50,14 @@ DataLog::DataLog(const std::string& filename, const ChannelSet& channels, const 
 
 	activeChannels = channels;
 
-	ROS_INFO_STREAM("Logging to '" << bag->getFileName() << "'");
+	if (mode == rosbag::BagMode::Read)
+	{
+		ROS_INFO_STREAM("Reading from '" << bag->getFileName() << "'");
+	}
+	else
+	{
+		ROS_INFO_STREAM("Logging to '" << bag->getFileName() << "'");
+	}
 }
 
 DataLog::~DataLog()

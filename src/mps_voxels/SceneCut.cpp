@@ -39,7 +39,9 @@
 namespace mps
 {
 
-std::vector<double> computeAreas(const Ultrametric& um, const ValueTree& vt, const cv::Mat& labels)
+using namespace mps::tree;
+
+std::vector<double> computeAreas(const Ultrametric& um, const DenseValueTree& vt, const cv::Mat& labels)
 {
 	std::vector<double> areas(um.merge_tree.start_ths.size(), 0.0);
 
@@ -55,7 +57,7 @@ std::vector<double> computeAreas(const Ultrametric& um, const ValueTree& vt, con
 
 	for (size_t node = 0; node < areas.size(); ++node)
 	{
-		for (auto c : vt.children[node])
+		for (auto c : children(vt, node))
 		{
 			assert(areas[c] != 0);
 			areas[node] += areas[c];
@@ -65,28 +67,28 @@ std::vector<double> computeAreas(const Ultrametric& um, const ValueTree& vt, con
 	return areas;
 }
 
-ValueTree SceneCut::process(const Ultrametric& um, const cv::Mat& labels) const
+DenseValueTree SceneCut::process(const Ultrametric& um, const cv::Mat& labels) const
 {
-	ValueTree vt;
+	DenseValueTree vt;
 	const auto numNodes = um.merge_tree.start_ths.size();
-	vt.parent.resize(numNodes);
-	std::iota(vt.parent.begin(), vt.parent.end(), 0);
-	vt.children.resize(numNodes);
-	vt.value.resize(numNodes);
+	vt.parent_.resize(numNodes);
+	std::iota(vt.parent_.begin(), vt.parent_.end(), 0);
+	vt.children_.resize(numNodes);
+	vt.value_.resize(numNodes);
 
 	for (const auto& pair : um.parent_tree)
 	{
 		int childID = um.label_to_index.at(pair.first);
 		int parentID = um.label_to_index.at(pair.second);
-		vt.parent[childID] = parentID;
-		vt.children[parentID].push_back(childID);
+		vt.parent_[childID] = parentID;
+		vt.children_[parentID].push_back(childID);
 	}
 
 	// Validate tree
 	int rootCount = 0;
 	for (size_t n = 0; n < numNodes; ++n)
 	{
-		if (vt.parent[n] == static_cast<int>(n))
+		if (vt.parent_[n] == static_cast<int>(n))
 		{
 			rootCount++;
 		}
@@ -102,17 +104,17 @@ ValueTree SceneCut::process(const Ultrametric& um, const cv::Mat& labels) const
 	for (size_t n = 0; n < numNodes; ++n)
 	{
 		double start_ths = um.merge_tree.start_ths[n];
-		double end_ths = um.merge_tree.start_ths[vt.parent[n]];
-		if (vt.parent[n] == static_cast<int>(n)) { end_ths = 1.0; } // upper value of root node is 1
-		vt.value[n] = parameters.prior_prob
+		double end_ths = um.merge_tree.start_ths[vt.parent_[n]];
+		if (vt.parent_[n] == static_cast<int>(n)) { end_ths = 1.0; } // upper value of root node is 1
+		vt.value_[n] = parameters.prior_prob
 			* std::exp(-std::pow(std::abs(start_ths /* - 0 */), 2) / (parameters.sigma_i * parameters.sigma_i))
 			* std::exp(-std::pow(std::abs(end_ths - 1), 2) / (parameters.sigma_o * parameters.sigma_o));
 
 		if (areas[n] > parameters.max_area || areas[n] < parameters.min_area)
 		{
-			vt.value[n] = parameters.out_of_area_range_weight;
+			vt.value_[n] = parameters.out_of_area_range_weight;
 		}
-		vt.value[n] = std::log(vt.value[n]) * pow(areas[n], parameters.area_exponent);
+		vt.value_[n] = std::log(vt.value_[n]) * pow(areas[n], parameters.area_exponent);
 	}
 
 
