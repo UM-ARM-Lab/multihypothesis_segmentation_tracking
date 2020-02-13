@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mps_voxels/VoxelSegmentation.h"
+#include "mps_voxels/VoxelRegion.h"
 #include "mps_voxels/DisjointSetForest.hpp"
 
 //#include <boost/pending/disjoint_sets.hpp>
@@ -38,13 +38,13 @@
 namespace mps
 {
 
-VoxelSegmentation::VoxelSegmentation(boost::array<std::size_t, Dimensions> dims)
+VoxelRegion::VoxelRegion(boost::array<std::size_t, Dimensions> dims)
 	: m_dimension_lengths(dims)
 {
 	precalculate();
 }
 
-size_t VoxelSegmentation::getEdgeIndex(VoxelSegmentation::vertex_descriptor a, VoxelSegmentation::vertex_descriptor b)
+size_t VoxelRegion::getEdgeIndex(VoxelRegion::vertex_descriptor a, VoxelRegion::vertex_descriptor b)
 {
 	// Normalize the ordering
 	auto i = index_of(a);
@@ -63,7 +63,7 @@ size_t VoxelSegmentation::getEdgeIndex(VoxelSegmentation::vertex_descriptor a, V
 	return index_of({a, b});
 }
 
-VoxelSegmentation::VertexLabels VoxelSegmentation::components(VoxelSegmentation::EdgeState& edges)
+VoxelRegion::VertexLabels VoxelRegion::components(VoxelRegion::EdgeState& edges)
 {
 	DisjointSetForest<int> dsf(num_vertices());
 
@@ -109,7 +109,7 @@ VoxelSegmentation::VertexLabels VoxelSegmentation::components(VoxelSegmentation:
 	return dsf.nodes;
 }
 
-void VoxelSegmentation::precalculate()
+void VoxelRegion::precalculate()
 {
 	m_num_vertices =
 		std::accumulate(m_dimension_lengths.begin(),
@@ -131,9 +131,9 @@ void VoxelSegmentation::precalculate()
 	}
 }
 
-VoxelSegmentation::vertex_descriptor
-VoxelSegmentation::next(VoxelSegmentation::vertex_descriptor vertex, std::size_t dimension_index,
-                        VoxelSegmentation::vertices_size_type distance) const
+VoxelRegion::vertex_descriptor
+VoxelRegion::next(VoxelRegion::vertex_descriptor vertex, std::size_t dimension_index,
+                        VoxelRegion::vertices_size_type distance) const
 {
 
 	vertices_size_type new_position =
@@ -149,9 +149,9 @@ VoxelSegmentation::next(VoxelSegmentation::vertex_descriptor vertex, std::size_t
 	return (vertex);
 }
 
-VoxelSegmentation::vertex_descriptor
-VoxelSegmentation::previous(VoxelSegmentation::vertex_descriptor vertex, std::size_t dimension_index,
-                            VoxelSegmentation::vertices_size_type distance) const
+VoxelRegion::vertex_descriptor
+VoxelRegion::previous(VoxelRegion::vertex_descriptor vertex, std::size_t dimension_index,
+                            VoxelRegion::vertices_size_type distance) const
 {
 
 	// We're assuming that vertices_size_type is unsigned, so we
@@ -162,7 +162,7 @@ VoxelSegmentation::previous(VoxelSegmentation::vertex_descriptor vertex, std::si
 	return (vertex);
 }
 
-VoxelSegmentation::vertices_size_type VoxelSegmentation::index_of(VoxelSegmentation::vertex_descriptor vertex) const
+VoxelRegion::vertices_size_type VoxelRegion::index_of(VoxelRegion::vertex_descriptor vertex) const
 {
 
 	vertices_size_type vertex_index = 0;
@@ -179,8 +179,8 @@ VoxelSegmentation::vertices_size_type VoxelSegmentation::index_of(VoxelSegmentat
 	return (vertex_index);
 }
 
-VoxelSegmentation::vertex_descriptor
-VoxelSegmentation::vertex_at(VoxelSegmentation::vertices_size_type vertex_index) const
+VoxelRegion::vertex_descriptor
+VoxelRegion::vertex_at(VoxelRegion::vertices_size_type vertex_index) const
 {
 
 	boost::array<vertices_size_type, Dimensions> vertex;
@@ -199,7 +199,7 @@ VoxelSegmentation::vertex_at(VoxelSegmentation::vertices_size_type vertex_index)
 	return (vertex);
 }
 
-VoxelSegmentation::edge_descriptor VoxelSegmentation::edge_at(VoxelSegmentation::edges_size_type edge_index) const
+VoxelRegion::edge_descriptor VoxelRegion::edge_at(VoxelRegion::edges_size_type edge_index) const
 {
 
 	// Edge indices are sorted into bins by dimension
@@ -245,7 +245,7 @@ VoxelSegmentation::edge_descriptor VoxelSegmentation::edge_at(VoxelSegmentation:
 	return (std::make_pair(vertex_source, vertex_target));
 }
 
-VoxelSegmentation::edges_size_type VoxelSegmentation::index_of(VoxelSegmentation::edge_descriptor edge) const
+VoxelRegion::edges_size_type VoxelRegion::index_of(VoxelRegion::edge_descriptor edge) const
 {
 	vertex_descriptor source_vertex = source(edge, *this);
 	vertex_descriptor target_vertex = target(edge, *this);
@@ -291,7 +291,7 @@ VoxelSegmentation::edges_size_type VoxelSegmentation::index_of(VoxelSegmentation
 }
 
 visualization_msgs::MarkerArray
-VoxelSegmentation::visualizeVertexLabelsDirectly(VertexLabels& vlabels, const double& resolution,
+VoxelRegion::visualizeVertexLabelsDirectly(VertexLabels& vlabels, const double& resolution,
                                                  const Eigen::Vector3d& roiMin, const std::string& globalFrame)
 {
 	visualization_msgs::MarkerArray vertexLabelVis;
@@ -352,20 +352,20 @@ VoxelSegmentation::visualizeVertexLabelsDirectly(VertexLabels& vlabels, const do
 }
 
 visualization_msgs::MarkerArray
-VoxelSegmentation::visualizeEdgeStateDirectly(VoxelSegmentation::EdgeState& edges, const double& resolution,
+VoxelRegion::visualizeEdgeStateDirectly(VoxelRegion::EdgeState& edges, const double& resolution,
                                               const Eigen::Vector3d& roiMin, const std::string& globalFrame)
 {
 	VertexLabels vlabels = components(edges);
 	return visualizeVertexLabelsDirectly(vlabels, resolution, roiMin, globalFrame);
 }
 
-mps::VoxelSegmentation::vertex_descriptor
+mps::VoxelRegion::vertex_descriptor
 roiToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax)
 {
 	auto minCoord = snap(roiMin, octree);
 	auto maxCoord = snap(roiMax, octree);
 
-	mps::VoxelSegmentation::vertex_descriptor dims;
+	mps::VoxelRegion::vertex_descriptor dims;
 	for (int i = 0; i < 3; ++i)
 	{
 		dims[i] = ceil((maxCoord[i]-minCoord[i])/octree->getResolution()) + 1;
@@ -374,13 +374,13 @@ roiToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Ei
 	return dims;
 }
 
-mps::VoxelSegmentation::vertex_descriptor
+mps::VoxelRegion::vertex_descriptor
 coordToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& query)
 {
 	auto minCoord = snap(roiMin, octree);
 	auto queryCoord = snap(query, octree);
 
-	mps::VoxelSegmentation::vertex_descriptor dims;
+	mps::VoxelRegion::vertex_descriptor dims;
 	for (int i = 0; i < 3; ++i)
 	{
 		dims[i] = (queryCoord[i]-minCoord[i])/octree->getResolution();
@@ -390,14 +390,14 @@ coordToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const 
 }
 
 Eigen::Vector3d gridToCoord(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin,
-                            const mps::VoxelSegmentation::vertex_descriptor& query)
+                            const mps::VoxelRegion::vertex_descriptor& query)
 {
 	Eigen::Vector3d offset(octree->getResolution() * 0.5, octree->getResolution() * 0.5, octree->getResolution() * 0.5);
 	return roiMin + octree->getResolution() * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(query.data()).cast<double>()) + offset;
 }
 
 bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin,
-                const mps::VoxelSegmentation::vertex_descriptor& query)
+                const mps::VoxelRegion::vertex_descriptor& query)
 {
 	auto coord = gridToCoord(octree, roiMin, query);
 	octomap::OcTreeNode* node = octree->search(coord.x(), coord.y(), coord.z());
@@ -409,7 +409,7 @@ bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin,
 }
 
 std::pair<bool, double> sampleIsOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin,
-                                         const mps::VoxelSegmentation::vertex_descriptor& query, cv::RNG& rng)
+                                         const mps::VoxelRegion::vertex_descriptor& query, cv::RNG& rng)
 {
 	auto coord = gridToCoord(octree, roiMin, query);
 	octomap::OcTreeNode* node = octree->search(coord.x(), coord.y(), coord.z());
@@ -429,17 +429,17 @@ std::pair<bool, double> sampleIsOccupied(const octomap::OcTree* octree, const Ei
 	return {a, pa};
 }
 
-mps::VoxelSegmentation::EdgeState
+mps::VoxelRegion::EdgeState
 octreeToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& minExtent, const Eigen::Vector3d& maxExtent)
 {
-	mps::VoxelSegmentation::vertex_descriptor dims = roiToGrid(octree, minExtent, maxExtent);
-	mps::VoxelSegmentation vox(dims);
+	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(octree, minExtent, maxExtent);
+	mps::VoxelRegion vox(dims);
 
-	mps::VoxelSegmentation::EdgeState edges(vox.num_edges());
+	mps::VoxelRegion::EdgeState edges(vox.num_edges());
 
-	for (mps::VoxelSegmentation::edges_size_type e = 0; e < vox.num_edges(); ++e)
+	for (mps::VoxelRegion::edges_size_type e = 0; e < vox.num_edges(); ++e)
 	{
-		const mps::VoxelSegmentation::edge_descriptor edge = vox.edge_at(e);
+		const mps::VoxelRegion::edge_descriptor edge = vox.edge_at(e);
 		auto i = source(edge, vox);
 		auto j = target(edge, vox);
 
@@ -452,19 +452,19 @@ octreeToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& minExtent, co
 	return edges;
 }
 
-std::pair<double, mps::VoxelSegmentation::EdgeState>
+std::pair<double, mps::VoxelRegion::EdgeState>
 octreeToGridParticle(const octomap::OcTree* octree, const Eigen::Vector3d& minExtent, const Eigen::Vector3d& maxExtent,
                      cv::RNG& rng)
 {
-	mps::VoxelSegmentation::vertex_descriptor dims = roiToGrid(octree, minExtent, maxExtent);
-	mps::VoxelSegmentation vox(dims);
+	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(octree, minExtent, maxExtent);
+	mps::VoxelRegion vox(dims);
 
-	mps::VoxelSegmentation::EdgeState edges(vox.num_edges());
+	mps::VoxelRegion::EdgeState edges(vox.num_edges());
 
 	double logOdds = 0;
-	for (mps::VoxelSegmentation::edges_size_type e = 0; e < vox.num_edges(); ++e)
+	for (mps::VoxelRegion::edges_size_type e = 0; e < vox.num_edges(); ++e)
 	{
-		const mps::VoxelSegmentation::edge_descriptor edge = vox.edge_at(e);
+		const mps::VoxelRegion::edge_descriptor edge = vox.edge_at(e);
 		auto i = source(edge, vox);
 		auto j = target(edge, vox);
 
@@ -483,33 +483,33 @@ octreeToGridParticle(const octomap::OcTree* octree, const Eigen::Vector3d& minEx
 	return {logOdds, edges};
 }
 
-mps::VoxelSegmentation::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects,
+mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects,
                                                          const Eigen::Vector3d& roiMinExtent,
                                                          const Eigen::Vector3d& roiMaxExtent)
 {
-	mps::VoxelSegmentation::vertex_descriptor dims = roiToGrid(objects.begin()->second.get()->occupancy.get(), roiMinExtent, roiMaxExtent);
-	mps::VoxelSegmentation vox(dims);
+	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(objects.begin()->second.get()->occupancy.get(), roiMinExtent, roiMaxExtent);
+	mps::VoxelRegion vox(dims);
 
-	mps::VoxelSegmentation::VertexLabels res(vox.num_vertices(), -1);
+	mps::VoxelRegion::VertexLabels res(vox.num_vertices(), -1);
 
 	int label = 0;
 	for (auto& pair : objects)
 	{
 		auto obj = pair.second.get();
-		mps::VoxelSegmentation::vertex_descriptor objDims = roiToGrid(obj->occupancy.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>());
-		mps::VoxelSegmentation objVS(objDims);
-		mps::VoxelSegmentation::vertex_descriptor objMin = coordToGrid(obj->occupancy.get(), roiMinExtent, obj->minExtent.cast<double>());
+		mps::VoxelRegion::vertex_descriptor objDims = roiToGrid(obj->occupancy.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>());
+		mps::VoxelRegion objVS(objDims);
+		mps::VoxelRegion::vertex_descriptor objMin = coordToGrid(obj->occupancy.get(), roiMinExtent, obj->minExtent.cast<double>());
 
-		for (mps::VoxelSegmentation::vertices_size_type v = 0; v < objVS.num_vertices(); ++v)
+		for (mps::VoxelRegion::vertices_size_type v = 0; v < objVS.num_vertices(); ++v)
 		{
 			auto query = objVS.vertex_at(v);
 			if ( isOccupied(obj->occupancy.get(), obj->minExtent.cast<double>(), query) )
 			{
-				mps::VoxelSegmentation::vertex_descriptor target;
+				mps::VoxelRegion::vertex_descriptor target;
 				target[0] = query[0] + objMin[0];
 				target[1] = query[1] + objMin[1];
 				target[2] = query[2] + objMin[2];
-				mps::VoxelSegmentation::vertices_size_type index = vox.index_of(target);
+				mps::VoxelRegion::vertices_size_type index = vox.index_of(target);
 				res[index] = label;
 			}
 		}

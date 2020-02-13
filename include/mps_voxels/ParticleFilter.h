@@ -5,8 +5,10 @@
 #ifndef SRC_PARTICLEFILTER_H
 #define SRC_PARTICLEFILTER_H
 
-#include "mps_voxels/VoxelSegmentation.h"
+#include "mps_voxels/VoxelRegion.h"
 #include "mps_voxels/Scene.h"
+#include "mps_voxels/Particle.h"
+#include "mps_voxels/ObjectActionModel.h"
 
 namespace mps
 {
@@ -17,7 +19,9 @@ public:
 	explicit ParticleFilter(int n=10);
 
 	int numParticles;
-	std::vector<VoxelSegmentation> particles;
+	std::vector<Particle> particles;
+
+	Particle applyActionModel(const Particle& inputParticle);
 };
 
 }

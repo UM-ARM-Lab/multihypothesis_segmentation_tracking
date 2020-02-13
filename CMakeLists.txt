@@ -102,8 +102,8 @@ if(CLION)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
   set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
 endif()
-set(CMAKE_BUILD_TYPE RelWithDebInfo)
-#set(CMAKE_BUILD_TYPE Debug)
+#set(CMAKE_BUILD_TYPE RelWithDebInfo)
+set(CMAKE_BUILD_TYPE Debug)
 #set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DCGAL_DISABLE_ROUNDING_MATH_CHECK")
 #set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DCGAL_NO_ASSERTIONS")
 
@@ -274,7 +274,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/TargetDetector.cpp
   src/${PROJECT_NAME}/graph_matrix_utils.cpp
   src/${PROJECT_NAME}/LocalOctreeServer.cpp
-  src/${PROJECT_NAME}/VoxelSegmentation.cpp
+  src/${PROJECT_NAME}/VoxelRegion.cpp
   src/${PROJECT_NAME}/Scene.cpp
   src/${PROJECT_NAME}/util/package_paths.cpp
   src/${PROJECT_NAME}/ObjectLogger.cpp
@@ -364,21 +364,21 @@ target_link_libraries(${PROJECT_NAME}_test_segmentation_sampling
   ${catkin_LIBRARIES}
 )
 
-add_executable(${PROJECT_NAME}_test_object_action_model src/test_object_action_model.cpp)
-set_target_properties(${PROJECT_NAME}_test_object_action_model PROPERTIES OUTPUT_NAME test_object_action_model PREFIX "")
-add_dependencies(${PROJECT_NAME}_test_object_action_model ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_test_object_action_model
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-)
+#add_executable(${PROJECT_NAME}_test_object_action_model src/test_object_action_model.cpp)
+#set_target_properties(${PROJECT_NAME}_test_object_action_model PROPERTIES OUTPUT_NAME test_object_action_model PREFIX "")
+#add_dependencies(${PROJECT_NAME}_test_object_action_model ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#target_link_libraries(${PROJECT_NAME}_test_object_action_model
+#  ${PROJECT_NAME}
+#  ${catkin_LIBRARIES}
+#)
 
-add_executable(${PROJECT_NAME}_test_icp src/test_icp.cpp)
-set_target_properties(${PROJECT_NAME}_test_icp PROPERTIES OUTPUT_NAME test_icp PREFIX "")
-add_dependencies(${PROJECT_NAME}_test_icp ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_test_icp
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-)
+#add_executable(${PROJECT_NAME}_test_icp src/test_icp.cpp)
+#set_target_properties(${PROJECT_NAME}_test_icp PROPERTIES OUTPUT_NAME test_icp PREFIX "")
+#add_dependencies(${PROJECT_NAME}_test_icp ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#target_link_libraries(${PROJECT_NAME}_test_icp
+#  ${PROJECT_NAME}
+#  ${catkin_LIBRARIES}
+#)
 
 add_executable(${PROJECT_NAME}_test_particle_filter src/test_particle_filter.cpp)
 set_target_properties(${PROJECT_NAME}_test_particle_filter PROPERTIES OUTPUT_NAME test_particle_filter PREFIX "")

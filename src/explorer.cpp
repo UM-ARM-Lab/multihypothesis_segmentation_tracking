@@ -53,7 +53,7 @@
 
 //#include <pcl/visualization/cloud_viewer.h>
 
-#include "mps_voxels/VoxelSegmentation.h"
+#include "mps_voxels/VoxelRegion.h"
 
 #include <geometric_shapes/shape_operations.h>
 
@@ -855,30 +855,28 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 
 	/////////////////////////////////////////////
-	//// Sample shape particles
+	//// Sample state particles
 	/////////////////////////////////////////////
-	cv::RNG rng;
-	mps::VoxelSegmentation::vertex_descriptor dims = roiToGrid(scene->objects.begin()->second.get()->occupancy.get(),
+	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(scene->objects.begin()->second->occupancy.get(),
 	                                                           scene->minExtent.head<3>().cast<double>(),
 	                                                           scene->maxExtent.head<3>().cast<double>());
-	mps::VoxelSegmentation state(dims);
-	mps::VoxelSegmentation::VertexLabels vlabel = objectsToVoxelLabel(scene->objects,
+	mps::VoxelRegion state(dims);
+	mps::VoxelRegion::VertexLabels vlabel = objectsToVoxelLabel(scene->objects,
 	                                                                 scene->minExtent.head<3>().cast<double>(),
 	                                                                 scene->maxExtent.head<3>().cast<double>());
 	auto markers = state.visualizeVertexLabelsDirectly(vlabel,
 	                                                   scene->objects.begin()->second->occupancy->getResolution(),
 	                                                   scene->minExtent.head<3>().cast<double>(), scene->worldFrame);
-
 	octreePub.publish(markers);
 	std::cerr << "State particle shown!" << std::endl;
 	sleep(5);
 
-
+//	cv::RNG rng;
 //	for (const auto& obj : scene->objects)
 //	{
 //		if (!ros::ok()) { return; }
 //
-//		mps::VoxelSegmentation seg(mps::roiToGrid(obj.second->occupancy.get(), obj.second->minExtent.cast<double>(), obj.second->maxExtent.cast<double>()));
+//		mps::VoxelRegion seg(mps::roiToGrid(obj.second->occupancy.get(), obj.second->minExtent.cast<double>(), obj.second->maxExtent.cast<double>()));
 //		std::cerr << "Edges in voxel grid: " << seg.num_edges() << std::endl;
 //		std::cerr << "Vertices in voxel grid: " << seg.num_vertices() << std::endl;
 //
@@ -886,7 +884,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		for (int iter = 0; iter < 0; ++iter)
 //		{
 //			double weight;
-//			mps::VoxelSegmentation::EdgeState edges;
+//			mps::VoxelRegion::EdgeState edges;
 //			std::tie(weight, edges) = mps::octreeToGridParticle(obj.second->occupancy.get(), obj.second->minExtent.cast<double>(), obj.second->maxExtent.cast<double>(), rng);
 //
 //			// Visualize the edges

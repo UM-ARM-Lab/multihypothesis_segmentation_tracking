@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mps_voxels/VoxelSegmentation.h"
+#include "mps_voxels/VoxelRegion.h"
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_cv_mat.h"
@@ -51,22 +51,22 @@ using namespace mps;
 /*
 TEST(segmentation, clustering)
 {
-	mps::VoxelSegmentation vox({3, 3, 3});
+	mps::VoxelRegion vox({3, 3, 3});
 //	std::cerr << "# Vertices: " << num_vertices(vox.grid) << std::endl;
 //	std::cerr << "# Edges: " << num_edges(vox.grid) << std::endl;
 //
-//	std::cerr << get(boost::vertex_index, vox.grid, mps::VoxelSegmentation::vertex_descriptor{0, 0, 0});
+//	std::cerr << get(boost::vertex_index, vox.grid, mps::VoxelRegion::vertex_descriptor{0, 0, 0});
 
 //	boost::grid_graph<2> grid(boost::array<std::size_t, 2>{{2, 3}});
 //	std::cerr << num_vertices(grid) << std::endl;
 //	std::cerr << get(boost::vertex_index, grid, {{1, 1}});
 
-	for (mps::VoxelSegmentation::vertices_size_type v = 0; v < vox.num_vertices(); ++v)
+	for (mps::VoxelRegion::vertices_size_type v = 0; v < vox.num_vertices(); ++v)
 	{
 		ASSERT_EQ(vox.index_of(vox.vertex_at(v)), v);
 	}
 
-	for (mps::VoxelSegmentation::edges_size_type e = 0; e < vox.num_edges(); ++e)
+	for (mps::VoxelRegion::edges_size_type e = 0; e < vox.num_edges(); ++e)
 	{
 		ASSERT_EQ(vox.index_of(vox.edge_at(e)), e);
 	}
@@ -74,10 +74,10 @@ TEST(segmentation, clustering)
 
 	std::vector<bool> edgeValues(vox.num_edges(), false);
 
-	mps::VoxelSegmentation::vertex_descriptor a{{0, 0, 0}};
-	mps::VoxelSegmentation::vertex_descriptor b{{0, 0, 1}};
-	mps::VoxelSegmentation::vertex_descriptor c{{0, 1, 1}};
-	mps::VoxelSegmentation::vertex_descriptor d{{0, 1, 0}};
+	mps::VoxelRegion::vertex_descriptor a{{0, 0, 0}};
+	mps::VoxelRegion::vertex_descriptor b{{0, 0, 1}};
+	mps::VoxelRegion::vertex_descriptor c{{0, 1, 1}};
+	mps::VoxelRegion::vertex_descriptor d{{0, 1, 0}};
 
 	auto e1 = vox.getEdgeIndex(a, b);
 	auto e2 = vox.getEdgeIndex(b, c);
@@ -154,14 +154,14 @@ TEST(segmentation, octree)
 	ASSERT_TRUE((maxLoop-max).isZero(octree->getResolution()));
 
 
-	mps::VoxelSegmentation::vertex_descriptor dims = roiToGrid(octree.get(), min, max);
-	mps::VoxelSegmentation vox(dims);
+	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(octree.get(), min, max);
+	mps::VoxelRegion vox(dims);
 
 	// Verify 1-1 correspondance between octree leafs and grid nodes
 	std::unordered_set<octomap::OcTreeKey, octomap::OcTreeKey::KeyHash> keys;
 
 	std::cerr << "resolution_factor = " << 1.0/octree->getResolution() << std::endl;
-	for (mps::VoxelSegmentation::vertices_size_type v = 0; v < vox.num_vertices(); ++v)
+	for (mps::VoxelRegion::vertices_size_type v = 0; v < vox.num_vertices(); ++v)
 	{
 		Eigen::Vector3d p = gridToCoord(octree.get(), min, vox.vertex_at(v));
 		std::cerr << "p = " << p[0] << " " << p[1] << " " << p[2] << std::endl;
@@ -185,11 +185,11 @@ TEST(segmentation, octree)
 	}
 
 	// TODO: Investigate what happens when you call index_of(edge_descriptor) without having the vertices ordered correctly
-	mps::VoxelSegmentation::vertex_descriptor v1, v2;
+	mps::VoxelRegion::vertex_descriptor v1, v2;
 	v1 = vox.vertex_at(1);
 	v2 = vox.vertex_at(2);
 
-	mps::VoxelSegmentation::edge_descriptor e1, e2;
+	mps::VoxelRegion::edge_descriptor e1, e2;
 	e1.first = v1;
 	e1.second = v2;
 	e2.first = v2;

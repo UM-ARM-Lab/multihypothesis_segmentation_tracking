@@ -27,8 +27,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef SRC_VOXELSEGMENTATION_H
-#define SRC_VOXELSEGMENTATION_H
+#ifndef SRC_VOXELREGION_H
+#define SRC_VOXELREGION_H
 
 //#include "mps_voxels/octree_utils.h"
 
@@ -52,7 +52,7 @@ class RNG;
 namespace mps
 {
 
-class VoxelSegmentation
+class VoxelRegion
 {
 public:
 	const static int Dimensions = 3;
@@ -65,7 +65,7 @@ public:
 	using EdgeState = std::vector<bool>;
 	using VertexLabels = std::vector<int>;
 
-	VoxelSegmentation(boost::array<std::size_t, Dimensions> dims);
+	VoxelRegion(boost::array<std::size_t, Dimensions> dims);
 
 	size_t getEdgeIndex(vertex_descriptor a, vertex_descriptor b);
 
@@ -150,36 +150,36 @@ Point snap(const Point& p, const octomap::OcTree* octree)
 	return {coord.x(), coord.y(), coord.z()};
 }
 
-mps::VoxelSegmentation::vertex_descriptor roiToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax);
+mps::VoxelRegion::vertex_descriptor roiToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax);
 
-mps::VoxelSegmentation::vertex_descriptor coordToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& query);
+mps::VoxelRegion::vertex_descriptor coordToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& query);
 
-Eigen::Vector3d gridToCoord(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelSegmentation::vertex_descriptor& query);
+Eigen::Vector3d gridToCoord(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelRegion::vertex_descriptor& query);
 
-bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelSegmentation::vertex_descriptor& query);
+bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelRegion::vertex_descriptor& query);
 
 std::pair<bool, double>
-sampleIsOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelSegmentation::vertex_descriptor& query,
+sampleIsOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelRegion::vertex_descriptor& query,
                  cv::RNG& rng);
 
 /// From octree labels to edge graph
-mps::VoxelSegmentation::EdgeState
+mps::VoxelRegion::EdgeState
 octreeToGrid(const octomap::OcTree* octree,
              const Eigen::Vector3d& minExtent,
              const Eigen::Vector3d& maxExtent);
 
 /// From octree labels to edge graph
-std::pair<double, mps::VoxelSegmentation::EdgeState>
+std::pair<double, mps::VoxelRegion::EdgeState>
 octreeToGridParticle(const octomap::OcTree* octree,
                      const Eigen::Vector3d& minExtent,
                      const Eigen::Vector3d& maxExtent,
                      cv::RNG& rng);
 
 /// From object octrees to a particle representing the whole state
-mps::VoxelSegmentation::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects,
+mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects,
                                                          const Eigen::Vector3d& roiMinExtent,
                                                          const Eigen::Vector3d& roiMaxExtent);
 
 }
 
-#endif // SRC_VOXELSEGMENTATION_H
+#endif //SRC_VOXELREGION_H

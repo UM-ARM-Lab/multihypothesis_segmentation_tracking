@@ -12,7 +12,7 @@
 #include "mps_voxels/PointT.h"
 #include "mps_voxels/ROI.h"
 #include "mps_voxels/Scene.h"
-#include "mps_voxels/VoxelSegmentation.h"
+#include "mps_voxels/VoxelRegion.h"
 
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
@@ -60,8 +60,8 @@ public:
 };
 
 
-mps::VoxelSegmentation
-moveParticle(const mps::VoxelSegmentation& particle, const Eigen::Vector3d& action);
+mps::VoxelRegion
+moveParticle(const mps::VoxelRegion& particle, const Eigen::Vector3d& action);
 
 std::shared_ptr<octomap::OcTree>
 moveOcTree(const octomap::OcTree* octree, const rigidTF& action);

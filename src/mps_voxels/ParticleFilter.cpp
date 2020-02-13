@@ -9,6 +9,14 @@ namespace mps
 
 ParticleFilter::ParticleFilter(int n) : numParticles(n)
 {
+	particles.resize(n);
+}
+
+Particle ParticleFilter::applyActionModel(const Particle& inputParticle)
+{
+	Particle outputParticle;
+
+	return outputParticle;
 }
 
 

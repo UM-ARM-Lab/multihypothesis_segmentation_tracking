@@ -2,7 +2,7 @@
 // Created by kunhuang on 2/4/20.
 //
 
-#include "mps_voxels/VoxelSegmentation.h"
+#include "mps_voxels/VoxelRegion.h"
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_sensor_history.h"
 #include "mps_voxels/logging/log_segmentation_info.h"

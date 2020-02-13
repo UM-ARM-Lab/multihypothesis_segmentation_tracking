@@ -35,12 +35,17 @@
 namespace mps
 {
 
-class VoxelSegmentation;
+class VoxelRegion;
+
+struct ParticleData
+{
+	static VoxelRegion voxelRegion;
+	VoxelRegion::VertexLabels vertexState;
+	VoxelRegion::EdgeState edgeState;
+};
 
 struct Particle
 {
-	using ParticleData = VoxelSegmentation;
-
 	TimeIndex time;
 	SubproblemIndex problem;
 	ObjectIndex object;
