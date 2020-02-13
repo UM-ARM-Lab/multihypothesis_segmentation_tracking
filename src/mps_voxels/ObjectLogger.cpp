@@ -11,6 +11,8 @@
 #include <assimp/Exporter.hpp>
 #include <assimp/scene.h>
 
+namespace mps
+{
 
 bool ObjectLogger::logObject(const Object* obj, const std::string& location, const std::string& name)
 {
@@ -25,4 +27,6 @@ bool ObjectLogger::logObject(const Object* obj, const std::string& location, con
 
 //	obj->approximation->
 	return true;
+}
+
 }

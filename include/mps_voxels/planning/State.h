@@ -16,6 +16,9 @@
 #include <map>
 #include <memory>
 
+namespace mps
+{
+
 class State
 {
 public:
@@ -31,5 +34,7 @@ public:
 	std::vector<std::shared_ptr<MotionModel>> motion_models;
 	std::map<std::string, ObjectIndex> model_name_lookup;
 };
+
+}
 
 #endif // MPS_PLANNING_STATE_H

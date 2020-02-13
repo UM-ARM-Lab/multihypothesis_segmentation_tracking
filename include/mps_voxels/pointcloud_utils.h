@@ -7,6 +7,8 @@
 
 #include "mps_voxels/PointT.h"
 
+namespace mps
+{
 
 pcl::PointCloud<PointT>::Ptr filterInCameraFrame(
 	pcl::PointCloud<PointT>::Ptr& cloud,
@@ -41,5 +43,7 @@ std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 void getAABB(const pcl::PointCloud<PointT>& members, Eigen::Vector3f& min, Eigen::Vector3f& max);
 
 void getBoundingCube(const pcl::PointCloud<PointT>& members, Eigen::Vector3f& min, Eigen::Vector3f& max);
+
+}
 
 #endif // MPS_VOXELS_POINTCLOUD_UTILS_H

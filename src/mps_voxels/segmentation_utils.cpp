@@ -7,6 +7,9 @@
 #include "mps_voxels/pointcloud_utils.h"
 #include "mps_voxels/assert.h"
 
+namespace mps
+{
+
 RGBDSegmenter::RGBDSegmenter(ros::NodeHandle& nh)
 	: segmentClient(nh, "/segment_rgbd", true)
 {
@@ -61,19 +64,20 @@ RGBDSegmenter::segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& 
 
 	cv::connectedComponentsWithStats(si->ucm2 == 0, si->labels2, si->stats2, si->centroids2, 8, CV_16U);
 	si->labels = cv::Mat(si->rgb.size(), CV_16U);
-	for (int u = 1; u < si->labels2.cols; u+=2)
+	for (int u = 1; u < si->labels2.cols; u += 2)
 	{
-		for (int v = 1; v < si->labels2.rows; v+=2)
+		for (int v = 1; v < si->labels2.rows; v += 2)
 		{
-			si->labels.at<uint16_t>(v/2, u/2) = si->labels2.at<uint16_t>(v, u);
+			si->labels.at<uint16_t>(v / 2, u / 2) = si->labels2.at<uint16_t>(v, u);
 		}
 	}
 
 	cv::Mat tempContours1;
 	double maxVal;
 	cv::minMaxLoc(si->ucm2, nullptr, &maxVal);
-	si->ucm2.convertTo(tempContours1, CV_8UC1, 255.0/maxVal);
-	cv::applyColorMap(tempContours1, si->display_contours, cv::COLORMAP_BONE);//cv::COLORMAP_PARULA);//cv::COLORMAP_JET); // COLORMAP_HOT
+	si->ucm2.convertTo(tempContours1, CV_8UC1, 255.0 / maxVal);
+	cv::applyColorMap(tempContours1, si->display_contours,
+	                  cv::COLORMAP_BONE);//cv::COLORMAP_PARULA);//cv::COLORMAP_JET); // COLORMAP_HOT
 
 	return si;
 }
@@ -96,8 +100,9 @@ CachingRGBDSegmenter::segment(const cv_bridge::CvImage& rgb, const cv_bridge::Cv
 	return si;
 }
 
-CachingRGBDSegmenter::CachingRGBDSegmenter(ros::NodeHandle& nh) : RGBDSegmenter(nh) {}
-
+CachingRGBDSegmenter::CachingRGBDSegmenter(ros::NodeHandle& nh)
+	:RGBDSegmenter(nh)
+{ }
 
 std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	const pcl::PointCloud<PointT>::Ptr& cloud, const cv::Mat& labels,
@@ -165,17 +170,19 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> retVal;
 	for (auto& pair : segment_clouds)
 	{
-		double percentFilled = static_cast<double>(pair.second->size())/static_cast<double>(cv::countNonZero(filtered_labels == pair.first));
+		double percentFilled = static_cast<double>(pair.second->size())
+		                       / static_cast<double>(cv::countNonZero(filtered_labels == pair.first));
 		if (percentFilled >= percentThreshold && static_cast<int>(pair.second->size()) > sizeThreshold)
 		{
-			ObjectIndex objID{-(static_cast<long>(retVal.size())-100)}; // retVal.size()-1
+			ObjectIndex objID{-(static_cast<long>(retVal.size()) - 100)}; // retVal.size()-1
 			retVal.insert({objID, pair.second});
 			if (labelToIndexLookup)
 			{
-				auto res = labelToIndexLookup->insert({pair.first, objID}); MPS_ASSERT(res.second);
+				auto res = labelToIndexLookup->insert({pair.first, objID});
+				MPS_ASSERT(res.second);
 			}
 		}
-		else { std::cerr << "Rejected object " << pair.first << ": " << percentFilled*100.0 << "%." << std::endl; }
+		else { std::cerr << "Rejected object " << pair.first << ": " << percentFilled * 100.0 << "%." << std::endl; }
 	}
 
 	return retVal;
@@ -203,7 +210,8 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 //	return labelToMaskLookup;
 //}
 
-std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels,const cv::Rect& roi){
+std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels, const cv::Rect& roi)
+{
 	MPS_ASSERT(roi.width == labels.cols);
 	MPS_ASSERT(roi.height == labels.rows);
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup;
@@ -246,4 +254,6 @@ std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels,const cv::R
 		labelToBBoxLookup.insert({label, bbox});
 	}
 	return labelToBBoxLookup;
+}
+
 }

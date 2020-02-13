@@ -12,6 +12,9 @@
 #include <geometric_shapes/bodies.h>
 #include <geometric_shapes/shapes.h>
 
+namespace mps
+{
+
 struct SensorModel
 {
 	Eigen::Vector3d cameraOrigin_world;
@@ -74,8 +77,14 @@ public:
 
 MotionModel::MotionParameters estimateRigidTransform3D(const Eigen::Matrix3Xd& A, const Eigen::Matrix3Xd& B);
 
+}
 #include <moveit/robot_model/robot_model.h>
 
+namespace mps
+{
+
 bool loadLinkMotionModels(const robot_model::RobotModel* pModel, std::map<std::string, std::shared_ptr<MotionModel>>& motionModels);
+
+}
 
 #endif // MPS_VOXELS_MOTIONMODEL_H

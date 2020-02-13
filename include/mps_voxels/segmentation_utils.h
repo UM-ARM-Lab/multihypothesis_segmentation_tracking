@@ -18,11 +18,14 @@
 #include <actionlib/client/simple_action_client.h>
 #include <ros/ros.h>
 
-struct xycoor{
+namespace mps
+{
+
+struct xycoor
+{
 	int x;
 	int y;
 };
-
 
 struct SegmentationInfo
 {
@@ -63,7 +66,7 @@ public:
 class CachingRGBDSegmenter : public RGBDSegmenter
 {
 public:
-	using SegmentationCache = std::map<ros::Time, std::shared_ptr<SegmentationInfo> >;
+	using SegmentationCache = std::map<ros::Time, std::shared_ptr<SegmentationInfo>>;
 
 	mutable
 	SegmentationCache cache;
@@ -84,6 +87,8 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 
 //std::map<uint16_t, std::vector<xycoor>> segmentMaskFromImage(const cv::Mat& labels,const cv::Rect& roi);
 
-std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels,const cv::Rect& roi);
+std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels, const cv::Rect& roi);
+
+}
 
 #endif // MPS_VOXELS_SEGMENTATION_UTILS_H

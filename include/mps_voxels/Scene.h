@@ -29,6 +29,9 @@
 
 #include <random>
 
+namespace mps
+{
+
 class LocalOctreeServer;
 class VoxelCompleter;
 class RGBDSegmenter;
@@ -167,4 +170,5 @@ public:
 
 };
 
+}
 #endif // MPS_SCENE_H

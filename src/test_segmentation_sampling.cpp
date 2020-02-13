@@ -186,42 +186,6 @@ void compressTree(SparseValueTree& T)
 }
 }
 
-namespace mps
-{
-using Colormap = std::map<uint16_t, cv::Point3_<uint8_t>>;
-}
-
-Colormap createColormap(const std::set<uint16_t>& labels, std::default_random_engine& re)
-{
-	Colormap colormap;
-	std::uniform_int_distribution<> dis(0, 256);
-	for (auto label : labels)
-	{
-		colormap[label] = cv::Point3_<uint8_t>(dis(re), dis(re), dis(re));
-	}
-	return colormap;
-}
-Colormap createColormap(const cv::Mat& labels, std::default_random_engine& re)
-{
-	return createColormap(unique(labels), re);
-}
-
-void extendColormap(Colormap& colormap, const std::set<uint16_t>& labels, std::default_random_engine& re)
-{
-	std::uniform_int_distribution<> dis(0, 256);
-	for (auto label : labels)
-	{
-		auto iter = colormap.find(label);
-		if (iter == colormap.end())
-		{
-			colormap[label] = cv::Point3_<uint8_t>(dis(re), dis(re), dis(re));
-		}
-	}
-}
-void extendColormap(Colormap& colormap, const cv::Mat& labels, std::default_random_engine& re)
-{
-	extendColormap(colormap, unique(labels), re);
-}
 
 //template <typename T>
 //using DataGeneratorFn = std::function<bool(T&)>;

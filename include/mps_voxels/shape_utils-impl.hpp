@@ -29,6 +29,9 @@
 #include <vector>
 #include <type_traits>
 
+namespace mps
+{
+
 
 using K =            CGAL::Exact_predicates_inexact_constructions_kernel;
 using Point_2 =      K::Point_2;
@@ -248,6 +251,8 @@ std::shared_ptr<shapes::Mesh> ZAMBB(const PointContainerT& points)
 		}
 	}
 	return convex_hull(supports);
+}
+
 }
 
 #endif //MPS_SHAPE_UTILS_IMPL_H

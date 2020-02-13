@@ -11,6 +11,9 @@
 
 #include <geometric_shapes/shape_operations.h>
 
+namespace mps
+{
+
 template std::shared_ptr<shapes::Mesh> convex_hull<octomap::point3d_collection, octomap::point3d>(const octomap::point3d_collection&);
 template std::shared_ptr<shapes::Mesh> prism<octomap::point3d_collection, octomap::point3d>(const octomap::point3d_collection&);
 template std::shared_ptr<shapes::Mesh> ZAMBB<octomap::point3d_collection, octomap::point3d>(const octomap::point3d_collection&);
@@ -44,4 +47,6 @@ void getAABB(const shapes::Mesh& shape, Eigen::Vector3f& min, Eigen::Vector3f& m
 			max[d] = std::max(max[d], static_cast<float>(vertex[d]));
 		}
 	}
+}
+
 }

@@ -9,6 +9,9 @@
 #include <CGAL/Cartesian_d.h>
 #include <CGAL/Min_sphere_of_spheres_d.h>
 
+namespace mps
+{
+
 static const double PADDING = 0.02;
 static const double NEARLY_ZERO = 1e-9;
 
@@ -235,4 +238,6 @@ bool loadLinkMotionModels(const robot_model::RobotModel* pModel, std::map<std::s
 	}
 
 	return true;
+}
+
 }

@@ -10,22 +10,26 @@
                                    (CV_VERSION_MINOR>y || (CV_VERSION_MINOR>=y && \
                                                            CV_VERSION_REVISION>=z))))
 
-pcl::PointCloud<PointT>::Ptr imagesToCloud(const cv::Mat& rgb, const cv::Mat& depth, const image_geometry::PinholeCameraModel& cameraModel)
+namespace mps
+{
+pcl::PointCloud<PointT>::Ptr
+imagesToCloud(const cv::Mat& rgb, const cv::Mat& depth, const image_geometry::PinholeCameraModel& cameraModel)
 {
 	pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>());
 	cloud->resize(cameraModel.cameraInfo().width * cameraModel.cameraInfo().height);
 
 #pragma omp parallel for
-	for (int v = 0; v < (int)cameraModel.cameraInfo().height; ++v)
+	for (int v = 0; v < (int) cameraModel.cameraInfo().height; ++v)
 	{
-		for (int u = 0; u < (int)cameraModel.cameraInfo().width; ++u)
+		for (int u = 0; u < (int) cameraModel.cameraInfo().width; ++u)
 		{
-			int idx = v * (int)cameraModel.cameraInfo().width + u;
+			int idx = v * (int) cameraModel.cameraInfo().width + u;
 
 			auto color = rgb.at<cv::Vec3b>(v, u);
 			auto dVal = depth.at<uint16_t>(v, u);
 
-			float depthVal = mps::SensorHistorian::DepthTraits::toMeters(dVal); // if (depth1 > maxZ || depth1 < minZ) { continue; }
+			float depthVal = mps::SensorHistorian::DepthTraits::toMeters(
+				dVal); // if (depth1 > maxZ || depth1 < minZ) { continue; }
 			PointT pt(color[2], color[1], color[0]);
 			pt.getVector3fMap() = toPoint3D<Eigen::Vector3f>(u, v, depthVal, cameraModel);
 			cloud->points[idx] = pt;
@@ -35,10 +39,10 @@ pcl::PointCloud<PointT>::Ptr imagesToCloud(const cv::Mat& rgb, const cv::Mat& de
 	return cloud;
 }
 
-cv::Scalar randomColor( cv::RNG& rng )
+cv::Scalar randomColor(cv::RNG& rng)
 {
 	int icolor = (unsigned) rng;
-	return cv::Scalar( icolor&255, (icolor>>8)&255, (icolor>>16)&255 );
+	return cv::Scalar(icolor & 255, (icolor >> 8) & 255, (icolor >> 16) & 255);
 }
 
 std::set<uint16_t> unique(const cv::Mat& input)
@@ -77,14 +81,20 @@ cv::Mat colorByLabel(const cv::Mat& input)
 
 		uchar depth = mod.type() & CV_MAT_DEPTH_MASK;
 
-		switch ( depth )
+		switch (depth)
 		{
-		case CV_8U:  mod.forEach<uint8_t>([&](uint8_t& label, const int*) -> void { label = label % 256; }); break;
-		case CV_8S:  mod.forEach<int8_t>([&](int8_t& label, const int*) -> void { label = label % 256; }); break;
-		case CV_16U: mod.forEach<uint16_t>([&](uint16_t& label, const int*) -> void { label = label % 256; }); break;
-		case CV_16S: mod.forEach<int16_t>([&](int16_t& label, const int*) -> void { label = label % 256; }); break;
-		case CV_32S: mod.forEach<int32_t>([&](int32_t& label, const int*) -> void { label = label % 256; }); break;
-		default:     throw std::runtime_error("Unknown image data type in colorByLabel: " + std::to_string(input.type())); break;
+		case CV_8U: mod.forEach<uint8_t>([&](uint8_t& label, const int*) -> void { label = label % 256; });
+			break;
+		case CV_8S: mod.forEach<int8_t>([&](int8_t& label, const int*) -> void { label = label % 256; });
+			break;
+		case CV_16U: mod.forEach<uint16_t>([&](uint16_t& label, const int*) -> void { label = label % 256; });
+			break;
+		case CV_16S: mod.forEach<int16_t>([&](int16_t& label, const int*) -> void { label = label % 256; });
+			break;
+		case CV_32S: mod.forEach<int32_t>([&](int32_t& label, const int*) -> void { label = label % 256; });
+			break;
+		default: throw std::runtime_error("Unknown image data type in colorByLabel: " + std::to_string(input.type()));
+			break;
 		}
 
 		mod.convertTo(labels, CV_8UC1);
@@ -107,19 +117,53 @@ cv::Mat colorByLabel(const cv::Mat& input)
 	return output;
 }
 
-cv::Mat colorByLabel(const cv::Mat& input, const std::map<uint16_t, cv::Point3_<uint8_t>>& colormap)
+cv::Mat colorByLabel(const cv::Mat& input, const Colormap& colormap)
 {
 	using ColorPixel = cv::Point3_<uint8_t>;
 	cv::Mat output(input.size(), CV_8UC3);
-	output.forEach<ColorPixel>([&](ColorPixel& px, const int* pos) -> void {
-		uint16_t label = input.at<uint16_t>(pos[0], pos[1]);
-		auto iter = colormap.find(label);
-		if (iter != colormap.end())
-		{
-			px = iter->second;
-		}
-	});
+	output.forEach<ColorPixel>([&](ColorPixel& px, const int* pos) -> void
+	                           {
+		                           uint16_t label = input.at<uint16_t>(pos[0], pos[1]);
+		                           auto iter = colormap.find(label);
+		                           if (iter != colormap.end())
+		                           {
+			                           px = iter->second;
+		                           }
+	                           });
 
 	return output;
 }
 
+Colormap createColormap(const std::set<uint16_t>& labels, std::default_random_engine& re)
+{
+	Colormap colormap;
+	std::uniform_int_distribution<> dis(0, 256);
+	for (auto label : labels)
+	{
+		colormap[label] = cv::Point3_<uint8_t>(dis(re), dis(re), dis(re));
+	}
+	return colormap;
+}
+Colormap createColormap(const cv::Mat& labels, std::default_random_engine& re)
+{
+	return createColormap(unique(labels), re);
+}
+
+void extendColormap(Colormap& colormap, const std::set<uint16_t>& labels, std::default_random_engine& re)
+{
+	std::uniform_int_distribution<> dis(0, 256);
+	for (auto label : labels)
+	{
+		auto iter = colormap.find(label);
+		if (iter == colormap.end())
+		{
+			colormap[label] = cv::Point3_<uint8_t>(dis(re), dis(re), dis(re));
+		}
+	}
+}
+void extendColormap(Colormap& colormap, const cv::Mat& labels, std::default_random_engine& re)
+{
+	extendColormap(colormap, unique(labels), re);
+}
+
+}

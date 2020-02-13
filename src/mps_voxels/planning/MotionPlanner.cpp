@@ -23,6 +23,9 @@
 
 #define _unused(x) ((void)(x))
 
+namespace mps
+{
+
 const std::string Scene::CLUTTER_NAME = "clutter";
 
 State stateFactory(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects)
@@ -1310,4 +1313,6 @@ MotionPlanner::recoverCrash(const robot_state::RobotState& currentState,
 		return motion;
 	}
 	return std::shared_ptr<Motion>();
+}
+
 }

@@ -12,6 +12,9 @@
 
 #include <tf_conversions/tf_eigen.h>
 
+namespace mps
+{
+
 namespace om = octomap;
 
 bool isSpeckleNode(const octomap::OcTreeKey& nKey, const octomap::OcTree* octree)
@@ -433,4 +436,6 @@ visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std
 	}
 
 		return occupiedNodesVis;
+}
+
 }

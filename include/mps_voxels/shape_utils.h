@@ -10,6 +10,9 @@
 #include <octomap/octomap_types.h>
 #include <Eigen/Core>
 
+namespace mps
+{
+
 template <typename PointContainerT, typename PointT = typename PointContainerT::value_type>
 std::shared_ptr<shapes::Mesh> convex_hull(const PointContainerT& points);
 
@@ -29,5 +32,7 @@ std::shared_ptr<shapes::Mesh> ZAMBB(const PointContainerT& points);
 std::shared_ptr<shapes::Mesh> approximateShape(const octomap::OcTree* tree);
 
 void getAABB(const shapes::Mesh& shape, Eigen::Vector3f& min, Eigen::Vector3f& max);
+
+}
 
 #endif // MPS_SHAPE_UTILS_H

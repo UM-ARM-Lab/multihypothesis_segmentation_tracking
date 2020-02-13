@@ -25,6 +25,9 @@
 
 #include <boost/core/null_deleter.hpp>
 
+namespace mps
+{
+
 pcl::PointCloud<PointT>::Ptr filterInCameraFrame(
 	pcl::PointCloud<PointT>::Ptr& cloud,
 	const double zMin,
@@ -247,4 +250,6 @@ void getBoundingCube(const pcl::PointCloud<PointT>& members, Eigen::Vector3f& mi
 			min[d] -= delta/2.0;
 		}
 	}
+}
+
 }

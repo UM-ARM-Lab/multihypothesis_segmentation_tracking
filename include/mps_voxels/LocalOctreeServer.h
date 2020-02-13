@@ -10,6 +10,8 @@
 #include <octomap/OcTree.h>
 #include <ros/node_handle.h>
 
+namespace mps
+{
 
 template <typename T>
 void setIfMissing(ros::NodeHandle& nh, const std::string& param_name, const T& param_val)
@@ -55,5 +57,7 @@ public:
 	const OcTreeT* getOctree() const { return this->m_octree.get(); }
 	OcTreeT* getOctree() { return this->m_octree.get(); }
 };
+
+}
 
 #endif // PROJECT_LOCALOCTREESERVER_H

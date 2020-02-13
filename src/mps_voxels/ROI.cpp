@@ -4,6 +4,8 @@
 
 #include "mps_voxels/ROI.h"
 
+namespace mps
+{
 
 cv::Mat ROI::getMask(const tf::StampedTransform& cameraTworld,
                      const image_geometry::PinholeCameraModel& cam,
@@ -53,4 +55,6 @@ visualization_msgs::Marker ROI::getMarker() const
 	visualization_msgs::Marker m = visualizeAABB(minExtent, maxExtent);
 	m.header.frame_id = this->frame_id;
 	return m;
+}
+
 }

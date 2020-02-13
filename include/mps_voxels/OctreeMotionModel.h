@@ -13,6 +13,9 @@
 #include <Eigen/Geometry>
 #include <memory>
 
+namespace mps
+{
+
 class OctreeMotionModel : public RigidMotionModel
 {
 public:
@@ -26,5 +29,7 @@ public:
 
 	std::shared_ptr<octomap::OcTree> octree;
 };
+
+}
 
 #endif // PROJECT_MEMORYOBJECT_H

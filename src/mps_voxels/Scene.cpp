@@ -25,6 +25,9 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/extract_indices.h>
 
+namespace mps
+{
+
 Object::Object(const ObjectIndex i, const std::shared_ptr<octomap::OcTree>& tree)
  : index(i), occupancy(tree)
 {
@@ -807,4 +810,6 @@ bool SceneProcessor::buildObjects(Scene& s)
 	}
 
 	return true;
+}
+
 }

@@ -9,6 +9,9 @@
 #include <pcl_ros/transforms.h>
 #include <pcl/filters/voxel_grid.h>
 
+namespace mps
+{
+
 /*namespace octomap
 {
 
@@ -228,4 +231,6 @@ void LocalOctreeServer::insertCloud(const pcl::PointCloud<PointT>::Ptr& cloud, c
 //	voxelFilter.filter(*downsampled_cloud);
 
 	insertCloudInOctree(cloud, worldTcamera, m_octree.get());
+}
+
 }
