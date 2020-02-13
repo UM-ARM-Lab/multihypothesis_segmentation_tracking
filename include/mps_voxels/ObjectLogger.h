@@ -7,11 +7,16 @@
 
 #include "mps_voxels/Scene.h"
 
+namespace mps
+{
+
 class ObjectLogger
 {
 public:
 	static
 	bool logObject(const Object* obj, const std::string& location, const std::string& name);
 };
+
+}
 
 #endif // MPS_OBJECTLOGGER_H

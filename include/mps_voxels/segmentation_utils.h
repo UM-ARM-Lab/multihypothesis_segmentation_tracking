@@ -18,11 +18,14 @@
 #include <actionlib/client/simple_action_client.h>
 #include <ros/ros.h>
 
-struct xycoor{
+namespace mps
+{
+
+struct xycoor
+{
 	int x;
 	int y;
 };
-
 
 struct SegmentationInfo
 {
@@ -47,45 +50,48 @@ public:
 	using SegmentationClient = actionlib::SimpleActionClient<mps_msgs::SegmentRGBDAction>;
 
 	explicit
-	RGBDSegmenter(ros::NodeHandle& nh);
+	RGBDSegmenter(ros::NodeHandle &nh);
 
 	mutable
 	SegmentationClient segmentClient;
 
 	virtual
 	std::shared_ptr<SegmentationInfo> segment(
-		const cv_bridge::CvImage& rgb,
-		const cv_bridge::CvImage& depth,
-		const sensor_msgs::CameraInfo& cam) const;
+		const cv_bridge::CvImage &rgb,
+		const cv_bridge::CvImage &depth,
+		const sensor_msgs::CameraInfo &cam) const;
 
 };
 
 class CachingRGBDSegmenter : public RGBDSegmenter
 {
 public:
-	using SegmentationCache = std::map<ros::Time, std::shared_ptr<SegmentationInfo> >;
+	using SegmentationCache = std::map<ros::Time, std::shared_ptr<SegmentationInfo>>;
 
 	mutable
 	SegmentationCache cache;
 
 	explicit
-	CachingRGBDSegmenter(ros::NodeHandle& nh);
+	CachingRGBDSegmenter(ros::NodeHandle &nh);
 
 	std::shared_ptr<SegmentationInfo> segment(
-		const cv_bridge::CvImage& rgb,
-		const cv_bridge::CvImage& depth,
-		const sensor_msgs::CameraInfo& cam) const override;
+		const cv_bridge::CvImage &rgb,
+		const cv_bridge::CvImage &depth,
+		const sensor_msgs::CameraInfo &cam) const override;
 };
 
 std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
-	const pcl::PointCloud<PointT>::Ptr& cloud, const cv::Mat& labels,
-	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi,
-	std::map<uint16_t, ObjectIndex>* labelToIndexLookup = nullptr);
+	const pcl::PointCloud<PointT>::Ptr &cloud, const cv::Mat &labels,
+	const image_geometry::PinholeCameraModel &cameraModel, const cv::Rect &roi,
+	std::map<uint16_t, ObjectIndex> *labelToIndexLookup = nullptr);
 
 //std::map<uint16_t, std::vector<xycoor>> segmentMaskFromImage(const cv::Mat& labels,const cv::Rect& roi);
 
-std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels,const cv::Rect& roi);
+std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat &labels, const cv::Rect &roi);
 
-pcl::PointCloud<PointT>::Ptr make_PC_segment(const cv::Mat& rgb, const cv::Mat& depth,
-                                             const image_geometry::PinholeCameraModel& cameraModel, const cv::Mat& mask);
+pcl::PointCloud<PointT>::Ptr make_PC_segment(const cv::Mat &rgb, const cv::Mat &depth,
+                                             const image_geometry::PinholeCameraModel &cameraModel,
+                                             const cv::Mat &mask);
+
+}
 #endif // MPS_VOXELS_SEGMENTATION_UTILS_H

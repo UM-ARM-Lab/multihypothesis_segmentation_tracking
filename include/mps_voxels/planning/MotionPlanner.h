@@ -10,6 +10,9 @@
 
 #include <moveit/planning_scene/planning_scene.h>
 
+namespace mps
+{
+
 class ObjectSampler
 {
 public:
@@ -63,5 +66,7 @@ struct ComparePoses
 	using RankedPose = MotionPlanner::RankedPose;
 	bool operator()(const RankedPose& a, const RankedPose& b ) { return a.first < b.first; };
 };
+
+}
 
 #endif // MPS_MOTIONPLANNER_H

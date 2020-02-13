@@ -16,7 +16,7 @@
 //#include <message_filters/subscriber.h>
 //#include <message_filters/time_synchronizer.h>
 
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 #include "mps_voxels/CudaTracker.h"
 #include "mps_voxels/Scene.h"
 #include "mps_voxels/image_utils.h"

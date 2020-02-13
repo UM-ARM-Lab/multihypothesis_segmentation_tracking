@@ -10,6 +10,9 @@
 
 #include <memory>
 
+namespace mps
+{
+
 struct Motion
 {
 	std::shared_ptr<State> state;
@@ -18,5 +21,7 @@ struct Motion
 
 	std::vector<ObjectIndex> targets;
 };
+
+}
 
 #endif //MPS_PLANNING_MOTION_H

@@ -2,8 +2,8 @@
 // Created by arprice on 10/24/18.
 //
 
-#ifndef PROJECT_GRAPH_MATRIX_UTILS_H
-#define PROJECT_GRAPH_MATRIX_UTILS_H
+#ifndef MPS_GRAPH_MATRIX_UTILS_H
+#define MPS_GRAPH_MATRIX_UTILS_H
 
 #include <Eigen/Core>
 #include <Eigen/SparseCore>
@@ -27,4 +27,4 @@ Eigen::SparseMatrix<double> getAdjacencySparse(const Graph& graph);
 template <typename Scalar>
 std::vector<Eigen::Triplet<Scalar>> to_triplets(const Eigen::SparseMatrix<Scalar> & M);
 
-#endif // PROJECT_GRAPH_MATRIX_UTILS_H
+#endif // MPS_GRAPH_MATRIX_UTILS_H

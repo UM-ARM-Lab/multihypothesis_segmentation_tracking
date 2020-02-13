@@ -5,11 +5,14 @@
 #include "mps_voxels/shape_utils.h"
 #include "mps_voxels/shape_utils-impl.hpp"
 #include "mps_voxels/octree_utils.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 #include <octomap/octomap_types.h>
 
 #include <geometric_shapes/shape_operations.h>
+
+namespace mps
+{
 
 template std::shared_ptr<shapes::Mesh> convex_hull<octomap::point3d_collection, octomap::point3d>(const octomap::point3d_collection&);
 template std::shared_ptr<shapes::Mesh> prism<octomap::point3d_collection, octomap::point3d>(const octomap::point3d_collection&);
@@ -44,4 +47,6 @@ void getAABB(const shapes::Mesh& shape, Eigen::Vector3f& min, Eigen::Vector3f& m
 			max[d] = std::max(max[d], static_cast<float>(vertex[d]));
 		}
 	}
+}
+
 }

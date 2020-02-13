@@ -7,7 +7,11 @@
 
 #include <opencv2/core.hpp>
 
-void getHSVMask(const cv::Mat& img, cv::Mat& mask, const cv::Scalar& minHSV, const cv::Scalar& maxHSV, const int morphSize);
+namespace mps
+{
+
+void
+getHSVMask(const cv::Mat& img, cv::Mat& mask, const cv::Scalar& minHSV, const cv::Scalar& maxHSV, const int morphSize);
 
 class TargetDetector
 {
@@ -29,5 +33,7 @@ public:
 	int sizeThreshold = 100;
 	double overlapThreshold = 0.5;
 };
+
+}
 
 #endif // MPS_TARGETDETECTOR_H

@@ -7,7 +7,11 @@
 
 #include <opencv2/imgproc.hpp>
 
-void getHSVMask(const cv::Mat& img, cv::Mat& mask, const cv::Scalar& minHSV, const cv::Scalar& maxHSV, const int morphSize)
+namespace mps
+{
+
+void
+getHSVMask(const cv::Mat& img, cv::Mat& mask, const cv::Scalar& minHSV, const cv::Scalar& maxHSV, const int morphSize)
 {
 	cv::Mat imgHSV, morphKernel;
 	cv::cvtColor(img, imgHSV, CV_BGR2HSV);
@@ -27,13 +31,13 @@ TargetDetector::TargetDetector(TRACK_COLOR color)
 	// NB: OpenCV's HSV H-range is 0-180 rather than 0-360, to keep 1-byte sizes, so we divide by 2
 	if (TRACK_COLOR::PURPLE == color)
 	{
-		minHSV = cv::Scalar(240/2.0, 50, 50);
-		maxHSV = cv::Scalar(270/2.0, 256, 256);
+		minHSV = cv::Scalar(240 / 2.0, 50, 50);
+		maxHSV = cv::Scalar(270 / 2.0, 256, 256);
 	}
 	else if (TRACK_COLOR::GREEN == color)
 	{
-		minHSV = cv::Scalar(64/2.0, 100, 100);
-		maxHSV = cv::Scalar(85/2.0, 256, 256);
+		minHSV = cv::Scalar(64 / 2.0, 100, 100);
+		maxHSV = cv::Scalar(85 / 2.0, 256, 256);
 	}
 	else { throw std::logic_error("Unknown color to track."); }
 }
@@ -64,7 +68,7 @@ int TargetDetector::matchGoalSegment(const cv::Mat& goalMask, const cv::Mat& lab
 		int overlapNum = cv::countNonZero(labelMask & goalMask);
 
 		if ((overlapNum > sizeThreshold)
-		    && (((double)overlapNum/(double)labelNum) > overlapThreshold))
+		    && (((double) overlapNum / (double) labelNum) > overlapThreshold))
 		{
 			goalID = label;
 			break;
@@ -72,4 +76,6 @@ int TargetDetector::matchGoalSegment(const cv::Mat& goalMask, const cv::Mat& lab
 	}
 
 	return goalID;
+}
+
 }

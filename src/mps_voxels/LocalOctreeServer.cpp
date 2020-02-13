@@ -3,11 +3,14 @@
 //
 
 #include "mps_voxels/LocalOctreeServer.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 #include <octomap/Pointcloud.h>
 #include <pcl_ros/transforms.h>
 #include <pcl/filters/voxel_grid.h>
+
+namespace mps
+{
 
 /*namespace octomap
 {
@@ -228,4 +231,6 @@ void LocalOctreeServer::insertCloud(const pcl::PointCloud<PointT>::Ptr& cloud, c
 //	voxelFilter.filter(*downsampled_cloud);
 
 	insertCloudInOctree(cloud, worldTcamera, m_octree.get());
+}
+
 }

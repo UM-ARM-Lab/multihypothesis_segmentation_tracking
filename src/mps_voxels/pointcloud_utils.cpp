@@ -3,7 +3,7 @@
 //
 
 #include "mps_voxels/pointcloud_utils.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 // Cropping
 #include <pcl/filters/crop_box.h>
@@ -24,6 +24,9 @@
 #include <ros/console.h>
 
 #include <boost/core/null_deleter.hpp>
+
+namespace mps
+{
 
 pcl::PointCloud<PointT>::Ptr filterInCameraFrame(
 	pcl::PointCloud<PointT>::Ptr& cloud,
@@ -247,4 +250,6 @@ void getBoundingCube(const pcl::PointCloud<PointT>& members, Eigen::Vector3f& mi
 			min[d] -= delta/2.0;
 		}
 	}
+}
+
 }

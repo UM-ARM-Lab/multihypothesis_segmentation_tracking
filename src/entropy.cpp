@@ -20,6 +20,7 @@
 
 
 namespace om = octomap;
+using namespace mps;
 
 using PointT = pcl::PointXYZRGB;
 

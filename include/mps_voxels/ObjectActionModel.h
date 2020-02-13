@@ -8,7 +8,7 @@
 #include "mps_voxels/Tracker.h"
 #include "mps_voxels/SiamTracker.h"
 #include "mps_voxels/SensorHistorian.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 #include "mps_voxels/PointT.h"
 #include "mps_voxels/ROI.h"
 #include "mps_voxels/Scene.h"

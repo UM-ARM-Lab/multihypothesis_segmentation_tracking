@@ -6,7 +6,7 @@
 #define MPS_SHAPE_UTILS_IMPL_H
 
 #include "mps_voxels/shape_utils.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Polyhedron_3.h>
@@ -28,6 +28,9 @@
 
 #include <vector>
 #include <type_traits>
+
+namespace mps
+{
 
 
 using K =            CGAL::Exact_predicates_inexact_constructions_kernel;
@@ -248,6 +251,8 @@ std::shared_ptr<shapes::Mesh> ZAMBB(const PointContainerT& points)
 		}
 	}
 	return convex_hull(supports);
+}
+
 }
 
 #endif //MPS_SHAPE_UTILS_IMPL_H

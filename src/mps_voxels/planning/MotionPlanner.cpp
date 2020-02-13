@@ -5,7 +5,7 @@
 #include "mps_voxels/planning/MotionPlanner.h"
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/LocalOctreeServer.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 #include <moveit/planning_scene/planning_scene.h>
 
@@ -22,6 +22,9 @@
 #include <mps_voxels/planning/MotionPlanner.h>
 
 #define _unused(x) ((void)(x))
+
+namespace mps
+{
 
 const std::string Scene::CLUTTER_NAME = "clutter";
 
@@ -1310,4 +1313,6 @@ MotionPlanner::recoverCrash(const robot_state::RobotState& currentState,
 		return motion;
 	}
 	return std::shared_ptr<Motion>();
+}
+
 }

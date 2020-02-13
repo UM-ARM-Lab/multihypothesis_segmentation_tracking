@@ -12,6 +12,9 @@
 #include <depth_image_proc/depth_conversions.h>
 #include <visualization_msgs/MarkerArray.h>
 
+namespace mps
+{
+
 template <typename PointT>
 PointT toPoint3D(const float uIdx, const float vIdx, const float depthMeters, const image_geometry::PinholeCameraModel& cam)
 {
@@ -86,5 +89,7 @@ public:
 	                const cv::Mat* depth = nullptr) const;
 	visualization_msgs::Marker getMarker() const;
 };
+
+}
 
 #endif // MPS_VOXELS_ROI_H

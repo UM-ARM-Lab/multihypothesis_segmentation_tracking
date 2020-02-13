@@ -17,6 +17,8 @@
 #include <Eigen/Geometry>
 #include <memory>
 
+namespace mps
+{
 
 bool isSpeckleNode(const octomap::OcTreeKey& nKey, const octomap::OcTree* octree);
 
@@ -62,5 +64,7 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 	const Eigen::Vector3f& maxExtent);
 
 visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std::string& globalFrame = "world", const std_msgs::ColorRGBA* base_color = nullptr);
+
+}
 
 #endif // MPS_VOXELS_OCTREE_UTILS_H

@@ -10,6 +10,9 @@
 #include <moveit_msgs/Grasp.h>
 #include <victor_hardware_interface/Robotiq3FingerCommand.h>
 
+namespace mps
+{
+
 class Action
 {
 public:
@@ -41,5 +44,7 @@ public:
 	std::vector<std::shared_ptr<Action>> actions;
 	int primaryAction = -1; ///< Useful for chains where most actions are setting up for a main one
 };
+
+}
 
 #endif // MPS_PLANNING_ACTION_H

@@ -193,10 +193,10 @@ std::pair<double, TreeCut> MCMCTreeCut<ValueTree>::sample(RNG& rng, const Belief
 //			double logprob_i = logProbCut(vStar, value(T, cut_i), sigmaSquared);
 			double logprob_prime = logProbCut(vStar, value_prime, sigmaSquared);
 
-//			double proposal_prob = 1.0/static_cast<double>(moves.size());
-//			double return_prob = returnProbability(T, cut_i, move);
-			double proposal_prob = 1.0;///static_cast<double>(moves.size());
-			double return_prob = 1.0;//returnProbability(T, cut_i, move);
+			double proposal_prob = 1.0/static_cast<double>(moves.size());
+			double return_prob = returnProbability(T, cut_i, move);
+//			double proposal_prob = 1.0;///static_cast<double>(moves.size());
+//			double return_prob = 1.0;//returnProbability(T, cut_i, move);
 
 			double acceptance = std::exp(logprob_prime + std::log(return_prob) - (logprob_i + std::log(proposal_prob)));
 //			double acceptance = 1.0;

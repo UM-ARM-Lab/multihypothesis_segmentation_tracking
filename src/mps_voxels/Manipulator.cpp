@@ -3,7 +3,7 @@
 //
 
 #include "mps_voxels/Manipulator.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 #include "mps_voxels/Viterbi.hpp"
 
 #include <moveit/planning_scene/planning_scene.h>

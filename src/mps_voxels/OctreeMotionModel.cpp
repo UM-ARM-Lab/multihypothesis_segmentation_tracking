@@ -9,6 +9,9 @@
 #include <CGAL/Cartesian_d.h>
 #include <CGAL/Min_sphere_of_spheres_d.h>
 
+namespace mps
+{
+
 void OctreeMotionModel::updateMembershipStructures()
 {
 //	typedef CGAL::Exact_rational              FT;
@@ -88,4 +91,6 @@ bool OctreeMotionModel::observe(const pcl::PointCloud<PointT>::Ptr& cloud, const
 	insertCloudInOctree(cloud, localTcamera, octree.get());
 
 	return true;
+}
+
 }

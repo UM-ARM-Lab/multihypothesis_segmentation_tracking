@@ -10,7 +10,7 @@
 #include "mps_voxels/Manipulator.h"
 #include "mps_voxels/MotionModel.h"
 #include "segmentation_utils.h"
-#include "mps_voxels/vector_less_than.h"
+#include "mps_voxels/util/vector_less_than.hpp"
 
 #include <moveit/collision_detection/world.h>
 
@@ -28,6 +28,9 @@
 #include <Eigen/StdVector>
 
 #include <random>
+
+namespace mps
+{
 
 class LocalOctreeServer;
 class VoxelCompleter;
@@ -167,4 +170,5 @@ public:
 
 };
 
+}
 #endif // MPS_SCENE_H

@@ -14,6 +14,7 @@
 #include <cassert>
 
 namespace om = octomap;
+using namespace mps;
 
 std::shared_ptr<OctreeRetriever> mapClient;
 std::shared_ptr<VoxelCompleter> completionClient;

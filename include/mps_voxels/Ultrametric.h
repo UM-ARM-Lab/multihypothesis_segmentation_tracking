@@ -2,8 +2,8 @@
 // Created by arprice on 10/24/18.
 //
 
-#ifndef PROJECT_ULTRAMETRIC_H
-#define PROJECT_ULTRAMETRIC_H
+#ifndef MPS_ULTRAMETRIC_H
+#define MPS_ULTRAMETRIC_H
 
 #include <containers.hpp>
 #include <opencv2/core.hpp>
@@ -27,4 +27,4 @@ struct Ultrametric
 };
 
 
-#endif // PROJECT_ULTRAMETRIC_H
+#endif // MPS_ULTRAMETRIC_H

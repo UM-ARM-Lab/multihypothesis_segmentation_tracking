@@ -2,14 +2,16 @@
 // Created by arprice on 9/10/18.
 //
 
-#ifndef PROJECT_LOCALOCTREESERVER_H
-#define PROJECT_LOCALOCTREESERVER_H
+#ifndef MPS_LOCALOCTREESERVER_H
+#define MPS_LOCALOCTREESERVER_H
 
 #include "mps_voxels/PointT.h"
 
 #include <octomap/OcTree.h>
 #include <ros/node_handle.h>
 
+namespace mps
+{
 
 template <typename T>
 void setIfMissing(ros::NodeHandle& nh, const std::string& param_name, const T& param_val)
@@ -56,4 +58,6 @@ public:
 	OcTreeT* getOctree() { return this->m_octree.get(); }
 };
 
-#endif // PROJECT_LOCALOCTREESERVER_H
+}
+
+#endif // MPS_LOCALOCTREESERVER_H

@@ -11,7 +11,7 @@
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/shape_utils.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 #include <tf_conversions/tf_eigen.h>
 
@@ -24,6 +24,9 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/extract_indices.h>
+
+namespace mps
+{
 
 Object::Object(const ObjectIndex i, const std::shared_ptr<octomap::OcTree>& tree)
  : index(i), occupancy(tree)
@@ -807,4 +810,6 @@ bool SceneProcessor::buildObjects(Scene& s)
 	}
 
 	return true;
+}
+
 }

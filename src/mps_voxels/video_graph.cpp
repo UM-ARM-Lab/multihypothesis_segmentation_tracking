@@ -3,7 +3,7 @@
 //
 
 #include "mps_voxels/video_graph.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 #include <boost/graph/dijkstra_shortest_paths.hpp>
 #include <boost/property_map/transform_value_property_map.hpp>
