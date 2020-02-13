@@ -6,7 +6,7 @@
 #define MPS_SCENE_H
 
 #include "mps_voxels/PointT.h"
-#include "mps_voxels/ObjectIndex.h"
+#include "mps_voxels/Indexes.h"
 #include "mps_voxels/Manipulator.h"
 #include "mps_voxels/MotionModel.h"
 #include "segmentation_utils.h"
