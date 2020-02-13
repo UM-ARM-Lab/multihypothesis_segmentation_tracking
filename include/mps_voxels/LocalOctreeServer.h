@@ -2,8 +2,8 @@
 // Created by arprice on 9/10/18.
 //
 
-#ifndef PROJECT_LOCALOCTREESERVER_H
-#define PROJECT_LOCALOCTREESERVER_H
+#ifndef MPS_LOCALOCTREESERVER_H
+#define MPS_LOCALOCTREESERVER_H
 
 #include "mps_voxels/PointT.h"
 
@@ -60,4 +60,4 @@ public:
 
 }
 
-#endif // PROJECT_LOCALOCTREESERVER_H
+#endif // MPS_LOCALOCTREESERVER_H

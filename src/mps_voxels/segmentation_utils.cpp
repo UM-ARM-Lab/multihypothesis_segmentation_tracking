@@ -5,7 +5,7 @@
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 namespace mps
 {

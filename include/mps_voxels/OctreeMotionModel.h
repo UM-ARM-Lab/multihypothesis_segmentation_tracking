@@ -2,8 +2,8 @@
 // Created by arprice on 12/18/18.
 //
 
-#ifndef PROJECT_MEMORYOBJECT_H
-#define PROJECT_MEMORYOBJECT_H
+#ifndef MPS_MEMORYOBJECT_H
+#define MPS_MEMORYOBJECT_H
 
 #include "mps_voxels/MotionModel.h"
 #include "mps_voxels/PointT.h"
@@ -32,4 +32,4 @@ public:
 
 }
 
-#endif // PROJECT_MEMORYOBJECT_H
+#endif // MPS_MEMORYOBJECT_H

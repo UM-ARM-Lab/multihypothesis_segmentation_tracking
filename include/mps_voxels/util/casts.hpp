@@ -1,5 +1,5 @@
-#ifndef PROJECT_CASTS_HPP
-#define PROJECT_CASTS_HPP
+#ifndef MPS_CASTS_HPP
+#define MPS_CASTS_HPP
 
 #include <memory>
 #include <cassert>

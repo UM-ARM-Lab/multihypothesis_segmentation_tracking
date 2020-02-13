@@ -11,7 +11,7 @@
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/shape_utils.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 #include <tf_conversions/tf_eigen.h>
 

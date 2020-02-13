@@ -6,7 +6,7 @@
 #define MPS_VOXELS_IMAGE_UTILS_H
 
 #include "mps_voxels/PointT.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 #include <opencv2/core.hpp>
 #include <image_geometry/pinhole_camera_model.h>

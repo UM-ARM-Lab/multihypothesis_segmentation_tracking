@@ -5,7 +5,7 @@
 #include "mps_voxels/shape_utils.h"
 #include "mps_voxels/shape_utils-impl.hpp"
 #include "mps_voxels/octree_utils.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 #include <octomap/octomap_types.h>
 

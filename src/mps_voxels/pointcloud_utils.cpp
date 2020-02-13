@@ -3,7 +3,7 @@
 //
 
 #include "mps_voxels/pointcloud_utils.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 // Cropping
 #include <pcl/filters/crop_box.h>

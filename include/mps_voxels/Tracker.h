@@ -9,7 +9,7 @@
 #include "mps_voxels/colormap.h"
 #include "mps_voxels/SensorHistorian.h"
 #include "mps_voxels/image_utils.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 #include "mps_msgs/AABBox2d.h"
 

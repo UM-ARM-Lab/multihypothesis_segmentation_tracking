@@ -3,7 +3,7 @@
 //
 
 #include "mps_voxels/LocalOctreeServer.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 #include <octomap/Pointcloud.h>
 #include <pcl_ros/transforms.h>

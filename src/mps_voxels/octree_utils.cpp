@@ -4,7 +4,7 @@
 
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/colormap.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 #include <mps_shape_completion_msgs/CompleteShape.h>
 
 #include <octomap_msgs/conversions.h>

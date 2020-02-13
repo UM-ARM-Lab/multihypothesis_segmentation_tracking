@@ -2,8 +2,8 @@
 // Created by arprice on 12/19/18.
 //
 
-#ifndef PROJECT_OBJECTINDEX_H
-#define PROJECT_OBJECTINDEX_H
+#ifndef MPS_OBJECTINDEX_H
+#define MPS_OBJECTINDEX_H
 
 namespace mps
 {

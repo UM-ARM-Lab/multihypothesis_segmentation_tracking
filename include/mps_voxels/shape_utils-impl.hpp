@@ -6,7 +6,7 @@
 #define MPS_SHAPE_UTILS_IMPL_H
 
 #include "mps_voxels/shape_utils.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Polyhedron_3.h>

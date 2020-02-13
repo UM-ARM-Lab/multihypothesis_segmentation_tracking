@@ -29,7 +29,7 @@
 
 #include "mps_voxels/JaccardMatch.h"
 #include "mps_voxels/AABB.h"
-#include "mps_voxels/hungarian.hpp"
+#include "mps_voxels/util/hungarian.hpp"
 #include <boost/bimap.hpp>
 #include <utility>
 

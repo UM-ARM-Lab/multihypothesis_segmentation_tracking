@@ -3,7 +3,7 @@
 //
 
 #include "mps_voxels/Ultrametric.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 #include <ucm2hier.hpp> // NB: Contains function definitions, so can only be included once per project
 

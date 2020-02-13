@@ -2,8 +2,8 @@
 // Created by arprice on 10/24/18.
 //
 
-#ifndef PROJECT_GRAPH_MATRIX_UTILS_HPP
-#define PROJECT_GRAPH_MATRIX_UTILS_HPP
+#ifndef MPS_GRAPH_MATRIX_UTILS_HPP
+#define MPS_GRAPH_MATRIX_UTILS_HPP
 
 #include "mps_voxels/graph_matrix_utils.h"
 #include "mps_voxels/video_graph.h"
@@ -161,4 +161,4 @@ std::vector<Eigen::Triplet<Scalar>> to_triplets(const Eigen::SparseMatrix<Scalar
 	return v;
 }
 
-#endif // PROJECT_GRAPH_MATRIX_UTILS_HPP
+#endif // MPS_GRAPH_MATRIX_UTILS_HPP

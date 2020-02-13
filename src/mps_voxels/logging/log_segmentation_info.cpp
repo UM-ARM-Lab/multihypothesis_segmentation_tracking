@@ -31,7 +31,7 @@
 #include "mps_voxels/logging/log_cv_mat.h"
 #include "mps_voxels/logging/log_cv_roi.h"
 #include "mps_voxels/util/macros.h"
-#include "mps_voxels/assert.h"
+#include "mps_voxels/util/assert.h"
 
 namespace mps
 {
