@@ -6,7 +6,7 @@
 #define MPS_PLANNING_STATE_H
 
 #include "mps_voxels/MotionModel.h"
-#include "mps_voxels/ObjectIndex.h"
+#include "mps_voxels/Indexes.h"
 #include "mps_voxels/moveit_pose_type.h"
 
 #include <Eigen/StdVector>

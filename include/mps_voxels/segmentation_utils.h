@@ -7,7 +7,7 @@
 
 #include "mps_voxels/ROI.h"
 #include "mps_voxels/PointT.h"
-#include "mps_voxels/ObjectIndex.h"
+#include "mps_voxels/Indexes.h"
 
 #include <mps_msgs/SegmentRGBDAction.h>
 #include <mps_msgs/AABBox2d.h>
