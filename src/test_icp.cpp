@@ -68,7 +68,7 @@ void test_icp()
 
 int main(int argc, char **argv)
 {
-	ros::init(argc, argv, "test_track");
+	ros::init(argc, argv, "test_icp");
 	ros::NodeHandle nh;
 	if (!nh.hasParam("/use_sim_time"))
 	{

@@ -32,7 +32,6 @@ objectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& dep
 	assert(depth1.type() == CV_16UC1);
 	assert(depth2.type() == CV_16UC1);
 
-	// TODO: ICP
 	float centerRow1 = 0;
 	float centerCol1 = 0;
 	float centerRow2 = 0;
@@ -157,7 +156,8 @@ rigidTF objectActionModel::icpManifoldSampler(const std::vector<ros::Time>& step
 	icp.setInputTarget(lastCloudSegment);
 	pcl::PointCloud<PointT> Final;
 	icp.align(Final);
-	std::cout << "Converged:" << icp.hasConverged() << " score: " << icp.getFitnessScore() << std::endl;
+	std::cout << "is Converged: " << icp.hasConverged() << "; Score = " << icp.getFitnessScore() << std::endl;
+	// TODO: use icp.getFitnessScore() to add random disturbance
 	Eigen::Matrix<float, 4, 4> Mcamera = icp.getFinalTransformation();
 	Eigen::Matrix<double, 4, 4> Mworld = worldTcamera.matrix() * Mcamera.cast<double>() * worldTcamera.inverse().matrix();
 //	std::cout << Mworld << std::endl;
@@ -184,7 +184,7 @@ bool objectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 	// wait for the action server to start
 	jlinkageActionClient.waitForServer(); //will wait for infinite time
 
-	ROS_INFO("SiamMask server started, sending goal.");
+	ROS_INFO("Jlinkage server started, sending goal.");
 
 	bool isClusterExist = false;
 	possibleRigidTFs.clear();

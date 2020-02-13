@@ -291,12 +291,11 @@ VoxelSegmentation::edges_size_type VoxelSegmentation::index_of(VoxelSegmentation
 }
 
 visualization_msgs::MarkerArray
-VoxelSegmentation::visualizeEdgeStateDirectly(VoxelSegmentation::EdgeState& edges, const double resolution,
-                                              const Eigen::Vector3d& roiMin, const std::string& globalFrame)
+VoxelSegmentation::visualizeVertexLabelsDirectly(VertexLabels& vlabels, const double& resolution,
+                                                 const Eigen::Vector3d& roiMin, const std::string& globalFrame)
 {
-	visualization_msgs::MarkerArray edgeStateVis;
-	edgeStateVis.markers.resize(1);
-	VertexLabels vlabels = components(edges);
+	visualization_msgs::MarkerArray vertexLabelVis;
+	vertexLabelVis.markers.resize(1);
 	Eigen::Vector3d offset(resolution * 0.5, resolution * 0.5, resolution * 0.5);
 
 	std::map<int, Eigen::Vector3d> colormap;
@@ -311,7 +310,7 @@ VoxelSegmentation::visualizeEdgeStateDirectly(VoxelSegmentation::EdgeState& edge
 		cubeCenter.y = coord[1];
 		cubeCenter.z = coord[2];
 
-		edgeStateVis.markers[0].points.push_back(cubeCenter);
+		vertexLabelVis.markers[0].points.push_back(cubeCenter);
 
 		// Colors
 		std_msgs::ColorRGBA color;
@@ -328,29 +327,36 @@ VoxelSegmentation::visualizeEdgeStateDirectly(VoxelSegmentation::EdgeState& edge
 			Eigen::Vector3d temp(color.r, color.g, color.b);
 			colormap[vlabels[i]] = temp;
 		}
-		edgeStateVis.markers[0].colors.push_back(color);
-
+		vertexLabelVis.markers[0].colors.push_back(color);
 	}
 
-	edgeStateVis.markers[0].header.frame_id = globalFrame;
-	edgeStateVis.markers[0].header.stamp = ros::Time::now();
-	edgeStateVis.markers[0].ns = "map" + std::to_string(0);//"occlusion";
-	edgeStateVis.markers[0].id = 0;
-	edgeStateVis.markers[0].type = visualization_msgs::Marker::CUBE_LIST;
-	edgeStateVis.markers[0].scale.x = resolution;
-	edgeStateVis.markers[0].scale.y = resolution;
-	edgeStateVis.markers[0].scale.z = resolution;
-	edgeStateVis.markers[0].color.r = 0;
-	edgeStateVis.markers[0].color.g = 0.2;
-	edgeStateVis.markers[0].color.b = 1;
-	edgeStateVis.markers[0].color.a = 1;
+	vertexLabelVis.markers[0].header.frame_id = globalFrame;
+	vertexLabelVis.markers[0].header.stamp = ros::Time::now();
+	vertexLabelVis.markers[0].ns = "state";
+	vertexLabelVis.markers[0].id = 0;
+	vertexLabelVis.markers[0].type = visualization_msgs::Marker::CUBE_LIST;
+	vertexLabelVis.markers[0].scale.x = resolution;
+	vertexLabelVis.markers[0].scale.y = resolution;
+	vertexLabelVis.markers[0].scale.z = resolution;
+	vertexLabelVis.markers[0].color.r = 0;
+	vertexLabelVis.markers[0].color.g = 0.2;
+	vertexLabelVis.markers[0].color.b = 1;
+	vertexLabelVis.markers[0].color.a = 1;
 
-	if (edgeStateVis.markers[0].points.size()>0)
-		edgeStateVis.markers[0].action = visualization_msgs::Marker::ADD;
+	if (vertexLabelVis.markers[0].points.size()>0)
+		vertexLabelVis.markers[0].action = visualization_msgs::Marker::ADD;
 	else
-		edgeStateVis.markers[0].action = visualization_msgs::Marker::DELETE;
+		vertexLabelVis.markers[0].action = visualization_msgs::Marker::DELETE;
 
-	return edgeStateVis;
+	return vertexLabelVis;
+}
+
+visualization_msgs::MarkerArray
+VoxelSegmentation::visualizeEdgeStateDirectly(VoxelSegmentation::EdgeState& edges, const double& resolution,
+                                              const Eigen::Vector3d& roiMin, const std::string& globalFrame)
+{
+	VertexLabels vlabels = components(edges);
+	return visualizeVertexLabelsDirectly(vlabels, resolution, roiMin, globalFrame);
 }
 
 mps::VoxelSegmentation::vertex_descriptor
@@ -397,7 +403,7 @@ bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin,
 	octomap::OcTreeNode* node = octree->search(coord.x(), coord.y(), coord.z());
 	if (node)
 	{
-		return node->getOccupancy() > 0.5;
+		return node->getOccupancy() > octree->getOccupancyThres();
 	}
 	return false;
 }
@@ -476,4 +482,40 @@ octreeToGridParticle(const octomap::OcTree* octree, const Eigen::Vector3d& minEx
 
 	return {logOdds, edges};
 }
+
+mps::VoxelSegmentation::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects,
+                                                         const Eigen::Vector3d& roiMinExtent,
+                                                         const Eigen::Vector3d& roiMaxExtent)
+{
+	mps::VoxelSegmentation::vertex_descriptor dims = roiToGrid(objects.begin()->second.get()->occupancy.get(), roiMinExtent, roiMaxExtent);
+	mps::VoxelSegmentation vox(dims);
+
+	mps::VoxelSegmentation::VertexLabels res(vox.num_vertices(), -1);
+
+	int label = 0;
+	for (auto& pair : objects)
+	{
+		auto obj = pair.second.get();
+		mps::VoxelSegmentation::vertex_descriptor objDims = roiToGrid(obj->occupancy.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>());
+		mps::VoxelSegmentation objVS(objDims);
+		mps::VoxelSegmentation::vertex_descriptor objMin = coordToGrid(obj->occupancy.get(), roiMinExtent, obj->minExtent.cast<double>());
+
+		for (mps::VoxelSegmentation::vertices_size_type v = 0; v < objVS.num_vertices(); ++v)
+		{
+			auto query = objVS.vertex_at(v);
+			if ( isOccupied(obj->occupancy.get(), obj->minExtent.cast<double>(), query) )
+			{
+				mps::VoxelSegmentation::vertex_descriptor target;
+				target[0] = query[0] + objMin[0];
+				target[1] = query[1] + objMin[1];
+				target[2] = query[2] + objMin[2];
+				mps::VoxelSegmentation::vertices_size_type index = vox.index_of(target);
+				res[index] = label;
+			}
+		}
+		label ++;
+	}
+	return res;
+}
+
 }

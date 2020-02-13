@@ -490,20 +490,24 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		/////////////////////////////////////////////
 		//// log historian->buffer & scene->segInfo & scene->roi
 		/////////////////////////////////////////////
-		std::string worldname = "experiment_world_02_07";
+		bool ifLog = false;
+		if (ifLog)
 		{
-			std::cerr << "start logging historian->buffer" << std::endl;
-			DataLog logger("/home/kunhuang/mps_log/explorer_buffer_" + worldname + ".bag");
-			logger.activeChannels.insert("buffer");
-			logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
-			std::cerr << "Successfully logged." << std::endl;
-		}
-		{
-			std::cerr << "start logging scene->segInfo" << std::endl;
-			DataLog logger("/home/kunhuang/mps_log/explorer_segInfo_" + worldname + ".bag");
-			logger.activeChannels.insert("segInfo");
-			logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
-			std::cerr << "Successfully logged." << std::endl;
+			std::string worldname = "experiment_world_02_07";
+			{
+				std::cerr << "start logging historian->buffer" << std::endl;
+				DataLog logger("/home/kunhuang/mps_log/explorer_buffer_" + worldname + ".bag");
+				logger.activeChannels.insert("buffer");
+				logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
+				std::cerr << "Successfully logged." << std::endl;
+			}
+			{
+				std::cerr << "start logging scene->segInfo" << std::endl;
+				DataLog logger("/home/kunhuang/mps_log/explorer_segInfo_" + worldname + ".bag");
+				logger.activeChannels.insert("segInfo");
+				logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
+				std::cerr << "Successfully logged." << std::endl;
+			}
 		}
 
 		/////////////////////////////////////////////
@@ -854,28 +858,44 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	//// Sample shape particles
 	/////////////////////////////////////////////
 	cv::RNG rng;
-	for (const auto& obj : scene->objects)
-	{
-		if (!ros::ok()) { return; }
+	mps::VoxelSegmentation::vertex_descriptor dims = roiToGrid(scene->objects.begin()->second.get()->occupancy.get(),
+	                                                           scene->minExtent.head<3>().cast<double>(),
+	                                                           scene->maxExtent.head<3>().cast<double>());
+	mps::VoxelSegmentation state(dims);
+	mps::VoxelSegmentation::VertexLabels vlabel = objectsToVoxelLabel(scene->objects,
+	                                                                 scene->minExtent.head<3>().cast<double>(),
+	                                                                 scene->maxExtent.head<3>().cast<double>());
+	auto markers = state.visualizeVertexLabelsDirectly(vlabel,
+	                                                   scene->objects.begin()->second->occupancy->getResolution(),
+	                                                   scene->minExtent.head<3>().cast<double>(), scene->worldFrame);
 
-		mps::VoxelSegmentation seg(mps::roiToGrid(obj.second->occupancy.get(), obj.second->minExtent.cast<double>(), obj.second->maxExtent.cast<double>()));
-		std::cerr << "Edges in voxel grid: " << seg.num_edges() << std::endl;
-		std::cerr << "Vertices in voxel grid: " << seg.num_vertices() << std::endl;
+	octreePub.publish(markers);
+	std::cerr << "State particle shown!" << std::endl;
+	sleep(5);
 
-		//// Sample particles, iter = # of samples
-		for (int iter = 0; iter < 0; ++iter)
-		{
-			double weight;
-			mps::VoxelSegmentation::EdgeState edges;
-			std::tie(weight, edges) = mps::octreeToGridParticle(obj.second->occupancy.get(), obj.second->minExtent.cast<double>(), obj.second->maxExtent.cast<double>(), rng);
 
-			// Visualize the edges
-			auto markers = seg.visualizeEdgeStateDirectly(edges, obj.second->occupancy->getResolution(), obj.second->minExtent.cast<double>(), scene->worldFrame);
-
-			octreePub.publish(markers);
-			sleep(1);
-		}
-	}
+//	for (const auto& obj : scene->objects)
+//	{
+//		if (!ros::ok()) { return; }
+//
+//		mps::VoxelSegmentation seg(mps::roiToGrid(obj.second->occupancy.get(), obj.second->minExtent.cast<double>(), obj.second->maxExtent.cast<double>()));
+//		std::cerr << "Edges in voxel grid: " << seg.num_edges() << std::endl;
+//		std::cerr << "Vertices in voxel grid: " << seg.num_vertices() << std::endl;
+//
+//		//// Sample particles, iter = # of samples
+//		for (int iter = 0; iter < 0; ++iter)
+//		{
+//			double weight;
+//			mps::VoxelSegmentation::EdgeState edges;
+//			std::tie(weight, edges) = mps::octreeToGridParticle(obj.second->occupancy.get(), obj.second->minExtent.cast<double>(), obj.second->maxExtent.cast<double>(), rng);
+//
+//			// Visualize the edges
+//			auto markers = seg.visualizeEdgeStateDirectly(edges, obj.second->occupancy->getResolution(), obj.second->minExtent.cast<double>(), scene->worldFrame);
+//
+//			octreePub.publish(markers);
+//			sleep(1);
+//		}
+//	}
 
 	PROFILE_RECORD("Complete Scene");
 

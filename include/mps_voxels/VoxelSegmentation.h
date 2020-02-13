@@ -42,6 +42,8 @@
 #include <Eigen/Core>
 #include <visualization_msgs/MarkerArray.h>
 
+#include "mps_voxels/Scene.h"
+
 namespace cv
 {
 class RNG;
@@ -135,9 +137,10 @@ public:
 
 	edges_size_type index_of(edge_descriptor edge) const;
 
-	visualization_msgs::MarkerArray visualizeEdgeStateDirectly(EdgeState& edges, const double resolution,
+	visualization_msgs::MarkerArray visualizeVertexLabelsDirectly(VertexLabels& vlabels, const double& resolution,
+	                                                              const Eigen::Vector3d& roiMin, const std::string& globalFrame);
+	visualization_msgs::MarkerArray visualizeEdgeStateDirectly(EdgeState& edges, const double& resolution,
 	                                                           const Eigen::Vector3d& roiMin, const std::string& globalFrame);
-
 };
 
 template <typename Point>
@@ -159,18 +162,23 @@ std::pair<bool, double>
 sampleIsOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelSegmentation::vertex_descriptor& query,
                  cv::RNG& rng);
 
-// From octree labels to edge graph
+/// From octree labels to edge graph
 mps::VoxelSegmentation::EdgeState
 octreeToGrid(const octomap::OcTree* octree,
              const Eigen::Vector3d& minExtent,
              const Eigen::Vector3d& maxExtent);
 
-// From octree labels to edge graph
+/// From octree labels to edge graph
 std::pair<double, mps::VoxelSegmentation::EdgeState>
 octreeToGridParticle(const octomap::OcTree* octree,
                      const Eigen::Vector3d& minExtent,
                      const Eigen::Vector3d& maxExtent,
                      cv::RNG& rng);
+
+/// From object octrees to a particle representing the whole state
+mps::VoxelSegmentation::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects,
+                                                         const Eigen::Vector3d& roiMinExtent,
+                                                         const Eigen::Vector3d& roiMaxExtent);
 
 }
 
