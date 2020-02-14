@@ -363,7 +363,7 @@
     </model>
     <gui fullscreen='0'>
       <camera name='user_camera'>
-        <pose frame=''>-0.608523 -0.203497 2.55829 0 0.905796 -0.123814</pose>
+        <pose frame=''>-0.29609 0.03503 3.20929 0 1.1538 -0.103809</pose>
         <view_controller>orbit</view_controller>
         <projection_type>perspective</projection_type>
       </camera>
@@ -444,118 +444,138 @@
       </spot>
     </light>
     <state world_name='default'>
-      <sim_time>1789 328000000</sim_time>
-      <real_time>112 995234642</real_time>
-      <wall_time>1566180158 715239667</wall_time>
-      <iterations>106027</iterations>
+      <sim_time>2055 476000000</sim_time>
+      <real_time>268 196399915</real_time>
+      <wall_time>1566416061 116298596</wall_time>
+      <iterations>266148</iterations>
       <model name='beer'>
-        <pose frame=''>1.00762 0.059581 0.815003 6e-06 4.7e-05 -0.133382</pose>
+        <pose frame=''>0.985549 0.006624 0.814995 2.3e-05 9.3e-05 -0.246708</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose frame=''>1.00762 0.059579 0.930003 6e-06 4.7e-05 -0.133382</pose>
+          <pose frame=''>0.985559 0.006618 0.929995 2.3e-05 9.3e-05 -0.246708</pose>
           <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0.006028 -0.001886 19.5854 0.011199 0.053482 0.010685</acceleration>
-          <wrench>0.002351 -0.000736 7.63832 0 -0 0</wrench>
+          <acceleration>0 0 -9.8 0 -0 0</acceleration>
+          <wrench>0 0 -3.822 0 -0 0</wrench>
         </link>
       </model>
       <model name='beer_0'>
-        <pose frame=''>0.878092 0.345153 0.7805 4e-06 -1e-06 0.023814</pose>
+        <pose frame=''>0.878057 0.345201 0.78049 3e-06 1e-06 0.025271</pose>
         <scale>1 1 0.7</scale>
         <link name='link'>
-          <pose frame=''>0.878091 0.345152 0.8955 4e-06 -1e-06 0.023814</pose>
+          <pose frame=''>0.878057 0.345201 0.89549 3e-06 1e-06 0.025271</pose>
+          <velocity>0 0 0 0 -0 0</velocity>
+          <acceleration>0 0 -9.8 0 -0 0</acceleration>
+          <wrench>0 0 -3.822 0 -0 0</wrench>
+        </link>
+      </model>
+      <model name='beer_1'>
+        <pose frame=''>0.870096 0.127206 0.872506 3.2e-05 9.9e-05 0.058554</pose>
+        <scale>1 1 1.5</scale>
+        <link name='link'>
+          <pose frame=''>0.870108 0.127203 0.987506 3.2e-05 9.9e-05 0.058554</pose>
+          <velocity>0 0 0 0 -0 0</velocity>
+          <acceleration>0.020534 -0.00392 19.5175 -0.039402 0.125801 0.190612</acceleration>
+          <wrench>0.008008 -0.001529 7.61184 0 -0 0</wrench>
+        </link>
+      </model>
+      <model name='beer_2'>
+        <pose frame=''>0.912468 -0.071211 0.815001 2.7e-05 4e-06 2.67686</pose>
+        <scale>0.7 0.2 1</scale>
+        <link name='link'>
+          <pose frame=''>0.912469 -0.071208 0.930001 2.7e-05 4e-06 2.67686</pose>
+          <velocity>0 0 0 0 -0 0</velocity>
+          <acceleration>0.000915 0.001821 19.5937 -0.015899 0.007944 0.000172</acceleration>
+          <wrench>0.000357 0.00071 7.64156 0 -0 0</wrench>
+        </link>
+      </model>
+      <model name='beer_3'>
+        <pose frame=''>0.732372 -0.182314 0.814991 9e-06 7e-06 1.09472</pose>
+        <scale>1 1.5 1</scale>
+        <link name='link'>
+          <pose frame=''>0.732374 -0.182313 0.929991 9e-06 7e-06 1.09472</pose>
+          <velocity>0 0 0 0 -0 0</velocity>
+          <acceleration>0 0 -9.8 0 -0 0</acceleration>
+          <wrench>0 0 -3.822 0 -0 0</wrench>
+        </link>
+      </model>
+      <model name='can_coke'>
+        <pose frame=''>0.716163 0.204842 1.05999 7e-06 -1e-06 -2.60842</pose>
+        <scale>1 1 1</scale>
+        <link name='link'>
+          <pose frame=''>0.715174 0.198772 0.879992 7e-06 -1e-06 -2.60842</pose>
+          <velocity>0 0 0 0 -0 0</velocity>
+          <acceleration>-0.041922 0.113952 -9.6786 -2.387 -0.91797 0.118331</acceleration>
+          <wrench>-0.01635 0.044441 -3.77465 0 -0 0</wrench>
+        </link>
+      </model>
+      <model name='can_coke_0'>
+        <pose frame=''>0.74797 0.130612 1.06 1e-05 -4e-06 2.57023</pose>
+        <scale>1 1.5 1</scale>
+        <link name='link'>
+          <pose frame=''>0.742102 0.128766 0.880001 1e-05 -4e-06 2.57023</pose>
+          <velocity>0 0 0 0 -0 0</velocity>
+          <acceleration>-1.60685 -1.20691 21.1845 -0.031842 0.673643 0.52417</acceleration>
+          <wrench>-0.626673 -0.470695 8.26197 0 -0 0</wrench>
+        </link>
+      </model>
+      <model name='can_fanta'>
+        <pose frame=''>0.798924 0.215742 0.879991 5e-06 1.4e-05 1.26536</pose>
+        <scale>1 1 1</scale>
+        <link name='link'>
+          <pose frame=''>0.798924 0.215742 0.879991 5e-06 1.4e-05 1.26536</pose>
+          <velocity>0 0 0 0 -0 0</velocity>
+          <acceleration>0 0 -9.8 0 -0 0</acceleration>
+          <wrench>0 0 -3.822 0 -0 0</wrench>
+        </link>
+      </model>
+      <model name='can_fanta_0'>
+        <pose frame=''>0.910524 0.051979 0.880001 -1.5e-05 2.8e-05 -1.0649</pose>
+        <scale>1 1 1</scale>
+        <link name='link'>
+          <pose frame=''>0.910524 0.051979 0.880001 -1.5e-05 2.8e-05 -1.0649</pose>
+          <velocity>0 0 0 0 -0 0</velocity>
+          <acceleration>-9e-06 5.4e-05 19.0001 -0.000826 -0.000141 0</acceleration>
+          <wrench>-4e-06 2.1e-05 7.41002 0 -0 0</wrench>
+        </link>
+      </model>
+      <model name='can_pepsi'>
+        <pose frame=''>0.770252 -0.076366 0.912492 3.14155 -5.7e-05 -1.03206</pose>
+        <scale>1 1 1.5</scale>
+        <link name='link'>
+          <pose frame=''>0.770252 -0.076366 0.912492 3.14155 -5.7e-05 -1.03206</pose>
+          <velocity>0 0 0 0 -0 0</velocity>
+          <acceleration>0 0 -9.8 0 -0 0</acceleration>
+          <wrench>0 0 -3.822 0 -0 0</wrench>
+        </link>
+      </model>
+      <model name='can_pepsi_0'>
+        <pose frame=''>0.847628 -0.254043 0.879991 2.7e-05 -2e-06 -2.50768</pose>
+        <scale>1.5 1 1</scale>
+        <link name='link'>
+          <pose frame=''>0.847628 -0.254043 0.879991 2.7e-05 -2e-06 -2.50768</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>0 0 -9.8 -0 -0 -0</acceleration>
           <wrench>0 0 -3.822 0 -0 0</wrench>
         </link>
       </model>
-      <model name='beer_1'>
-        <pose frame=''>0.871925 0.127553 0.872496 2.5e-05 9.4e-05 0.10077</pose>
-        <scale>1 1 1.5</scale>
-        <link name='link'>
-          <pose frame=''>0.871936 0.127551 0.987496 2.5e-05 9.4e-05 0.10077</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 -9.8 0 -0 0</acceleration>
-          <wrench>0 0 -3.822 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='beer_2'>
-        <pose frame=''>1.0138 -0.176485 0.814995 0.000109 6e-05 2.05295</pose>
-        <scale>0.7 0.2 1</scale>
-        <link name='link'>
-          <pose frame=''>1.0138 -0.176473 0.929995 0.000109 6e-05 2.05295</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 -9.8 0 -0 0</acceleration>
-          <wrench>0 0 -3.822 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='beer_3'>
-        <pose frame=''>0.661541 -0.179097 0.815001 -3e-06 1e-05 -0.543827</pose>
-        <scale>1 1.5 1</scale>
-        <link name='link'>
-          <pose frame=''>0.661542 -0.179097 0.930001 -3e-06 1e-05 -0.543827</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0.007328 -0.004935 19.5871 0.043709 0.064567 0.000397</acceleration>
-          <wrench>0.002858 -0.001925 7.63897 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='can_fanta'>
-        <pose frame=''>0.715647 0.227222 0.815203 -2e-06 -3e-05 1.57095</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose frame=''>0.715647 0.227222 0.815203 -2e-06 -3e-05 1.57095</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>-0.008749 -0.016991 -0.517961 1.83028 1.00313 7.5e-05</acceleration>
-          <wrench>-0.003412 -0.006626 -0.202005 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='can_fanta_0'>
-        <pose frame=''>0.917341 0.049618 0.815203 1.1e-05 4e-06 -1.1856</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose frame=''>0.917341 0.049618 0.815203 1.1e-05 4e-06 -1.1856</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>-0.001291 -0.020958 0.559147 2.48897 -0.001964 0.000774</acceleration>
-          <wrench>-0.000503 -0.008173 0.218067 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='can_pepsi'>
-        <pose frame=''>0.736094 -0.08188 0.815203 2.5e-05 1e-05 1.37378</pose>
-        <scale>1 1 1.5</scale>
-        <link name='link'>
-          <pose frame=''>0.736094 -0.08188 0.815203 2.5e-05 1e-05 1.37378</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0.012731 0.016735 0.750746 -0.592396 -0.26763 -0.001571</acceleration>
-          <wrench>0.004965 0.006527 0.292791 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='can_pepsi_0'>
-        <pose frame=''>0.793147 -0.306883 0.815203 2.4e-05 1e-05 -1.56889</pose>
-        <scale>1.5 1 1</scale>
-        <link name='link'>
-          <pose frame=''>0.793147 -0.306883 0.815203 2.4e-05 1e-05 -1.56889</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>-0.009419 -0.018017 0.61317 -2.54327 -0.845386 3.14036</acceleration>
-          <wrench>-0.003674 -0.007026 0.239136 0 -0 0</wrench>
-        </link>
-      </model>
       <model name='can_sprite'>
-        <pose frame=''>0.755143 0.127648 0.815203 2.8e-05 1.1e-05 -1.19596</pose>
+        <pose frame=''>0.790082 0.070961 0.88 1e-06 -3e-06 -1.55269</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose frame=''>0.755143 0.127648 0.815203 2.8e-05 1.1e-05 -1.19596</pose>
+          <pose frame=''>0.790082 0.070961 0.88 1e-06 -3e-06 -1.55269</pose>
           <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>-0.004246 -0.016288 0.121402 1.55677 -1.11279 3.1402</acceleration>
-          <wrench>-0.001656 -0.006352 0.047347 0 -0 0</wrench>
+          <acceleration>0.017887 -0.076631 -9.57485 1.17429 0.325855 -0.104275</acceleration>
+          <wrench>0.006976 -0.029886 -3.73419 0 -0 0</wrench>
         </link>
       </model>
       <model name='can_sprite_0'>
-        <pose frame=''>1.01666 0.308579 0.815203 -4e-06 -3.7e-05 -1.35763</pose>
+        <pose frame=''>0.98502 0.255342 0.912501 2.4e-05 7e-06 -1.54706</pose>
         <scale>1 1.5 1.5</scale>
         <link name='link'>
-          <pose frame=''>1.01666 0.308579 0.815203 -4e-06 -3.7e-05 -1.35763</pose>
+          <pose frame=''>0.98502 0.255342 0.912501 2.4e-05 7e-06 -1.54706</pose>
           <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0.008328 0.020125 -0.306477 -1.54401 -0.059095 -3.14021</acceleration>
-          <wrench>0.003248 0.007849 -0.119526 0 -0 0</wrench>
+          <acceleration>-0.001823 -0.001571 19.5984 0.015859 -0.018881 -0.000509</acceleration>
+          <wrench>-0.000711 -0.000613 7.64339 0 -0 0</wrench>
         </link>
       </model>
       <model name='ground_plane'>
@@ -569,13 +589,13 @@
         </link>
       </model>
       <model name='hammer'>
-        <pose frame=''>0.802035 -0.073885 0.828418 -0.01557 0.027257 0.528623</pose>
+        <pose frame=''>0.79911 -0.057338 0.828416 -0.015568 0.027227 0.5423</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose frame=''>0.802035 -0.073885 0.828418 -0.01557 0.027257 0.528623</pose>
+          <pose frame=''>0.79911 -0.057338 0.828416 -0.015568 0.027227 0.5423</pose>
           <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>-0.000641 -0.001722 -8.3239 0.128319 -0.047781 -0</acceleration>
-          <wrench>-0.000641 -0.001722 -8.3239 0 -0 0</wrench>
+          <acceleration>-0.012008 -0.033651 18.9093 2.50823 -0.895107 0</acceleration>
+          <wrench>-0.012008 -0.033651 18.9093 0 -0 0</wrench>
         </link>
       </model>
       <model name='kinect2_victor_head'>
@@ -599,53 +619,33 @@
         </link>
       </model>
       <model name='wood_cube_10cm'>
-        <pose frame=''>0.893818 0.230326 0.813987 0 0 -0.171468</pose>
+        <pose frame=''>0.878672 0.234947 0.813987 0 -0 0.03537</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose frame=''>0.893818 0.230326 0.863987 0 0 -0.171468</pose>
+          <pose frame=''>0.878672 0.234947 0.863987 0 -0 0.03537</pose>
           <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>-0.002761 -0.002505 0.037733 0.050094 -0.055215 0</acceleration>
-          <wrench>-0.001426 -0.001294 0.019497 0 -0 0</wrench>
+          <acceleration>-0 -0 0 0 -0 0</acceleration>
+          <wrench>-0 -0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='wood_cube_5cm'>
-        <pose frame=''>0.94151 -0.113973 0.863999 -3.14159 -0 -1.43399</pose>
+        <pose frame=''>0.865571 -0.019179 0.863999 -3.14159 -0 -1.21104</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose frame=''>0.94151 -0.113973 0.838999 -3.14159 -0 -1.43399</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 0 0 -0 0</acceleration>
-          <wrench>0 0 0 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='wood_cube_7_5cm'>
-        <pose frame=''>0.5256 0.189053 0.851495 -0.877953 -1.57079 3.14159</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose frame=''>0.549552 0.160199 0.851495 -0.877953 -1.57079 3.14159</pose>
+          <pose frame=''>0.865571 -0.019179 0.838999 -3.14159 -0 -1.21104</pose>
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>-0 0 0 -0 -0 -0</acceleration>
           <wrench>-0 0 0 0 -0 0</wrench>
         </link>
       </model>
-      <model name='can_coke'>
-        <pose frame=''>0.60209 0.305282 0.812427 -0.011213 0.004041 -2.81268</pose>
+      <model name='wood_cube_7_5cm'>
+        <pose frame=''>0.669447 0.050323 0.813995 0 -0 1.92763</pose>
         <scale>1 1 1</scale>
         <link name='link'>
-          <pose frame=''>0.60209 0.305282 0.812427 -0.011213 0.004041 -2.81268</pose>
+          <pose frame=''>0.669447 0.050323 0.851495 0 -0 1.92763</pose>
           <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 -9.8 -1e-06 -0 -0</acceleration>
-          <wrench>0 0 -3.822 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='can_coke_0'>
-        <pose frame=''>0.70209 0.205282 1.812427 -0.011213 0.004041 -2.81268</pose>
-        <scale>1 1.5 1</scale>
-        <link name='link'>
-          <pose frame=''>0.70209 0.205282 1.812427 -0.011213 0.004041 -2.81268</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 -9.8 -1e-06 -0 -0</acceleration>
-          <wrench>0 0 -3.822 0 -0 0</wrench>
+          <acceleration>0 -0 0 0 -0 0</acceleration>
+          <wrench>0 -0 0 0 -0 0</wrench>
         </link>
       </model>
       <light name='user_spot_light_0'>

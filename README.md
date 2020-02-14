@@ -21,7 +21,7 @@ To run SiamMask tracker, refer to [SimaMask](https://github.com/UM-ARM-Lab/SiamM
 
 To run Shape Completion, refer to [Shape Completion](https://github.com/UM-ARM-Lab/mps_shape_completion). 
 
-```ssh arprice@armtyphoon.local```
+```ssh arprice@armtyphoon.local``` Password: `VisitDemo`
 
 ```export ROS_MASTER_URI=http://armistice.local:11311```
 
