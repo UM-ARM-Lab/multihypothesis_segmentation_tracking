@@ -57,63 +57,10 @@ struct SparseValueTree
 	std::map<NodeID, double> value_;
 };
 
-template <typename ValueTree>
-size_t size(const ValueTree& T);
-
-template <typename ValueTree>
-const NodeID& parent(const ValueTree& T, const NodeID node);
-
-template <typename ValueTree>
-NodeID& parent(ValueTree& T, const NodeID node);
-
-template <typename ValueTree>
-const std::vector<NodeID>& children(const ValueTree& T, const NodeID node);
-
-template <typename ValueTree>
-std::vector<NodeID>& children(ValueTree& T, const NodeID node);
-
-template <typename ValueTree>
-double value(const ValueTree& T, const NodeID node);
-
-template <typename ValueTree>
-double& value(ValueTree& T, const NodeID node);
-
-template <typename ValueTree>
-NodeID first(const ValueTree& T);
-
-template <typename ValueTree>
-NodeID root(const ValueTree& T);
-
-template <typename ValueTree>
-std::set<NodeID> ancestors(const ValueTree& T, const NodeID node);
-
-template <typename ValueTree>
-void descendants(const ValueTree& T, const NodeID node, std::set<NodeID>& nodes);
-
-template <typename ValueTree>
-double value(const ValueTree& T, const TreeCut& C);
-
-/**
- *
- * @param T
- * @param node
- * @param best_child_cut_value The maximum value of a cut existing below this node
- */
-template <typename ValueTree>
-void bottomup_pass(const ValueTree& T, const NodeID node, std::vector<double>& best_child_cut_value);
-
-template <typename ValueTree>
-void topdown_pass(const ValueTree& T, const NodeID node, const std::vector<double>& best_child_cut_value, TreeCut& C);
-
-template <typename ValueTree>
-std::pair<double, TreeCut>
-optimalCut(const ValueTree& T);
+std::pair<DenseValueTree, std::map<NodeID, NodeID>> densify(const SparseValueTree& T);
 
 }
 
 }
-
-// TODO: Why is this necessary? Removing creates a linker error in RELEASE
-#include "mps_voxels/ValueTree.hpp"
 
 #endif // SRC_VALUETREE_H

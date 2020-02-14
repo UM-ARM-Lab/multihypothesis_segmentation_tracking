@@ -38,20 +38,20 @@ namespace mps
 
 using RNG = std::default_random_engine;
 
+enum class SAMPLE_TYPE
+{
+	MAXIMUM,
+	EXPECTATION,
+	RANDOM
+};
+
+
 template <class SampleSpace> // class Distribution
 class Belief
 {
 public:
-
-	enum class SAMPLE_TYPE
-	{
-		MAXIMUM,
-		EXPECTATION,
-		RANDOM
-	};
-
 	virtual
-	std::pair<double, SampleSpace> sample(RNG& rng, const SAMPLE_TYPE type = SAMPLE_TYPE::RANDOM) = 0;
+	std::pair<double, SampleSpace> sample(RNG& rng, const SAMPLE_TYPE type) = 0;
 
 	// Density function?
 

@@ -5,8 +5,8 @@
 #ifndef ARMLAB_WS_LOG_CV_ROI_H
 #define ARMLAB_WS_LOG_CV_ROI_H
 
-#include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/logging/DataLog.h"
+#include <opencv2/core.hpp>
 
 namespace mps
 {

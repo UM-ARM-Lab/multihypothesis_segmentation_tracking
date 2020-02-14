@@ -28,8 +28,8 @@
  */
 
 #include "mps_voxels/MCMCTreeCut.h"
-#include "mps_voxels/MCMCTreeCut.hpp"
-#include "mps_voxels/ValueTree.hpp"
+#include "mps_voxels/MCMCTreeCut_impl.hpp"
+#include "mps_voxels/ValueTree_impl.hpp"
 
 namespace mps
 {

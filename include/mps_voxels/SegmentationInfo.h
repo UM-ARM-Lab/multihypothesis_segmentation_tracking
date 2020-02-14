@@ -27,82 +27,30 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mps_voxels/ValueTree.h"
-#include "mps_voxels/ValueTree_impl.hpp"
+#ifndef MPS_SEGMENTATIONINFO_H
+#define MPS_SEGMENTATIONINFO_H
+
+#include <cv_bridge/cv_bridge.h>
 
 namespace mps
 {
 
-namespace tree
+struct SegmentationInfo
 {
-
-void compressTree(SparseValueTree& T)
-{
-	for (auto it = T.children_.cbegin(); it != T.children_.cend(); /* no increment */)
-	{
-		if (it->second.size() == 1)
-		{
-			const NodeID& n = it->first;
-			const NodeID& c = it->second[0];
-			const NodeID& p = parent(T, n);
-
-			value(T, c) = std::max(value(T, n), value(T, c));
-			if (n == p)
-			{
-				// We are the root
-				parent(T, c) = c;
-			}
-			else
-			{
-				// Promote the only child
-				parent(T, c) = p;
-				auto& C = children(T, p);
-				std::replace(C.begin(), C.end(), n, c);
-			}
-
-			// Suicide
-			T.parent_.erase(n);
-			T.value_.erase(n);
-			it = T.children_.erase(it);
-		}
-		else
-		{
-			++it;
-		}
-	}
-}
-
-std::pair<DenseValueTree, std::map<NodeID, NodeID>> densify(const SparseValueTree& S)
-{
-	std::map<NodeID, NodeID> sparseIDtoDenseID;
-
-	int count = 0;
-	for (const auto& p : S.value_)
-	{
-		sparseIDtoDenseID.insert(sparseIDtoDenseID.end(), {p.first, count++});
-	}
-
-	DenseValueTree D;
-	size_t n = size(S);
-	D.value_.resize(n);
-	D.parent_.resize(n);
-	D.children_.resize(n);
-	for (const auto& pair : S.value_)
-	{
-		const NodeID& s = pair.first; // sparse node
-		const NodeID& d = sparseIDtoDenseID.at(s); // dense node
-		value(D, d) = pair.second;
-		parent(D, d) = sparseIDtoDenseID.at(parent(S, s));
-		children(D, d).reserve(children(S, s).size());
-		for (const auto& c : children(S, s))
-		{
-			children(D, d).push_back(sparseIDtoDenseID.at(c));
-		}
-	}
-
-	return {D, sparseIDtoDenseID};
-}
+	ros::Time t;
+	std::string frame_id;
+	cv::Rect roi; ///< ROI in the parent image
+	cv::Mat rgb;
+	cv::Mat depth;
+	cv::Mat ucm2; // NB: The UCM is 2x the resolution of the original image, so it goes between the pixels of the original
+	cv::Mat labels2; ///< Labels corresponding to the UCM
+	cv::Mat centroids2;
+	cv::Mat stats2;
+	cv::Mat display_contours;
+	cv::Mat labels; ///< Labels2 downsampled to the original size
+	cv_bridge::CvImagePtr objectness_segmentation;
+};
 
 }
 
-}
+#endif // MPS_SEGMENTATIONINFO_H
