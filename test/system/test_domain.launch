@@ -9,6 +9,7 @@
 	</include>
 
 	<!-- Startup simulation world -->
+	<param name="simulation_world" value="package://mps_interactive_segmentation/worlds/$(arg world).world"/>
 	<include file="$(find gazebo_ros)/launch/empty_world.launch">
 		<arg name="world_name" value="$(find mps_interactive_segmentation)/worlds/$(arg world).world"/>
 		<arg name="paused" value="true"/>
@@ -59,7 +60,7 @@
 	</include>
 
 	<!-- Load the motion planner gui -->
-	<node name="$(anon rviz)" pkg="rviz" type="rviz" respawn="false"
+	<node name="$(anon rviz)" pkg="rviz" type="rviz" respawn="false" if="$(arg gui)"
         args="-d $(find mps_interactive_segmentation)/config/manip.rviz" output="screen">
         <rosparam command="load" file="$(find victor_moveit_config)/config/kinematics.yaml"/>
     </node>

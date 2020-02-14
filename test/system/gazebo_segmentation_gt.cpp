@@ -4,12 +4,12 @@
 
 #include "mps_interactive_segmentation/GazeboMocap.h"
 #include "mps_interactive_segmentation/GazeboModel.h"
+#include "mps_interactive_segmentation/paths.h"
+#include "mps_interactive_segmentation/loading.h"
 
 #include "geometric_shapes/shapes.h"
-#include <geometric_shapes/shape_operations.h>
-#include <geometric_shapes/mesh_operations.h>
-#include <geometric_shapes/body_operations.h>
-#include <geometric_shapes/shape_to_marker.h>
+
+#include <actionlib/server/simple_action_server.h>
 
 #include <image_geometry/pinhole_camera_model.h>
 #include <sensor_msgs/CameraInfo.h>
@@ -17,6 +17,7 @@
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/image_encodings.h>
 #include <cv_bridge/cv_bridge.h>
+#include <image_transport/image_transport.h>
 
 #include <visualization_msgs/MarkerArray.h>
 
@@ -33,27 +34,19 @@
 
 #include <regex>
 #include <iterator>
-#include <actionlib/server/simple_action_server.h>
+#include <mutex>
 
-#define DEBUG_MESH_LOADING true
+#define DEBUG_MESH_LOADING false
+
+#define CV_VERSION_AT_LEAST(x,y,z) (CV_VERSION_MAJOR>x || (CV_VERSION_MAJOR>=x && \
+                                   (CV_VERSION_MINOR>y || (CV_VERSION_MINOR>=y && \
+                                                           CV_VERSION_REVISION>=z))))
 
 using mps::GazeboModel;
+using mps::parseModelURL;
+using mps::parsePackageURL;
 
 typedef actionlib::SimpleActionServer<mps_msgs::SegmentRGBDAction> GTServer;
-
-std::vector<double> splitParams(const std::string& text) //one more element at the last
-{
-	std::vector<double> result;
-	std::stringstream ss;
-	ss << text;
-	while (ss)
-	{
-		double temp;
-		ss >> temp;
-		result.push_back(temp);
-	}
-	return result;
-}
 
 template <typename PointT>
 PointT toPoint3D(const float uIdx, const float vIdx, const float depthMeters, const image_geometry::PinholeCameraModel& cam)
@@ -77,9 +70,11 @@ cv::Mat colorByLabel(const cv::Mat& input)
 	cv::randu(colormap, 0, 256);
 
 	cv::Mat output;
-//	cv::LUT(labels, colormap, output);
-
+#if CV_VERSION_AT_LEAST(3, 3, 0)
 	cv::applyColorMap(labels, output, colormap);
+#else
+	cv::LUT(labels, colormap, output);
+#endif
 
 	return output;
 }
@@ -105,17 +100,23 @@ public:
 	std::unique_ptr<tf::TransformBroadcaster> broadcaster;
 	std::unique_ptr<GTServer> actionServer;
 
-	std::vector<GazeboModel> models;
+	std::unique_ptr<image_transport::Publisher> segmentationPub;
+
+	std::mutex stateMtx;
+	std::vector<std::shared_ptr<GazeboModel>> models;
 	std::vector<GazeboModelState> states;
 
-	Segmenter(ros::NodeHandle& nh, std::vector<GazeboModel> shapeModels_) : models(std::move(shapeModels_))
+	Segmenter(ros::NodeHandle& nh, std::vector<std::shared_ptr<GazeboModel>> shapeModels_) : models(std::move(shapeModels_))
 	{
 		listener = std::make_unique<tf::TransformListener>(ros::Duration(60.0));
 		broadcaster = std::make_unique<tf::TransformBroadcaster>();
 		cam_sub = std::make_unique<ros::Subscriber>(nh.subscribe<sensor_msgs::CameraInfo>("/kinect2_victor_head/hd/camera_info", 1, boost::bind(&Segmenter::cam_cb, this, _1)));
 
+		image_transport::ImageTransport it(ros::NodeHandle("~"));
+		segmentationPub = std::make_unique<image_transport::Publisher>(it.advertise("segmentation", 1));
+
 		actionServer = std::make_unique<GTServer>(nh, "gazebo_segmentation", boost::bind(&Segmenter::execute, this, _1), false);
-		actionServer->start();
+//		actionServer->start();
 	}
 
 	void cam_cb (const sensor_msgs::CameraInfoConstPtr& cam_msg)
@@ -144,24 +145,13 @@ public:
 
 		Eigen::Isometry3d worldTcamera;
 		tf::transformTFToEigen(cameraPose, worldTcamera);
-//		Eigen::Isometry3d cameraTworld = worldTcamera.inverse(Eigen::Isometry);
 
 		auto roi = cameraModel.rectifiedRoi();
 
 		using LabelT = uint16_t;
-		using DepthT = float;
+		using DepthT = double;
 		cv::Mat labels = cv::Mat::zeros(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_16U);
-		cv::Mat depthBuf(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_32F, std::numeric_limits<DepthT>::max());
-
-//		labels.at<LabelT>(10, 10) = 25;
-//		labels.at<LabelT>(100, 100) = 250;
-
-//		//		double alpha = 0.75;
-//		cv::Mat labelColorsMap = colorByLabel(labels);
-//		labelColorsMap.setTo(0, 0 == labels);
-////		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*scene->cv_rgb_cropped.image;
-//		cv::imshow("segmentation", labelColorsMap);
-//		cv::waitKey(0);
+		cv::Mat depthBuf(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_64F, std::numeric_limits<DepthT>::max());
 
 
 //		for (size_t m = 0; m < models.size(); ++m)
@@ -194,13 +184,13 @@ public:
 //			}
 //		}
 
+		std::lock_guard<std::mutex> lock(stateMtx);
+		if (states.size() != models.size())
+		{
+			throw std::logic_error("Model/State size mismatch!");
+		}
+
 		const int step = 1;
-
-		// TODO: Remove after debugging
-//		roi.y = 750; roi.height = 100;
-//		roi.x = 1400; roi.width = 100;
-
-
 
 #pragma omp parallel for
 		for (int v = roi.y; v < roi.y+roi.height; /*++v*/v+=step)
@@ -211,7 +201,7 @@ public:
 //				fb.progress = static_cast<float>(v)/roi.height;
 //				actionServer->publishFeedback(fb);
 //			}
-			std::cerr << v << std::endl;
+//			std::cerr << v << std::endl;
 
 			for (int u = roi.x; u < roi.x + roi.width; /*++u*/u+=step)
 			{
@@ -231,7 +221,7 @@ public:
 
 				for (size_t m = 0; m < models.size(); ++m)
 				{
-					const GazeboModel& model = models[m];
+					const GazeboModel& model = *models[m];
 					const GazeboModelState& state = states[m];
 
 					Eigen::Isometry3d worldTshape = state.pose/* * body_pair.second->getPose()*/;
@@ -281,10 +271,10 @@ public:
 									{
 										zBuf = dist;
 										labels.at<LabelT>(v, u) = m + 10;
-										if (model.name.find("table") != std::string::npos)
-										{
-											labels.at<LabelT>(v, u) = 1;
-										}
+//										if (model.name.find("table") != std::string::npos)
+//										{
+//											labels.at<LabelT>(v, u) = 1;
+//										}
 										closestIntersection = pt_body;
 									}
 								}
@@ -309,33 +299,49 @@ public:
 		cv::Mat labelColorsMap = colorByLabel(labels);
 		labelColorsMap.setTo(0, 0 == labels);
 //		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*scene->cv_rgb_cropped.image;
-		cv::waitKey(1);
-		cv::imshow("segmentation", labelColorsMap);
-		cv::waitKey(10);
 
+		if (segmentationPub->getNumSubscribers() > 0)
+		{
+			std_msgs::Header h; h.frame_id = cameraFrame; h.stamp = ros::Time::now();
+			segmentationPub->publish(cv_bridge::CvImage(h, "bgr8", labelColorsMap).toImageMsg());
+		}
+
+//		cv::waitKey(1);
+//		cv::imshow("segmentation", labelColorsMap);
+//		cv::waitKey(0);
 
 		return labels;
 	}
 
 	void execute(const mps_msgs::SegmentRGBDGoalConstPtr& /*goal*/)
 	{
+		std::cerr << "Executing segmentation callback." << std::endl;
 		mps_msgs::SegmentRGBDResult result_;
 
 		if (cameraFrame.empty())
 		{
-			actionServer->setAborted(result_, "No camera data.");
+			const std::string err = "No camera data.";
+			ROS_ERROR_STREAM(err);
+			actionServer->setAborted(result_, err);
+			return;
 		}
 
 		if (states.empty())
 		{
-			actionServer->setAborted(result_, "No state data.");
+			const std::string err = "No state data.";
+			ROS_ERROR_STREAM(err);
+			actionServer->setAborted(result_, err);
+			return;
 		}
 
 		cv::Mat labels = segment();
 
 		if (labels.empty())
 		{
-			actionServer->setAborted(result_, "Labelling failed.");
+			const std::string err = "Labelling failed.";
+			ROS_ERROR_STREAM(err);
+			actionServer->setAborted(result_, err);
+			return;
 		}
 
 		sensor_msgs::Image seg;
@@ -356,379 +362,70 @@ int main(int argc, char** argv)
     ros::init(argc, argv, "gazebo_segmentation_gt");
     ros::NodeHandle pnh("~");
 
+#if DEBUG_MESH_LOADING
 	ros::Publisher debugPub = pnh.advertise<visualization_msgs::MarkerArray>("debug_shapes", 10, true);
 	visualization_msgs::MarkerArray debugShapes;
+#endif
 
 //	cv::namedWindow("segmentation", /*cv::WINDOW_AUTOSIZE | cv::WINDOW_KEEPRATIO | */cv::WINDOW_GUI_EXPANDED);
 
-    // Load Gazebo world file and get meshes
-//	const std::string gazeboWorldFilename = "/home/kunhuang/armlab_ws/src/mps_interactive_segmentation/worlds/cluttered_food.world";
-	const std::string gazeboWorldFilename = "/home/kunhuang/armlab_ws/src/mps_interactive_segmentation/worlds/experiment_world.world";
-
-	// TODO: Poses for shapes
-	std::vector<GazeboModel> shapeModels;
-
-	TiXmlDocument doc(gazeboWorldFilename);
-	doc.LoadFile();
-
-	TiXmlElement* root = doc.RootElement();
-	if (!root)
+	std::string worldFileParam;
+	if (!pnh.getParam("/simulation_world", worldFileParam))
 	{
-		ROS_FATAL_STREAM("Unable to open Gazebo world file '" << gazeboWorldFilename << "'. Unable to load object models.");
+		ROS_FATAL_STREAM("Unable to read world file name from parameter server '" << worldFileParam << "'");
 		return -1;
 	}
+    // Load Gazebo world file and get meshes
+	const std::string gazeboWorldFilename = parsePackageURL(worldFileParam);
 
-//	TiXmlElement* xSdf = root->FirstChildElement("sdf");
-	TiXmlElement* xWorld = root->FirstChildElement("world");
-	TiXmlElement* xModel = xWorld->FirstChildElement("model");
-	TiXmlElement* xModState = xWorld->FirstChildElement("state");
-
-	while (xModel)
+	std::vector<std::string> modelsToIgnore;
+	pnh.param("ignore", modelsToIgnore, std::vector<std::string>());
+	std::set<std::string> modsToIgnore(modelsToIgnore.begin(), modelsToIgnore.end());
+	if (!modelsToIgnore.empty())
 	{
-		std::string name(xModel->Attribute("name"));
-		std::cerr << name << std::endl;
-
-		GazeboModel mod;
-		mod.name = name;
-
-		// skip loading camera and table
-		if (name == "kinect2_victor_head" /*|| name == "table"*/)
+		std::cerr << "Ignoring models:" << std::endl;
+		for (const auto& m : modelsToIgnore)
 		{
-			xModel = xModel->NextSiblingElement("model");
-			continue;
+			std::cerr << "\t" << m << std::endl;
 		}
+	}
 
-		// Loop through all links in model
-		TiXmlElement* xLink = xModel->FirstChildElement("link");
-		while (xLink)
-		{
-			std::string linkName(xLink->Attribute("name"));
-
-			Eigen::Isometry3d eigenPose;
-			geometry_msgs::Pose pose;
-			pose.orientation.w = 1;
-			TiXmlElement* xPose = xLink->FirstChildElement("pose");
-			if (xPose)
-			{
-				std::cerr << xPose->GetText() << std::endl;
-				std::vector<double> posexyz = splitParams(xPose->GetText());
-//				assert(posexyz.size() == 6);
-
-				// Load scale
-				std::vector<double> modScale (3,1.0);
-				TiXmlElement* xMods = xModState->FirstChildElement("model");
-				while (true)
-				{
-					if (!xMods)
-					{
-						std::cerr << "No corresponding scale found!" << std::endl;
-						break;
-					}
-					else if(xMods->Attribute("name") == mod.name)
-					{
-						std::cerr << "scale: " << xMods->FirstChildElement("scale")->GetText() << std::endl;
-						std::vector<double> temp = splitParams(xMods->FirstChildElement("scale")->GetText());
-						modScale[0] = temp[0];
-						modScale[1] = temp[1];
-						modScale[2] = temp[2];
-						break;
-					}
-					xMods = xMods->NextSiblingElement("model");
-				}
-
-				pose.position.x = posexyz[0] * modScale[0];
-				pose.position.y = posexyz[1] * modScale[1];
-				pose.position.z = posexyz[2] * modScale[2];
-
-				Eigen::Quaterniond q(Eigen::AngleAxisd(posexyz[3], Eigen::Vector3d::UnitZ())
-			                       * Eigen::AngleAxisd(posexyz[4], Eigen::Vector3d::UnitY())
-				                   * Eigen::AngleAxisd(posexyz[5], Eigen::Vector3d::UnitX()));
-
-				pose.orientation.x = q.x();
-				pose.orientation.y = q.y();
-				pose.orientation.z = q.z();
-				pose.orientation.w = q.w();
-
-				eigenPose.translation() = Eigen::Map<Eigen::Vector3d>(posexyz.data());
-				eigenPose.linear() = q.matrix();
-			}
-
-			TiXmlElement* xVisual = xLink->FirstChildElement("visual");
-			if (!xVisual) { continue; }
-			TiXmlElement* xGeometry = xVisual->FirstChildElement("geometry");
-			if (!xGeometry) { continue; }
-
-			TiXmlElement* xBox = xGeometry->FirstChildElement("box");
-			TiXmlElement* xCylinder = xGeometry->FirstChildElement("cylinder");
-			TiXmlElement* xMesh = xGeometry->FirstChildElement("mesh");
-			TiXmlElement* xPlane = xGeometry->FirstChildElement("plane");
-
-			if (xBox)
-			{
-				std::cerr << "Is Box!" << std::endl;
-				shape_msgs::SolidPrimitive primitive;
-				primitive.type = shape_msgs::SolidPrimitive::BOX;
-				primitive.dimensions.resize(3);
-				std::vector<double> BoxXYZ = splitParams(xBox->FirstChildElement("size")->GetText());
-
-				// Load scale
-				std::vector<double> modScale (3,1.0);
-				TiXmlElement* xMods = xModState->FirstChildElement("model");
-				while (true)
-				{
-					if (!xMods)
-					{
-						std::cerr << "No corresponding scale found!" << std::endl;
-						break;
-					}
-					else if(xMods->Attribute("name") == mod.name)
-					{
-						std::cerr << "scale: " << xMods->FirstChildElement("scale")->GetText() << std::endl;
-						std::vector<double> temp = splitParams(xMods->FirstChildElement("scale")->GetText());
-						modScale[0] = temp[0];
-						modScale[1] = temp[1];
-						modScale[2] = temp[2];
-						break;
-					}
-					xMods = xMods->NextSiblingElement("model");
-				}
-
-				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_X] = BoxXYZ[0] * modScale[0];
-				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_Y] = BoxXYZ[1] * modScale[1];
-				primitive.dimensions[shape_msgs::SolidPrimitive::BOX_Z] = BoxXYZ[2] * modScale[2];
-
-				shapes::ShapePtr shapePtr(shapes::constructShapeFromMsg(primitive));
-
-				if (name.find("table") != std::string::npos)
-				{
-					std::cerr << "table pose: " << pose.position.x << " " << pose.position.y << " " << pose.position.z << std::endl;
-					pose.position.z += 1; // why??? The <pose> should be put in the correct place in .world
-				}
-
-#if DEBUG_MESH_LOADING
-				visualization_msgs::Marker marker;
-				shapes::constructMarkerFromShape(shapePtr.get(), marker, true);
-				// Do some more marker stuff here
-				marker.color.a = 1.0;
-				marker.color.r=rand()/(float)RAND_MAX;
-				marker.color.g=rand()/(float)RAND_MAX;
-				marker.color.b=rand()/(float)RAND_MAX;
-				marker.pose = pose;
-				marker.header.frame_id = "mocap_" + name; //"table_surface";
-				marker.header.stamp = ros::Time::now();
-				marker.ns = name;
-				marker.id = 1;
-				marker.frame_locked = true;
-				debugShapes.markers.push_back(marker);
-#endif
-
-				mod.shapes.insert({linkName, shapePtr});
-				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::constructBodyFromMsg(primitive, pose))});
-				shapeModels.push_back(mod);
-			}
-			else if (xCylinder)
-			{
-				std::cerr << "Is Cylinder!" << std::endl;
-				shape_msgs::SolidPrimitive primitive;
-				primitive.type = shape_msgs::SolidPrimitive::CYLINDER;
-				primitive.dimensions.resize(2);
-				char* end_ptr;
-
-				// Load scale
-				std::vector<double> modScale (3,1.0);
-				TiXmlElement* xMods = xModState->FirstChildElement("model");
-				while (true)
-				{
-					if (!xMods)
-					{
-						std::cerr << "No corresponding scale found!" << std::endl;
-						break;
-					}
-					else if(xMods->Attribute("name") == mod.name)
-					{
-						std::cerr << "scale: " << xMods->FirstChildElement("scale")->GetText() << std::endl;
-						std::vector<double> temp = splitParams(xMods->FirstChildElement("scale")->GetText());
-						modScale[0] = temp[0];
-						modScale[1] = temp[1];
-						modScale[2] = temp[2];
-						break;
-					}
-					xMods = xMods->NextSiblingElement("model");
-				}
-
-				primitive.dimensions[shape_msgs::SolidPrimitive::CYLINDER_HEIGHT] = std::strtod(xCylinder->FirstChildElement("length")->GetText(), &end_ptr) * modScale[2];
-				primitive.dimensions[shape_msgs::SolidPrimitive::CYLINDER_RADIUS] = std::strtod(xCylinder->FirstChildElement("radius")->GetText(), &end_ptr) * std::max(modScale[0], modScale[1]);
-
-				shapes::ShapePtr shapePtr(shapes::constructShapeFromMsg(primitive));
-
-#if DEBUG_MESH_LOADING
-				visualization_msgs::Marker marker;
-				shapes::constructMarkerFromShape(shapePtr.get(), marker, true);
-				// Do some more marker stuff here
-				marker.color.a = 1.0;
-				marker.color.r=rand()/(float)RAND_MAX;
-				marker.color.g=rand()/(float)RAND_MAX;
-				marker.color.b=rand()/(float)RAND_MAX;
-				marker.pose = pose;
-				marker.header.frame_id = "mocap_" + name; //"table_surface";
-				marker.header.stamp = ros::Time::now();
-				marker.ns = name;
-				marker.id = 1;
-				marker.frame_locked = true;
-				debugShapes.markers.push_back(marker);
-#endif
-
-//				shapes::Cylinder* s = dynamic_cast<shapes::Cylinder*>(shapes::constructShapeFromMsg(primitive));
-//				s->print(std::cerr);
-				mod.shapes.insert({linkName, shapePtr});
-				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::constructBodyFromMsg(primitive, pose))});
-				shapeModels.push_back(mod);
-			}
-			else if (xMesh)
-			{
-				std::cerr << "Is Mesh!" << std::endl;
-				const std::string model_path = "/home/kunhuang/.gazebo/models/";
-				std::string pathuri = xMesh->FirstChildElement("uri")->GetText();
-				std::stringstream ss;
-				ss << pathuri;
-				for (int k = 0; k < 8; k++) // get rid of "model://"
-				{
-					char temp;
-					ss >> temp;
-				}
-				ss >> pathuri;
-				std::cerr << pathuri << std::endl;
-//				pathuri = "cinder_block_2/meshes/cinder_block.dae";
-
-				shapes::Mesh* m = shapes::createMeshFromResource("file://" + model_path + pathuri);
-				shapes::ShapePtr shapePtr(m);
-				if (name.find("coke_can") != std::string::npos)
-				{
-					for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
-					{
-						m->vertices[i] /= 1000.0;
-					}
-				}
-				if (name.find("disk_part") != std::string::npos)
-				{
-					xLink = xLink->NextSiblingElement("link"); continue;
-					for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
-					{
-						m->vertices[i] /= 1000.0;
-					}
-				}
-				if (name.find("hammer") != std::string::npos)
-				{
-					for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
-					{
-						m->vertices[i] *= 0.0254;
-					}
-				}
-
-				// Load scale
-				std::vector<double> modScale (3,1.0);
-				TiXmlElement* xMods = xModState->FirstChildElement("model");
-				while (true)
-				{
-					if (!xMods)
-					{
-						std::cerr << "No corresponding scale found!" << std::endl;
-						break;
-					}
-					else if(xMods->Attribute("name") == mod.name)
-					{
-						std::cerr << "scale: " << xMods->FirstChildElement("scale")->GetText() << std::endl;
-						std::vector<double> temp = splitParams(xMods->FirstChildElement("scale")->GetText());
-						modScale[0] = temp[0];
-						modScale[1] = temp[1];
-						modScale[2] = temp[2];
-						break;
-					}
-					xMods = xMods->NextSiblingElement("model");
-				}
-				for (unsigned i = 0; i <  m->vertex_count; ++i)
-				{
-					m->vertices[3 * i] *= modScale[0];
-					m->vertices[3 * i + 1] *= modScale[1];
-					m->vertices[3 * i + 2] *= modScale[2];
-				}
-
-				m->computeTriangleNormals();
-				m->computeVertexNormals();
-				std::cerr << "Vertices: " << m->vertex_count << ", Faces: " << m->triangle_count << std::endl;
-
-				shapes::ShapeMsg mesh;
-				constructMsgFromShape(m, mesh);
-				bodies::BodyPtr bodyPtr(bodies::constructBodyFromMsg(mesh, pose));
-
-				auto* cvx = dynamic_cast<bodies::ConvexMesh*>(bodyPtr.get());
-				if (cvx) { std::cerr << "Converted to convex mesh. :(" << std::endl; }
-
-#if DEBUG_MESH_LOADING
-				visualization_msgs::Marker marker;
-				shapes::constructMarkerFromShape(m, marker, true);
-				// Do some more marker stuff here
-				marker.color.a = 1.0;
-				marker.color.r=rand()/(float)RAND_MAX;
-				marker.color.g=rand()/(float)RAND_MAX;
-				marker.color.b=rand()/(float)RAND_MAX;
-				marker.pose = pose;
-				marker.header.frame_id = "mocap_" + name; //"table_surface";
-				marker.header.stamp = ros::Time::now();
-				marker.ns = name;
-				marker.id = 1;
-				marker.frame_locked = true;
-				debugShapes.markers.push_back(marker);
-#endif
-
-				mod.shapes.insert({linkName, shapePtr});
-				mod.bodies.insert({linkName, bodyPtr});
-				shapeModels.push_back(mod);
-			}
-			else if (xPlane)
-			{
-				std::cerr << "Is Plane!" << std::endl;
-//				std::vector<double> planeNormal = splitParams(xPlane->FirstChildElement("normal")->GetText());
-//				shape_msgs::Plane plane;
-//				plane.coef[0] = planeNormal[0];
-//				plane.coef[1] = planeNormal[1];
-//				plane.coef[2] = planeNormal[2];
-//				plane.coef[3] = 0.0;
-//				mod.bodies.insert({linkName, bodies::BodyPtr(bodies::constructBodyFromMsg(plane, pose))});
-//				shapeModels.push_back(mod);
-			}
-			else
-			{
-				ROS_WARN_STREAM("Unknown shape type: " << name << ".");
-			}
-
-			xLink = xLink->NextSiblingElement("link");
-		}
-		xModel = xModel->NextSiblingElement("model");
+	std::map<std::string, std::shared_ptr<GazeboModel>> shapeModels = mps::getWorldFileModels(gazeboWorldFilename, modsToIgnore);
+	if (shapeModels.empty())
+	{
+		ROS_WARN_STREAM("No models were loaded from world file '" << gazeboWorldFilename << "'.");
 	}
 
     mps::GazeboMocap mocap;
 
     std::vector<std::string> models = mocap.getModelNames();
 
-    for (auto& model : models)
+    for (auto& modelName : models)
     {
-		// TODO: load link name instead of "link"
-		std::string linkname = "link";
-//		if (model == "kinect2_victor_head")
-//		{
-//			linkname = "kinect2_victor_head";
-//		}
-        mocap.markerOffsets.insert({{model, linkname}, tf::StampedTransform(tf::Transform::getIdentity(), ros::Time(0), mocap.mocap_frame_id, model)});
+		auto iter = shapeModels.find(modelName);
+		if (iter != shapeModels.end()  && iter->second && !iter->second->shapes.empty())
+		{
+			for (const auto& linkPair : iter->second->shapes)
+			{
+				mocap.markerOffsets.insert({{modelName, linkPair.first}, tf::StampedTransform(tf::Transform::getIdentity(), ros::Time(0), mocap.mocap_frame_id, modelName)});
+			}
+		}
     }
 
 	for (auto& shape : shapeModels)
 	{
-		shape.computeBoundingSphere();
+		shape.second->computeBoundingSphere();
 	}
 
-	Segmenter seg(pnh, shapeModels);
+	std::vector<std::shared_ptr<GazeboModel>> tmpModels; tmpModels.reserve(shapeModels.size());
+	for (const auto& m : shapeModels) { tmpModels.push_back(m.second); }
+	Segmenter seg(pnh, tmpModels);
     seg.worldFrame = mocap.gazeboTmocap.frame_id_;
+
+    // Wait for camera
+    ros::Duration(1.0).sleep();
+    ros::spinOnce();
+    seg.actionServer->start();
 
     ros::Rate r(10.0);
     while(ros::ok())
@@ -736,13 +433,10 @@ int main(int argc, char** argv)
         r.sleep();
         ros::spinOnce();
 
-#if DEBUG_MESH_LOADING
-        debugPub.publish(debugShapes);
-#endif
-
         mocap.getTransforms();
 //        mocap.sendTransforms(false);
 
+	    std::lock_guard<std::mutex> lock(seg.stateMtx);
 		seg.states.clear();
 	    for (const auto& shape : shapeModels)
 	    {
@@ -752,10 +446,10 @@ int main(int argc, char** argv)
 //	    		continue;
 //		    }
 
-	    	for (const auto& pair : shape.bodies)
+		    for (const auto& pair : shape.second->bodies)
 		    {
-//			    const tf::StampedTransform& stf = mocap.linkPoses.at({shape.name, pair.first});
-			    const tf::StampedTransform& stf = mocap.linkPoses.at({shape.name, "link"});
+			    const tf::StampedTransform& stf = mocap.linkPoses.at({shape.second->name, pair.first});
+//			    const tf::StampedTransform& stf = mocap.linkPoses.at({shape.second->name, "link"});
 
 			    Eigen::Isometry3d T;
 			    tf::transformTFToEigen(stf, T);
@@ -765,6 +459,10 @@ int main(int argc, char** argv)
 		    }
 
 	    }
+
+#if DEBUG_MESH_LOADING
+	    debugPub.publish(debugShapes);
+#endif
     }
 
     return 0;
