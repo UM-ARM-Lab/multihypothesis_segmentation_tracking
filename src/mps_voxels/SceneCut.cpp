@@ -28,6 +28,7 @@
  */
 
 #include "mps_voxels/SceneCut.h"
+#include "mps_voxels/ValueTree_impl.hpp"
 
 #include <vector>
 #include <numeric>

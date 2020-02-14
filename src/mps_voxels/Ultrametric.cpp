@@ -7,7 +7,7 @@
 
 #include <ucm2hier.hpp> // NB: Contains function definitions, so can only be included once per project
 
-Ultrametric::Ultrametric(cv::Mat& ucm, cv::Mat& labels)
+Ultrametric::Ultrametric(const cv::Mat& ucm, const cv::Mat& labels)
 {
 	cv::Mat small_labels(labels.rows/2, labels.cols/2, CV_16UC1);
 	for (int u = 1; u < labels.cols; u+=2)
@@ -21,9 +21,10 @@ Ultrametric::Ultrametric(cv::Mat& ucm, cv::Mat& labels)
 	if (CV_MAT_DEPTH(ucm.type())!=CV_64FC1) { throw std::runtime_error("UCM must be of type 'float64'"); }
 	if (CV_MAT_DEPTH(small_labels.type())!=CV_16UC1) { throw std::runtime_error("Labels must be of type 'uint16'"); }
 
-	Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> contour_map(ucm.ptr<double>(),
-	                                                                                               ucm.rows, ucm.cols);
-	Eigen::Map<Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> label_map(
+	Eigen::Map<const Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> contour_map(
+		ucm.ptr<double>(),
+		ucm.rows, ucm.cols);
+	Eigen::Map<const Eigen::Matrix<uint16_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> label_map(
 		small_labels.ptr<uint16_t>(), small_labels.rows, small_labels.cols);
 
 

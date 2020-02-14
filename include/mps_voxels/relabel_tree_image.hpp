@@ -27,82 +27,39 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mps_voxels/ValueTree.h"
+#ifndef MPS_RELABEL_TREE_IMAGE_HPP
+#define MPS_RELABEL_TREE_IMAGE_HPP
+
 #include "mps_voxels/ValueTree_impl.hpp"
+#include "mps_voxels/image_utils.h"
 
 namespace mps
 {
 
-namespace tree
+template <typename Map, typename ValueTree>
+cv::Mat relabelCut(const ValueTree& T, const tree::TreeCut& cut, const Map& treeIndexToImageLabel, const cv::Mat& oldLabels)
 {
+	// Create a map from current label to new label, then call the parallelized relabel function
+	std::map<uint16_t, uint16_t> labelTransform;
+	uint16_t newLabel = 0;
 
-void compressTree(SparseValueTree& T)
-{
-	for (auto it = T.children_.cbegin(); it != T.children_.cend(); /* no increment */)
+	for (const auto node : cut)
 	{
-		if (it->second.size() == 1)
+		++newLabel;
+		std::set<tree::NodeID> children;
+		tree::descendants(T, node, children);
+		children.insert(node); // This cut node could be a leaf as well
+		for (const auto c : children)
 		{
-			const NodeID& n = it->first;
-			const NodeID& c = it->second[0];
-			const NodeID& p = parent(T, n);
-
-			value(T, c) = std::max(value(T, n), value(T, c));
-			if (n == p)
+			if (tree::children(T, c).empty()) // Leaf node
 			{
-				// We are the root
-				parent(T, c) = c;
+				labelTransform.insert({treeIndexToImageLabel.at(c), newLabel});
 			}
-			else
-			{
-				// Promote the only child
-				parent(T, c) = p;
-				auto& C = children(T, p);
-				std::replace(C.begin(), C.end(), n, c);
-			}
-
-			// Suicide
-			T.parent_.erase(n);
-			T.value_.erase(n);
-			it = T.children_.erase(it);
-		}
-		else
-		{
-			++it;
-		}
-	}
-}
-
-std::pair<DenseValueTree, std::map<NodeID, NodeID>> densify(const SparseValueTree& S)
-{
-	std::map<NodeID, NodeID> sparseIDtoDenseID;
-
-	int count = 0;
-	for (const auto& p : S.value_)
-	{
-		sparseIDtoDenseID.insert(sparseIDtoDenseID.end(), {p.first, count++});
-	}
-
-	DenseValueTree D;
-	size_t n = size(S);
-	D.value_.resize(n);
-	D.parent_.resize(n);
-	D.children_.resize(n);
-	for (const auto& pair : S.value_)
-	{
-		const NodeID& s = pair.first; // sparse node
-		const NodeID& d = sparseIDtoDenseID.at(s); // dense node
-		value(D, d) = pair.second;
-		parent(D, d) = sparseIDtoDenseID.at(parent(S, s));
-		children(D, d).reserve(children(S, s).size());
-		for (const auto& c : children(S, s))
-		{
-			children(D, d).push_back(sparseIDtoDenseID.at(c));
 		}
 	}
 
-	return {D, sparseIDtoDenseID};
+	return relabel(oldLabels, labelTransform);
 }
 
 }
-
-}
+#endif // MPS_RELABEL_TREE_IMAGE_HPP

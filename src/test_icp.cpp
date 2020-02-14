@@ -6,6 +6,7 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl/registration/icp.h>
+#include <pcl/search/impl/search.hpp> // Resolves "undefined reference to `pcl::search::Search<pcl::PointXYZ>::getName[abi:cxx11]() const'"
 
 #include <ros/ros.h>
 #include <tf_conversions/tf_eigen.h>

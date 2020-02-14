@@ -5,6 +5,8 @@
 #include "mps_voxels/logging/log_cv_roi.h"
 #include "mps_voxels/util/macros.h"
 
+#include <sensor_msgs/RegionOfInterest.h>
+
 namespace mps
 {
 

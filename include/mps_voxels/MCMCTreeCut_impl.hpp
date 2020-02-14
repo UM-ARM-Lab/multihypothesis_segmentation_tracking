@@ -27,11 +27,11 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef SRC_MCMCTREECUT_HPP
-#define SRC_MCMCTREECUT_HPP
+#ifndef SRC_MCMCTREECUT_IMPL_HPP
+#define SRC_MCMCTREECUT_IMPL_HPP
 
 #include "mps_voxels/MCMCTreeCut.h"
-#include "mps_voxels/ValueTree.hpp"
+#include "mps_voxels/ValueTree_impl.hpp"
 
 #include <algorithm>
 #include <random>
@@ -174,9 +174,9 @@ std::vector<std::pair<double, TreeCut>> sampleCuts(const ValueTree& T)
 }
 
 template <typename ValueTree>
-std::pair<double, TreeCut> MCMCTreeCut<ValueTree>::sample(RNG& rng, const Belief<TreeCut>::SAMPLE_TYPE type)
+std::pair<double, TreeCut> MCMCTreeCut<ValueTree>::sample(RNG& rng, const SAMPLE_TYPE type)
 {
-	if (Belief<TreeCut>::SAMPLE_TYPE::RANDOM == type)
+	if (SAMPLE_TYPE::RANDOM == type)
 	{
 		TreeCut cut_i = cStar;
 		double logprob_i = 0.0;
@@ -231,4 +231,4 @@ MCMCTreeCut<ValueTree>::MCMCTreeCut(ValueTree t, const double sigSquared)
 
 }
 
-#endif //SRC_MCMCTREECUT_HPP
+#endif //SRC_MCMCTREECUT_IMPL_HPP

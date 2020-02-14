@@ -27,82 +27,54 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef MPS_SEGMENTATIONTREESAMPLER_H
+#define MPS_SEGMENTATIONTREESAMPLER_H
+
+#include "mps_voxels/Belief.hpp"
+#include "mps_voxels/SegmentationInfo.h"
+
 #include "mps_voxels/ValueTree.h"
-#include "mps_voxels/ValueTree_impl.hpp"
+
+struct Ultrametric;
 
 namespace mps
 {
 
+class SceneCut;
+
 namespace tree
 {
+template <typename T>
+class MCMCTreeCut;
+}
 
-void compressTree(SparseValueTree& T)
+class SegmentationTreeSampler : public Belief<SegmentationInfo>
 {
-	for (auto it = T.children_.cbegin(); it != T.children_.cend(); /* no increment */)
+public:
+	std::shared_ptr<const SegmentationInfo> originalInfo;
+
+	std::unique_ptr<Ultrametric> um;
+	std::unique_ptr<SceneCut> sc;
+	tree::DenseValueTree vt;
+	tree::TreeCut cutStar; ///< Optimal Cut
+	double vStar; ///< Value of Optimal Cut
+	double samplingSigmaSquared;
+
+	struct Options
 	{
-		if (it->second.size() == 1)
-		{
-			const NodeID& n = it->first;
-			const NodeID& c = it->second[0];
-			const NodeID& p = parent(T, n);
+		explicit Options() {} // NOLINT(hicpp-use-equals-default,modernize-use-equals-default) (Clang/GCC Bug)
+		double sigmaGain = 0.5; ///< Scaling factor for sampling sigma
+		int autoCorrelationSteps = 20; ///< Mixing number to reduce MCMC autocorrelation
+	};
 
-			value(T, c) = std::max(value(T, n), value(T, c));
-			if (n == p)
-			{
-				// We are the root
-				parent(T, c) = c;
-			}
-			else
-			{
-				// Promote the only child
-				parent(T, c) = p;
-				auto& C = children(T, p);
-				std::replace(C.begin(), C.end(), n, c);
-			}
+	std::unique_ptr<tree::MCMCTreeCut<tree::DenseValueTree>> mcmc;
 
-			// Suicide
-			T.parent_.erase(n);
-			T.value_.erase(n);
-			it = T.children_.erase(it);
-		}
-		else
-		{
-			++it;
-		}
-	}
-}
+	explicit
+	SegmentationTreeSampler(std::shared_ptr<const SegmentationInfo> originalInfo, const Options& opts = Options());
 
-std::pair<DenseValueTree, std::map<NodeID, NodeID>> densify(const SparseValueTree& S)
-{
-	std::map<NodeID, NodeID> sparseIDtoDenseID;
-
-	int count = 0;
-	for (const auto& p : S.value_)
-	{
-		sparseIDtoDenseID.insert(sparseIDtoDenseID.end(), {p.first, count++});
-	}
-
-	DenseValueTree D;
-	size_t n = size(S);
-	D.value_.resize(n);
-	D.parent_.resize(n);
-	D.children_.resize(n);
-	for (const auto& pair : S.value_)
-	{
-		const NodeID& s = pair.first; // sparse node
-		const NodeID& d = sparseIDtoDenseID.at(s); // dense node
-		value(D, d) = pair.second;
-		parent(D, d) = sparseIDtoDenseID.at(parent(S, s));
-		children(D, d).reserve(children(S, s).size());
-		for (const auto& c : children(S, s))
-		{
-			children(D, d).push_back(sparseIDtoDenseID.at(c));
-		}
-	}
-
-	return {D, sparseIDtoDenseID};
-}
+	std::pair<double, SegmentationInfo> sample(RNG& rng, const SAMPLE_TYPE type) override;
+};
 
 }
 
-}
+#endif // MPS_SEGMENTATIONTREESAMPLER_H

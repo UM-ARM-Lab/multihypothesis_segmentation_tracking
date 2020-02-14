@@ -30,7 +30,7 @@
 #ifndef SRC_LOG_SEGMENTATION_INFO_H
 #define SRC_LOG_SEGMENTATION_INFO_H
 
-#include "mps_voxels/segmentation_utils.h"
+#include "mps_voxels/SegmentationInfo.h"
 #include "mps_voxels/logging/DataLog.h"
 
 namespace mps

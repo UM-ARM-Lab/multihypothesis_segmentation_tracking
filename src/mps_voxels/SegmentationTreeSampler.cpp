@@ -27,82 +27,56 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "mps_voxels/SegmentationTreeSampler.h"
+#include "mps_voxels/Ultrametric.h"
 #include "mps_voxels/ValueTree.h"
 #include "mps_voxels/ValueTree_impl.hpp"
+#include "mps_voxels/SceneCut.h"
+#include "mps_voxels/MCMCTreeCut.h"
+#include "mps_voxels/MCMCTreeCut_impl.hpp"
+#include "mps_voxels/relabel_tree_image.hpp"
 
 namespace mps
 {
 
-namespace tree
+
+SegmentationTreeSampler::SegmentationTreeSampler(std::shared_ptr<const SegmentationInfo> original_, const Options& opts) // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
+	: Belief<SegmentationInfo>(),
+	  originalInfo(std::move(original_))
 {
+	um = std::make_unique<Ultrametric>(originalInfo->ucm2, originalInfo->labels2);
+	sc = std::make_unique<SceneCut>();
+	vt = sc->process(*um, originalInfo->labels);
 
-void compressTree(SparseValueTree& T)
-{
-	for (auto it = T.children_.cbegin(); it != T.children_.cend(); /* no increment */)
-	{
-		if (it->second.size() == 1)
-		{
-			const NodeID& n = it->first;
-			const NodeID& c = it->second[0];
-			const NodeID& p = parent(T, n);
+	std::tie(vStar, cutStar) = optimalCut(vt);
 
-			value(T, c) = std::max(value(T, n), value(T, c));
-			if (n == p)
-			{
-				// We are the root
-				parent(T, c) = c;
-			}
-			else
-			{
-				// Promote the only child
-				parent(T, c) = p;
-				auto& C = children(T, p);
-				std::replace(C.begin(), C.end(), n, c);
-			}
+	samplingSigmaSquared = opts.sigmaGain * vStar * vStar;
 
-			// Suicide
-			T.parent_.erase(n);
-			T.value_.erase(n);
-			it = T.children_.erase(it);
-		}
-		else
-		{
-			++it;
-		}
-	}
+	mcmc = std::make_unique<tree::MCMCTreeCut<tree::DenseValueTree>>(vt, samplingSigmaSquared);
+	mcmc->nTrials = opts.autoCorrelationSteps;
 }
 
-std::pair<DenseValueTree, std::map<NodeID, NodeID>> densify(const SparseValueTree& S)
+std::pair<double, SegmentationInfo>
+SegmentationTreeSampler::sample(RNG& rng, const SAMPLE_TYPE type)
 {
-	std::map<NodeID, NodeID> sparseIDtoDenseID;
+	auto res = mcmc->sample(rng, type);
 
-	int count = 0;
-	for (const auto& p : S.value_)
+	SegmentationInfo newSeg = *originalInfo; // Mostly shallow copy
+	newSeg.objectness_segmentation->image =
+		cv::Mat(originalInfo->objectness_segmentation->image.size(),
+			originalInfo->objectness_segmentation->image.type());
+
+	std::map<int, int> index_to_label;
+	for (const auto& pair : um->label_to_index)
 	{
-		sparseIDtoDenseID.insert(sparseIDtoDenseID.end(), {p.first, count++});
+		index_to_label.insert({pair.second, pair.first});
 	}
 
-	DenseValueTree D;
-	size_t n = size(S);
-	D.value_.resize(n);
-	D.parent_.resize(n);
-	D.children_.resize(n);
-	for (const auto& pair : S.value_)
-	{
-		const NodeID& s = pair.first; // sparse node
-		const NodeID& d = sparseIDtoDenseID.at(s); // dense node
-		value(D, d) = pair.second;
-		parent(D, d) = sparseIDtoDenseID.at(parent(S, s));
-		children(D, d).reserve(children(S, s).size());
-		for (const auto& c : children(S, s))
-		{
-			children(D, d).push_back(sparseIDtoDenseID.at(c));
-		}
-	}
+	newSeg.objectness_segmentation->image =
+		relabelCut(vt, cutStar, index_to_label, newSeg.objectness_segmentation->image);
 
-	return {D, sparseIDtoDenseID};
-}
 
+	return {res.first, newSeg};
 }
 
 }

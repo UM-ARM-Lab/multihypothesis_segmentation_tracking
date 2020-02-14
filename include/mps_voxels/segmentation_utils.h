@@ -5,6 +5,7 @@
 #ifndef MPS_VOXELS_SEGMENTATION_UTILS_H
 #define MPS_VOXELS_SEGMENTATION_UTILS_H
 
+#include "mps_voxels/SegmentationInfo.h"
 #include "mps_voxels/ROI.h"
 #include "mps_voxels/PointT.h"
 #include "mps_voxels/Indexes.h"
@@ -25,22 +26,6 @@ struct xycoor
 {
 	int x;
 	int y;
-};
-
-struct SegmentationInfo
-{
-	ros::Time t;
-	std::string frame_id;
-	cv::Rect roi; ///< ROI in the parent image
-	cv::Mat rgb;
-	cv::Mat depth;
-	cv::Mat ucm2; // NB: The UCM is 2x the resolution of the original image, so it goes between the pixels of the original
-	cv::Mat labels2; ///< Labels corresponding to the UCM
-	cv::Mat centroids2;
-	cv::Mat stats2;
-	cv::Mat display_contours;
-	cv::Mat labels; ///< Labels2 downsampled to the original size
-	cv_bridge::CvImagePtr objectness_segmentation;
 };
 
 class RGBDSegmenter
