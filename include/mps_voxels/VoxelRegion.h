@@ -65,7 +65,11 @@ public:
 	using EdgeState = std::vector<bool>;
 	using VertexLabels = std::vector<int>;
 
-	VoxelRegion(boost::array<std::size_t, Dimensions> dims);
+	VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax);
+
+	double resolution;
+	Eigen::Vector3d regionMin;
+	Eigen::Vector3d regionMax;
 
 	size_t getEdgeIndex(vertex_descriptor a, vertex_descriptor b);
 
@@ -137,10 +141,12 @@ public:
 
 	edges_size_type index_of(edge_descriptor edge) const;
 
-	visualization_msgs::MarkerArray visualizeVertexLabelsDirectly(VertexLabels& vlabels, const double& resolution,
-	                                                              const Eigen::Vector3d& roiMin, const std::string& globalFrame);
-	visualization_msgs::MarkerArray visualizeEdgeStateDirectly(EdgeState& edges, const double& resolution,
-	                                                           const Eigen::Vector3d& roiMin, const std::string& globalFrame);
+	std::map<int, std::shared_ptr<octomap::OcTree>> vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<int>& uniqueObjectLabels);
+
+	visualization_msgs::MarkerArray visualizeVertexLabelsDirectly(VertexLabels& vlabels,
+	                                                              const std::string& globalFrame);
+	visualization_msgs::MarkerArray visualizeEdgeStateDirectly(EdgeState& edges,
+	                                                           const std::string& globalFrame);
 };
 
 template <typename Point>

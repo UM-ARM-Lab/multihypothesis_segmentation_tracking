@@ -31,18 +31,21 @@
 #define MPS_PARTICLE_H
 
 #include "mps_voxels/Indexes.h"
+#include "mps_voxels/VoxelRegion.h"
+
+#include <opencv2/highgui.hpp>
 
 namespace mps
 {
 
-class VoxelRegion;
-
 struct ParticleData
 {
-	static VoxelRegion voxelRegion;
 	VoxelRegion::VertexLabels vertexState;
+	std::set<int> uniqueObjectLabels;
 	VoxelRegion::EdgeState edgeState;
 };
+
+std::set<int> getUniqueObjectLabels(const VoxelRegion::VertexLabels& input);
 
 struct Particle
 {
@@ -51,9 +54,14 @@ struct Particle
 	ObjectIndex object;
 	ParticleIndex particle;
 
-	double weight = 0;
+	std::shared_ptr<VoxelRegion> voxelRegion;
 	std::shared_ptr<ParticleData> state;
+	double weight = 0;
+
+	cv::Mat seg;
 };
+
+cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeCameraModel& cameraModel, const Eigen::Isometry3d& worldTcamera, const int& step = 1);
 
 }
 

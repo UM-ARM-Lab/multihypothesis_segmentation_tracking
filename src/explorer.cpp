@@ -23,6 +23,7 @@
 #include "mps_voxels/logging/log_sensor_history.h"
 #include "mps_voxels/logging/log_segmentation_info.h"
 #include "mps_voxels/logging/log_cv_roi.h"
+#include "mps_voxels/Particle.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
@@ -857,19 +858,61 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	/////////////////////////////////////////////
 	//// Sample state particles
 	/////////////////////////////////////////////
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+	Particle particle;
 	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(scene->objects.begin()->second->occupancy.get(),
-	                                                           scene->minExtent.head<3>().cast<double>(),
-	                                                           scene->maxExtent.head<3>().cast<double>());
-	mps::VoxelRegion state(dims);
-	mps::VoxelRegion::VertexLabels vlabel = objectsToVoxelLabel(scene->objects,
-	                                                                 scene->minExtent.head<3>().cast<double>(),
-	                                                                 scene->maxExtent.head<3>().cast<double>());
-	auto markers = state.visualizeVertexLabelsDirectly(vlabel,
-	                                                   scene->objects.begin()->second->occupancy->getResolution(),
-	                                                   scene->minExtent.head<3>().cast<double>(), scene->worldFrame);
-	octreePub.publish(markers);
-	std::cerr << "State particle shown!" << std::endl;
-	sleep(5);
+	                                                     scene->minExtent.head<3>().cast<double>(),
+	                                                     scene->maxExtent.head<3>().cast<double>());
+	particle.voxelRegion = std::make_shared<VoxelRegion>( dims,
+	                                                      scene->objects.begin()->second->occupancy->getResolution(),
+	                                                      scene->minExtent.head<3>().cast<double>(),
+	                                                      scene->maxExtent.head<3>().cast<double>());
+	particle.state = std::make_shared<ParticleData>();
+	particle.state->vertexState = objectsToVoxelLabel(scene->objects,
+	                                                  scene->minExtent.head<3>().cast<double>(),
+	                                                  scene->maxExtent.head<3>().cast<double>());
+	particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
+	//// Visualize state
+//	auto markers = particle.voxelRegion->visualizeVertexLabelsDirectly(particle.state->vertexState, scene->worldFrame);
+//	octreePub.publish(markers);
+//	std::cerr << "State particle shown!" << std::endl;
+//	sleep(5);
+
+	/////////////////////////////////////////////
+	//// Test ray casting
+	/////////////////////////////////////////////
+
+	//// split vertex label into octrees
+//	std::set<int> uniqueObjectLabels = mps::getUniqueObjectLabels(particle.state->vertexState);
+//	std::map<int, std::shared_ptr<octomap::OcTree>> labelToOcTreeLookup = particle.voxelRegion->vertexLabelToOctrees(particle.state->vertexState, uniqueObjectLabels);
+//	for (auto& pair : labelToOcTreeLookup)
+//	{
+//		if (!pair.second) { break; }
+//		std_msgs::ColorRGBA octreeColor;
+//		octreeColor.a = 1.0f;
+//		octreeColor.r = 1.0f;
+//		octreeColor.g = 0.2f;
+//		octreeColor.b = 0.5f;
+//
+//		visualization_msgs::MarkerArray ma = visualizeOctree(pair.second.get(), scene->worldFrame, &octreeColor);
+//		for (visualization_msgs::Marker& m : ma.markers)
+//		{
+//			m.ns = "objOcTree";
+//			m.pose.orientation.w = 1;
+//		}
+//		allMarkers["objOcTree"] = ma;
+//		octreePub.publish(allMarkers.flatten());
+//		std::cerr << "octree " << pair.first << " shown!" << std::endl;
+//		sleep(5);
+//	}
+
+	cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
+	std::cerr << "Segmentation based on particle generated!" << std::endl;
+	cv::Mat segParticleCM;
+	// Apply the colormap:
+	cv::applyColorMap(segParticle, segParticleCM, cv::COLORMAP_JET);
+	cv::imwrite("/home/kunhuang/Pictures/segParticle.jpg", segParticleCM);
 
 //	cv::RNG rng;
 //	for (const auto& obj : scene->objects)

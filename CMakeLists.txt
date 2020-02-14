@@ -265,6 +265,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/MotionModel.cpp
   src/${PROJECT_NAME}/OctreeMotionModel.cpp
   src/${PROJECT_NAME}/ObjectActionModel.cpp
+  src/${PROJECT_NAME}/Particle.cpp
   src/${PROJECT_NAME}/ParticleFilter.cpp
   src/${PROJECT_NAME}/ROI.cpp
   src/${PROJECT_NAME}/SensorHistorian.cpp

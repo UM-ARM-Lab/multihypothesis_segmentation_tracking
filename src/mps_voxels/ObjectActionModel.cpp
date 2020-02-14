@@ -354,7 +354,8 @@ moveOcTree(const octomap::OcTree* octree, const rigidTF& action)
 	else { e = action.angular / theta; }
 
 	std::shared_ptr<octomap::OcTree> resOcTree = std::make_shared<octomap::OcTree>(octree->getResolution());
-	for (auto node = octree->begin_leafs(); node != octree->end_leafs(); node++){
+	for (auto node = octree->begin_leafs(); node != octree->end_leafs(); node++)
+	{
 		auto originalCoord = node.getCoordinate();
 		Eigen::Vector3d oCoord(originalCoord.x(), originalCoord.y(), originalCoord.z());
 		Eigen::Vector3d newCoord;

@@ -16,7 +16,9 @@ namespace mps
 class ParticleFilter
 {
 public:
-	explicit ParticleFilter(int n=10);
+	ParticleFilter(VoxelRegion::vertex_descriptor dims, double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax, int n=10);
+
+	VoxelRegion voxRegion;
 
 	int numParticles;
 	std::vector<Particle> particles;

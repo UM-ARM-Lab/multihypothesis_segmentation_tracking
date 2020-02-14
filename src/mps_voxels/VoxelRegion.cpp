@@ -38,8 +38,8 @@
 namespace mps
 {
 
-VoxelRegion::VoxelRegion(boost::array<std::size_t, Dimensions> dims)
-	: m_dimension_lengths(dims)
+VoxelRegion::VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax)
+	: m_dimension_lengths(dims), resolution(res), regionMin(rmin), regionMax(rmax)
 {
 	precalculate();
 }
@@ -290,9 +290,34 @@ VoxelRegion::edges_size_type VoxelRegion::index_of(VoxelRegion::edge_descriptor 
 	return (edge_index);
 }
 
+std::map<int, std::shared_ptr<octomap::OcTree>>
+VoxelRegion::vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<int>& uniqueObjectLabels)
+{
+	std::map<int, std::shared_ptr<octomap::OcTree>> labelToOcTreeLookup;
+	for (auto label : uniqueObjectLabels)
+	{
+		labelToOcTreeLookup.emplace(label, std::make_shared<octomap::OcTree>(resolution));
+	}
+
+	Eigen::Vector3d offset(resolution * 0.5, resolution * 0.5, resolution * 0.5);
+
+	for (int i = 0; i < (int)vlabels.size(); ++i)
+	{
+		if (vlabels[i] >= 0)
+		{
+			vertex_descriptor query = vertex_at(i);
+			Eigen::Vector3d pos = regionMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(query.data()).cast<double>()) + offset;
+
+			labelToOcTreeLookup[vlabels[i]]->updateNode(pos.x(), pos.y(), pos.z(), true);
+			labelToOcTreeLookup[vlabels[i]]->setNodeValue(pos.x(), pos.y(), pos.z(), 1.0);
+		}
+	}
+	return labelToOcTreeLookup;
+}
+
 visualization_msgs::MarkerArray
-VoxelRegion::visualizeVertexLabelsDirectly(VertexLabels& vlabels, const double& resolution,
-                                                 const Eigen::Vector3d& roiMin, const std::string& globalFrame)
+VoxelRegion::visualizeVertexLabelsDirectly(VertexLabels& vlabels,
+                                           const std::string& globalFrame)
 {
 	visualization_msgs::MarkerArray vertexLabelVis;
 	vertexLabelVis.markers.resize(1);
@@ -303,7 +328,7 @@ VoxelRegion::visualizeVertexLabelsDirectly(VertexLabels& vlabels, const double& 
 	{
 		if (vlabels[i] < 0) { continue; }
 		const vertex_descriptor vd = vertex_at(i);
-		Eigen::Vector3d coord = roiMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>()) + offset;
+		Eigen::Vector3d coord = regionMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>()) + offset;
 
 		geometry_msgs::Point cubeCenter;
 		cubeCenter.x = coord[0];
@@ -352,11 +377,11 @@ VoxelRegion::visualizeVertexLabelsDirectly(VertexLabels& vlabels, const double& 
 }
 
 visualization_msgs::MarkerArray
-VoxelRegion::visualizeEdgeStateDirectly(VoxelRegion::EdgeState& edges, const double& resolution,
-                                              const Eigen::Vector3d& roiMin, const std::string& globalFrame)
+VoxelRegion::visualizeEdgeStateDirectly(VoxelRegion::EdgeState& edges,
+                                        const std::string& globalFrame)
 {
 	VertexLabels vlabels = components(edges);
-	return visualizeVertexLabelsDirectly(vlabels, resolution, roiMin, globalFrame);
+	return visualizeVertexLabelsDirectly(vlabels, globalFrame);
 }
 
 mps::VoxelRegion::vertex_descriptor
@@ -433,7 +458,7 @@ mps::VoxelRegion::EdgeState
 octreeToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& minExtent, const Eigen::Vector3d& maxExtent)
 {
 	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(octree, minExtent, maxExtent);
-	mps::VoxelRegion vox(dims);
+	mps::VoxelRegion vox(dims, octree->getResolution(), minExtent, maxExtent);
 
 	mps::VoxelRegion::EdgeState edges(vox.num_edges());
 
@@ -457,7 +482,7 @@ octreeToGridParticle(const octomap::OcTree* octree, const Eigen::Vector3d& minEx
                      cv::RNG& rng)
 {
 	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(octree, minExtent, maxExtent);
-	mps::VoxelRegion vox(dims);
+	mps::VoxelRegion vox(dims, octree->getResolution(), minExtent, maxExtent);
 
 	mps::VoxelRegion::EdgeState edges(vox.num_edges());
 
@@ -487,8 +512,8 @@ mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, s
                                                          const Eigen::Vector3d& roiMinExtent,
                                                          const Eigen::Vector3d& roiMaxExtent)
 {
-	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(objects.begin()->second.get()->occupancy.get(), roiMinExtent, roiMaxExtent);
-	mps::VoxelRegion vox(dims);
+	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(objects.begin()->second->occupancy.get(), roiMinExtent, roiMaxExtent);
+	mps::VoxelRegion vox(dims, objects.begin()->second->occupancy->getResolution(), roiMinExtent, roiMaxExtent);
 
 	mps::VoxelRegion::VertexLabels res(vox.num_vertices(), -1);
 
@@ -496,8 +521,9 @@ mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, s
 	for (auto& pair : objects)
 	{
 		auto obj = pair.second.get();
+		assert(obj);
 		mps::VoxelRegion::vertex_descriptor objDims = roiToGrid(obj->occupancy.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>());
-		mps::VoxelRegion objVS(objDims);
+		mps::VoxelRegion objVS(objDims, obj->occupancy->getResolution(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>());
 		mps::VoxelRegion::vertex_descriptor objMin = coordToGrid(obj->occupancy.get(), roiMinExtent, obj->minExtent.cast<double>());
 
 		for (mps::VoxelRegion::vertices_size_type v = 0; v < objVS.num_vertices(); ++v)
@@ -510,7 +536,9 @@ mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, s
 				target[1] = query[1] + objMin[1];
 				target[2] = query[2] + objMin[2];
 				mps::VoxelRegion::vertices_size_type index = vox.index_of(target);
-				res[index] = label;
+				if (index >= vox.num_vertices()) ROS_ERROR_STREAM("objects are outside voxel region!!!");
+				else
+					res[index] = label;
 			}
 		}
 		label ++;

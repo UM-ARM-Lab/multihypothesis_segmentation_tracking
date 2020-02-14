@@ -7,7 +7,8 @@
 namespace mps
 {
 
-ParticleFilter::ParticleFilter(int n) : numParticles(n)
+ParticleFilter::ParticleFilter(VoxelRegion::vertex_descriptor dims, double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax, int n)
+	: voxRegion(dims, res, rmin, rmax), numParticles(n)
 {
 	particles.resize(n);
 }
