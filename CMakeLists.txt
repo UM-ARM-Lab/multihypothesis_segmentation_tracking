@@ -260,6 +260,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/ValueTree.cpp
   src/${PROJECT_NAME}/SceneCut.cpp
   src/${PROJECT_NAME}/MCMCTreeCut.cpp
+  src/${PROJECT_NAME}/SegmentationTreeSampler.cpp
   src/${PROJECT_NAME}/Manipulator.cpp
   src/${PROJECT_NAME}/VictorManipulator.cpp
   src/${PROJECT_NAME}/MotionModel.cpp
