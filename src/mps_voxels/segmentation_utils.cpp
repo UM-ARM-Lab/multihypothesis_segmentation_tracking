@@ -222,26 +222,6 @@ std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels, const cv::
 	for (const auto label : uniqueLabels)
 	{
 		mps_msgs::AABBox2d bbox;
-//		bbox.xmin = labels.cols;
-//		bbox.xmax = 0;
-//		bbox.ymin = labels.rows;
-//		bbox.ymax = 0;
-//		for(int i = 0;i < labels.rows;i++) {
-//			auto row = labels.ptr<LabelT>(i);
-////			auto row = labels.row(i);
-//			if(std::find(row, row + labels.cols, label) != row + labels.cols){
-//				bbox.ymin = i;
-//				break;
-//			}
-//		}
-//		for(int i = labels.rows-1;i >= 0;i--) {
-//			auto row = labels.ptr<LabelT>(i);
-//			if(std::find(row, row + labels.cols, label) != row + labels.cols){
-//				bbox.ymax = i;
-//				break;
-//			}
-//		}
-//		cv::Mat labelMask = (labels == label);
 		cv::Rect box = cv::boundingRect(labels == label);
 
 		if (2 * box.height * box.width > roi.height * roi.width) { continue; } // get rid of table segment
@@ -250,8 +230,6 @@ std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels, const cv::
 		bbox.ymin = box.y + roi.y;
 		bbox.ymax = box.y + box.height + roi.y;
 
-//		labelMask.
-//		cv::boundingRect();
 		labelToBBoxLookup.insert({label, bbox});
 	}
 	return labelToBBoxLookup;
