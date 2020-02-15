@@ -59,6 +59,12 @@ struct Particle
 	double weight = 0;
 
 	cv::Mat seg;
+
+	void init()
+	{
+		state = std::make_shared<ParticleData>();
+		state->vertexState.resize(voxelRegion->num_vertices(), -1);
+	}
 };
 
 cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeCameraModel& cameraModel, const Eigen::Isometry3d& worldTcamera, const int& step = 1);

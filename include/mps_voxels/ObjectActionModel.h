@@ -13,6 +13,7 @@
 #include "mps_voxels/ROI.h"
 #include "mps_voxels/Scene.h"
 #include "mps_voxels/VoxelRegion.h"
+#include "mps_voxels/Particle.h"
 
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
@@ -27,6 +28,13 @@ struct rigidTF
 	Eigen::Vector3d linear;
 	Eigen::Vector3d angular;
 	int numInliers;
+};
+
+struct decomposedRigidTF
+{
+	Eigen::Vector3d linear;
+	Eigen::Vector3d e;
+	double theta;
 };
 
 class objectActionModel
@@ -60,11 +68,12 @@ public:
 };
 
 
-mps::VoxelRegion
-moveParticle(const mps::VoxelRegion& particle, const Eigen::Vector3d& action);
-
 std::shared_ptr<octomap::OcTree>
 moveOcTree(const octomap::OcTree* octree, const rigidTF& action);
+
+Particle
+moveParticle(const Particle& inputParticle, const std::map<int, rigidTF>& labelToMotionLookup); // labelToMotionLookup should include all unique object labels in the inputParticle
+
 }
 
 

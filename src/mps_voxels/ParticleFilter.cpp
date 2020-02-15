@@ -7,7 +7,7 @@
 namespace mps
 {
 
-ParticleFilter::ParticleFilter(VoxelRegion::vertex_descriptor dims, double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax, int n)
+ParticleFilter::ParticleFilter(const VoxelRegion::vertex_descriptor& dims, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n)
 	: voxRegion(dims, res, rmin, rmax), numParticles(n)
 {
 	particles.resize(n);
@@ -25,14 +25,15 @@ Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const i
 	cv::Rect roi = {0, 0, (int)cameraModel.cameraInfo().width, (int)cameraModel.cameraInfo().height};
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, roi);
 
-	std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>(10);
+	std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>(1);
+	std::map<int, rigidTF> labelToMotionLookup;
 	for (auto& pair : labelToBBoxLookup)
 	{
 		oam->sampleAction(buffer_out, seg_out, sparseTracker, denseTracker, pair.first, pair.second);
+		labelToMotionLookup.insert({pair.first, *oam->actionSamples.begin()});
 	}
 
-	Particle outputParticle;
-
+	Particle outputParticle = moveParticle(inputParticle, labelToMotionLookup);
 	return outputParticle;
 }
 

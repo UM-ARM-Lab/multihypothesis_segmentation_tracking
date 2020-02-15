@@ -348,7 +348,7 @@ std::shared_ptr<octomap::OcTree>
 moveOcTree(const octomap::OcTree* octree, const rigidTF& action)
 {
 	double theta = action.angular.norm();
-	std::cerr << "rotation theta = " << theta << std::endl;
+//	std::cerr << "rotation theta = " << theta << std::endl;
 	Eigen::Vector3d e;
 	if (theta == 0) { e = {0, 0, 0}; }
 	else { e = action.angular / theta; }
@@ -366,6 +366,44 @@ moveOcTree(const octomap::OcTree* octree, const rigidTF& action)
 	}
 	resOcTree->setOccupancyThres(octree->getOccupancyThres());
 	return resOcTree;
+}
+
+Particle
+moveParticle(const Particle& inputParticle, const std::map<int, rigidTF>& labelToMotionLookup)
+{
+	std::map<int, decomposedRigidTF> labelToDecomposedMotionLookup;
+	for (auto& pair : labelToMotionLookup)
+	{
+		decomposedRigidTF drtf;
+		drtf.theta = pair.second.angular.norm();
+		if (drtf.theta == 0) { drtf.e = {0, 0, 0}; }
+		else { drtf.e = pair.second.angular / drtf.theta; }
+		labelToDecomposedMotionLookup.insert({pair.first, drtf});
+	}
+
+	Particle outputParticle;
+	outputParticle.voxelRegion = inputParticle.voxelRegion;
+	outputParticle.init();
+
+#pragma omp parallel for
+	for (int i = 0; i < (int)inputParticle.state->vertexState.size(); ++i)
+	{
+		if (inputParticle.state->vertexState[i] >= 0)
+		{
+			auto& tf = labelToDecomposedMotionLookup[inputParticle.state->vertexState[i]];
+			VoxelRegion::vertex_descriptor vd = inputParticle.voxelRegion->vertex_at(i);
+			Eigen::Vector3d originalCoord = vertexDescpToCoord(inputParticle.voxelRegion->resolution, inputParticle.voxelRegion->regionMin, vd);
+			Eigen::Vector3d newCoord;
+			newCoord = cos(tf.theta) * originalCoord + sin(tf.theta) * tf.e.cross(originalCoord) + (1 - cos(tf.theta)) * tf.e.dot(originalCoord) * tf.e;
+			newCoord += tf.linear;
+
+			VoxelRegion::vertex_descriptor newVD = coordToVertexDesc(inputParticle.voxelRegion->resolution, inputParticle.voxelRegion->regionMin, newCoord);
+			auto index = inputParticle.voxelRegion->index_of(newVD);
+			outputParticle.state->vertexState[index] = inputParticle.state->vertexState[i];
+		}
+	}
+
+	return outputParticle;
 }
 
 }
