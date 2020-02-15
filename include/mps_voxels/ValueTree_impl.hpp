@@ -34,6 +34,7 @@
 
 #include <deque>
 #include <algorithm>
+#include <cassert>
 
 namespace mps
 {

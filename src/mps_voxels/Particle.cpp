@@ -13,7 +13,7 @@ std::set<int> getUniqueObjectLabels(const VoxelRegion::VertexLabels& input)
 
 #pragma omp declare reduction (merge : std::set<int> : omp_out.insert(omp_in.begin(), omp_in.end()))
 #pragma omp parallel for reduction(merge: out)
-	for (int i = 0; i < input.size(); ++i)
+	for (size_t i = 0; i < input.size(); ++i)
 	{
 		out.insert(input[i]);
 	}

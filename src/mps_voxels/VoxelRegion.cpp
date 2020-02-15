@@ -39,7 +39,7 @@ namespace mps
 {
 
 VoxelRegion::VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax)
-	: m_dimension_lengths(dims), resolution(res), regionMin(rmin), regionMax(rmax)
+	: resolution(res), regionMin(rmin), regionMax(rmax), m_dimension_lengths(dims)
 {
 	precalculate();
 }

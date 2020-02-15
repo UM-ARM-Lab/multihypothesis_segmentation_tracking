@@ -13,7 +13,7 @@ ParticleFilter::ParticleFilter(VoxelRegion::vertex_descriptor dims, double res, 
 	particles.resize(n);
 }
 
-Particle ParticleFilter::applyActionModel(const Particle& inputParticle)
+Particle ParticleFilter::applyActionModel(const Particle& /*inputParticle*/)
 {
 	Particle outputParticle;
 
