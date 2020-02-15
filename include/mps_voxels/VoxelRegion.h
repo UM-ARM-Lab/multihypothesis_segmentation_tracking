@@ -153,11 +153,21 @@ Point snap(const Point& p, const octomap::OcTree* octree)
 	return {coord.x(), coord.y(), coord.z()};
 }
 
+inline
+double snapCoord(const double& resolution, const double& x)
+{
+	return (double( (int) floor( x / resolution) ) + 0.5) * resolution;
+}
+
 mps::VoxelRegion::vertex_descriptor roiToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax);
 
 mps::VoxelRegion::vertex_descriptor coordToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& query);
 
+mps::VoxelRegion::vertex_descriptor coordToVertexDesc(const double& resolution, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& query);
+
 Eigen::Vector3d gridToCoord(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelRegion::vertex_descriptor& query);
+
+Eigen::Vector3d vertexDescpToCoord(const double& resolution, const Eigen::Vector3d& roiMin, const mps::VoxelRegion::vertex_descriptor& query);
 
 bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelRegion::vertex_descriptor& query);
 

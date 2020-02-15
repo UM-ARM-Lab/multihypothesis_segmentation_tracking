@@ -34,7 +34,7 @@
 #include "mps_voxels/VoxelRegion.h"
 #include "mps_voxels/moveit_pose_type.h"
 
-#include <opencv2/highgui.hpp>
+#include <opencv2/core.hpp>
 
 namespace image_geometry
 {
@@ -66,6 +66,8 @@ struct Particle
 
 	// Our belief weight of this particle
 	double weight = 0;
+
+	void init();
 };
 
 cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const int& step = 1);

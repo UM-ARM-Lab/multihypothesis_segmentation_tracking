@@ -909,10 +909,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
 	std::cerr << "Segmentation based on particle generated!" << std::endl;
-	cv::Mat segParticleCM;
-	// Apply the colormap:
-	cv::applyColorMap(segParticle, segParticleCM, cv::COLORMAP_JET);
-	cv::imwrite("/home/kunhuang/Pictures/segParticle.jpg", segParticleCM);
 
 //	cv::RNG rng;
 //	for (const auto& obj : scene->objects)

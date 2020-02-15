@@ -72,7 +72,7 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 
 //std::map<uint16_t, std::vector<xycoor>> segmentMaskFromImage(const cv::Mat& labels,const cv::Rect& roi);
 
-std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat &labels, const cv::Rect &roi);
+std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat &labels, const cv::Rect& roi = {0, 0, 1920,1080});
 
 pcl::PointCloud<PointT>::Ptr make_PC_segment(const cv::Mat &rgb, const cv::Mat &depth,
                                              const image_geometry::PinholeCameraModel &cameraModel,

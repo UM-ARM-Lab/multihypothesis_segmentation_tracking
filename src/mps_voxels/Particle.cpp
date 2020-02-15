@@ -75,5 +75,10 @@ cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeC
 	return labels;
 }
 
+void Particle::init()
+{
+	state = std::make_shared<ParticleData>();
+	state->vertexState.resize(voxelRegion->num_vertices(), -1);
+}
 
 }
