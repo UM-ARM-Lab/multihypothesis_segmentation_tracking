@@ -5,8 +5,9 @@
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
-#include "mps_voxels/util/assert.h"
+#include "mps_voxels/project_point.hpp"
 #include "mps_voxels/SensorHistorian.h"
+#include "mps_voxels/util/assert.h"
 
 namespace mps
 {
@@ -175,7 +176,7 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 		                       / static_cast<double>(cv::countNonZero(filtered_labels == pair.first));
 		if (percentFilled >= percentThreshold && static_cast<int>(pair.second->size()) > sizeThreshold)
 		{
-			ObjectIndex objID{-(static_cast<long>(retVal.size()) - 100)}; // retVal.size()-1
+			ObjectIndex objID{-(static_cast<ObjectIndex::IDType>(retVal.size()) - 100)}; // retVal.size()-1
 			retVal.insert({objID, pair.second});
 			if (labelToIndexLookup)
 			{

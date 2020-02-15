@@ -5,6 +5,7 @@
 #include "mps_voxels/ObjectActionModel.h"
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
+#include "mps_voxels/project_point.hpp"
 
 #include <tf_conversions/tf_eigen.h>
 #include <random>

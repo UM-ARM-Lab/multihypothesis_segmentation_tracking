@@ -11,6 +11,7 @@
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/shape_utils.h"
+#include "mps_voxels/project_point.hpp"
 #include "mps_voxels/util/assert.h"
 
 #include <tf_conversions/tf_eigen.h>
@@ -27,11 +28,6 @@
 
 namespace mps
 {
-
-Object::Object(const ObjectIndex i, const std::shared_ptr<octomap::OcTree>& tree)
- : index(i), occupancy(tree)
-{
-}
 
 bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 {

@@ -30,6 +30,7 @@
 #ifndef SRC_VOXELREGION_H
 #define SRC_VOXELREGION_H
 
+#include "mps_voxels/Indexes.h"
 //#include "mps_voxels/octree_utils.h"
 
 #include <boost/array.hpp>
@@ -37,12 +38,8 @@
 
 #include <octomap/octomap.h>
 
-//#include <ompl/util/RandomNumbers.h>
-
 #include <Eigen/Core>
 #include <visualization_msgs/MarkerArray.h>
-
-#include "mps_voxels/Scene.h"
 
 namespace cv
 {
@@ -141,7 +138,7 @@ public:
 
 	edges_size_type index_of(edge_descriptor edge) const;
 
-	std::map<int, std::shared_ptr<octomap::OcTree>> vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<int>& uniqueObjectLabels);
+	std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>> vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<ObjectIndex>& uniqueObjectLabels);
 
 	visualization_msgs::MarkerArray visualizeVertexLabelsDirectly(VertexLabels& vlabels,
 	                                                              const std::string& globalFrame);
@@ -180,6 +177,8 @@ octreeToGridParticle(const octomap::OcTree* octree,
                      const Eigen::Vector3d& minExtent,
                      const Eigen::Vector3d& maxExtent,
                      cv::RNG& rng);
+
+class Object;
 
 /// From object octrees to a particle representing the whole state
 mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects,

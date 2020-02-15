@@ -29,8 +29,10 @@
 
 #include "mps_voxels/VoxelRegion.h"
 #include "mps_voxels/DisjointSetForest.hpp"
+#include "mps_voxels/Object.h"
 
-//#include <boost/pending/disjoint_sets.hpp>
+#include <ros/console.h>
+
 #include <opencv2/core.hpp>
 
 #include <map>
@@ -38,8 +40,8 @@
 namespace mps
 {
 
-VoxelRegion::VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax)
-	: resolution(res), regionMin(rmin), regionMax(rmax), m_dimension_lengths(dims)
+VoxelRegion::VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax) // NOLINT(hicpp-member-init)
+	: resolution(res), regionMin(std::move(rmin)), regionMax(std::move(rmax)), m_dimension_lengths(dims)
 {
 	precalculate();
 }
@@ -89,17 +91,17 @@ VoxelRegion::VertexLabels VoxelRegion::components(VoxelRegion::EdgeState& edges)
 	}
 
 	// Flatten and relabel tree as root labels
-	std::map<int, unsigned> sizes;
+	std::map<ObjectIndex, unsigned> sizes;
 	for (size_t i = 0; i < dsf.nodes.size(); ++i)
 	{
 		int label = dsf.getAncestor(i);
 		dsf.nodes[i] = label;
-		sizes[label]++;
+		sizes[ObjectIndex(label)]++;
 	}
 
 	for (size_t i = 0; i < dsf.nodes.size(); ++i)
 	{
-		int label = dsf.getAncestor(i);
+		ObjectIndex label(dsf.getAncestor(i));
 		if (sizes[label] == 1)
 		{
 			dsf.nodes[i] = -1;
@@ -290,10 +292,10 @@ VoxelRegion::edges_size_type VoxelRegion::index_of(VoxelRegion::edge_descriptor 
 	return (edge_index);
 }
 
-std::map<int, std::shared_ptr<octomap::OcTree>>
-VoxelRegion::vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<int>& uniqueObjectLabels)
+std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>>
+VoxelRegion::vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<ObjectIndex>& uniqueObjectLabels)
 {
-	std::map<int, std::shared_ptr<octomap::OcTree>> labelToOcTreeLookup;
+	std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>> labelToOcTreeLookup;
 	for (auto label : uniqueObjectLabels)
 	{
 		labelToOcTreeLookup.emplace(label, std::make_shared<octomap::OcTree>(resolution));
@@ -308,8 +310,8 @@ VoxelRegion::vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<in
 			vertex_descriptor query = vertex_at(i);
 			Eigen::Vector3d pos = regionMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(query.data()).cast<double>()) + offset;
 
-			labelToOcTreeLookup[vlabels[i]]->updateNode(pos.x(), pos.y(), pos.z(), true);
-			labelToOcTreeLookup[vlabels[i]]->setNodeValue(pos.x(), pos.y(), pos.z(), 1.0);
+			labelToOcTreeLookup[ObjectIndex(vlabels[i])]->updateNode(pos.x(), pos.y(), pos.z(), true);
+			labelToOcTreeLookup[ObjectIndex(vlabels[i])]->setNodeValue(pos.x(), pos.y(), pos.z(), 1.0);
 		}
 	}
 	return labelToOcTreeLookup;

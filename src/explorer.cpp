@@ -868,7 +868,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	                                                      scene->objects.begin()->second->occupancy->getResolution(),
 	                                                      scene->minExtent.head<3>().cast<double>(),
 	                                                      scene->maxExtent.head<3>().cast<double>());
-	particle.state = std::make_shared<ParticleData>();
+	particle.state = std::make_shared<OccupancyData>();
 	particle.state->vertexState = objectsToVoxelLabel(scene->objects,
 	                                                  scene->minExtent.head<3>().cast<double>(),
 	                                                  scene->maxExtent.head<3>().cast<double>());

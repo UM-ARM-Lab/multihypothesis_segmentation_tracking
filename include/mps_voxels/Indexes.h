@@ -8,7 +8,10 @@
 #include <ros/time.h>
 
 #define IMPLEMENT_INDEX_INTERNALS(Type) \
-long id = -1; \
+using IDType = int; \
+IDType id = -1; \
+explicit Type(const IDType init = -1) : id(init) {} \
+\
 inline \
 bool operator==(const Type& other) const \
 { \

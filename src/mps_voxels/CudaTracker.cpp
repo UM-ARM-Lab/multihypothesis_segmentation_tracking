@@ -5,6 +5,7 @@
 #ifdef HAS_CUDA_SIFT
 
 #include "mps_voxels/CudaTracker.h"
+#include "mps_voxels/project_point.hpp"
 
 #include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>

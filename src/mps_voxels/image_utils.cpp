@@ -4,7 +4,8 @@
 
 #include "mps_voxels/image_utils.h"
 #include "mps_voxels/SensorHistorian.h"
-#include "mps_voxels/ROI.h"
+#include "mps_voxels/project_point.hpp"
+//#include "mps_voxels/ROI.h"
 
 #define CV_VERSION_AT_LEAST(x,y,z) (CV_VERSION_MAJOR>x || (CV_VERSION_MAJOR>=x && \
                                    (CV_VERSION_MINOR>y || (CV_VERSION_MINOR>=y && \

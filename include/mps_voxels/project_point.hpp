@@ -27,49 +27,24 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MPS_PARTICLE_H
-#define MPS_PARTICLE_H
+#ifndef SRC_PROJECT_POINT_HPP
+#define SRC_PROJECT_POINT_HPP
 
-#include "mps_voxels/Indexes.h"
-#include "mps_voxels/VoxelRegion.h"
-#include "mps_voxels/moveit_pose_type.h"
-
-#include <opencv2/highgui.hpp>
-
-namespace image_geometry
-{
-class PinholeCameraModel;
-}
+#include <image_geometry/pinhole_camera_model.h>
 
 namespace mps
 {
 
-struct OccupancyData;
-
-std::set<ObjectIndex> getUniqueObjectLabels(const VoxelRegion::VertexLabels& input);
-
-struct Particle
+template <typename PointT>
+PointT toPoint3D(const float uIdx, const float vIdx, const float depthMeters, const image_geometry::PinholeCameraModel& cam)
 {
-	using ParticleData = OccupancyData;
-
-	// Indexing properties of this particular particle
-	TimeIndex time;
-	SubproblemIndex problem;
-	ObjectIndex object;
-	ParticleIndex particle;
-
-	// Domain properties shared by this particle
-	std::shared_ptr<VoxelRegion> voxelRegion;
-
-	// The actual state data and its cached computations
-	std::shared_ptr<ParticleData> state;
-
-	// Our belief weight of this particle
-	double weight = 0;
-};
-
-cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const int& step = 1);
+	PointT pt;
+	pt.x() = (uIdx - cam.cx()) * depthMeters / cam.fx();
+	pt.y() = (vIdx - cam.cy()) * depthMeters / cam.fy();
+	pt.z() = depthMeters;
+	return pt;
+}
 
 }
 
-#endif //MPS_PARTICLE_H
+#endif // SRC_PROJECT_POINT_HPP

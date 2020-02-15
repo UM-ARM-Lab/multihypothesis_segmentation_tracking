@@ -58,7 +58,7 @@ int main(int argc, char **argv)
 	/////////////////////////////////////////////
 	//// Particle Filter
 	/////////////////////////////////////////////
-	std::unique_ptr<ParticleFilter> pf = std::make_unique<ParticleFilter>(2);
+//	std::unique_ptr<ParticleFilter> pf = std::make_unique<ParticleFilter>(2);
 	std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>(1);
 	std::unique_ptr<DenseTracker> denseTracker = std::make_unique<SiamTracker>();
 	std::unique_ptr<Tracker> sparseTracker = std::make_unique<Tracker>();

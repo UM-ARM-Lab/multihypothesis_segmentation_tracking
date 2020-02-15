@@ -7,6 +7,8 @@
 
 #include "mps_voxels/PointT.h"
 #include "mps_voxels/Indexes.h"
+#include "mps_voxels/Object.h"
+#include "mps_voxels/OccupancyData.h"
 #include "mps_voxels/Manipulator.h"
 #include "mps_voxels/MotionModel.h"
 #include "segmentation_utils.h"
@@ -41,21 +43,6 @@ enum class FEATURE_AVAILABILITY
 	REQUIRED,
 	OPTIONAL,
 	FORBIDDEN,
-};
-
-class Object
-{
-public:
-	const ObjectIndex index;
-	pcl::PointCloud<PointT>::Ptr segment;
-	std::shared_ptr<octomap::OcTree> occupancy;
-	std::shared_ptr<shapes::Mesh> approximation;
-	octomap::point3d_collection points;
-	octomap::point3d_collection shadow;
-	Eigen::Vector3f minExtent;
-	Eigen::Vector3f maxExtent;
-
-	Object(const ObjectIndex i, const std::shared_ptr<octomap::OcTree>& tree);
 };
 
 class Scenario

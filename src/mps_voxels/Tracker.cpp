@@ -3,6 +3,7 @@
 //
 
 #include "mps_voxels/Tracker.h"
+#include "mps_voxels/project_point.hpp"
 
 #include <opencv2/optflow.hpp>
 #include <opencv2/highgui.hpp>

@@ -27,49 +27,27 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MPS_PARTICLE_H
-#define MPS_PARTICLE_H
+#ifndef MPS_OCCUPANCYDATA_H
+#define MPS_OCCUPANCYDATA_H
 
 #include "mps_voxels/Indexes.h"
 #include "mps_voxels/VoxelRegion.h"
-#include "mps_voxels/moveit_pose_type.h"
-
-#include <opencv2/highgui.hpp>
-
-namespace image_geometry
-{
-class PinholeCameraModel;
-}
 
 namespace mps
 {
 
-struct OccupancyData;
-
-std::set<ObjectIndex> getUniqueObjectLabels(const VoxelRegion::VertexLabels& input);
-
-struct Particle
+struct OccupancyData
 {
-	using ParticleData = OccupancyData;
+	// This is the canonical representation of the segmentation state
+	VoxelRegion::VertexLabels vertexState;
 
-	// Indexing properties of this particular particle
-	TimeIndex time;
-	SubproblemIndex problem;
-	ObjectIndex object;
-	ParticleIndex particle;
+	// This is the dual form
+	VoxelRegion::EdgeState edgeState;
 
-	// Domain properties shared by this particle
-	std::shared_ptr<VoxelRegion> voxelRegion;
-
-	// The actual state data and its cached computations
-	std::shared_ptr<ParticleData> state;
-
-	// Our belief weight of this particle
-	double weight = 0;
+	// Cached set of
+	std::set<ObjectIndex> uniqueObjectLabels;
 };
-
-cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const int& step = 1);
 
 }
 
-#endif //MPS_PARTICLE_H
+#endif // MPS_OCCUPANCYDATA_H

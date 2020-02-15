@@ -3,25 +3,30 @@
 //
 
 #include "mps_voxels/Particle.h"
+#include "mps_voxels/OccupancyData.h"
+#include "mps_voxels/moveit_pose_type.h"
+#include "mps_voxels/project_point.hpp"
+
+#include <image_geometry/pinhole_camera_model.h>
 
 namespace mps
 {
 
-std::set<int> getUniqueObjectLabels(const VoxelRegion::VertexLabels& input)
+std::set<ObjectIndex> getUniqueObjectLabels(const VoxelRegion::VertexLabels& input)
 {
-	std::set<int> out;
+	std::set<ObjectIndex> out;
 
-#pragma omp declare reduction (merge : std::set<int> : omp_out.insert(omp_in.begin(), omp_in.end()))
+#pragma omp declare reduction (merge : std::set<ObjectIndex> : omp_out.insert(omp_in.begin(), omp_in.end()))
 #pragma omp parallel for reduction(merge: out)
 	for (size_t i = 0; i < input.size(); ++i)
 	{
-		out.insert(input[i]);
+		out.insert(ObjectIndex(input[i]));
 	}
-	out.erase(-1);
+	out.erase(ObjectIndex());
 	return out;
 }
 
-cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeCameraModel& cameraModel, const Eigen::Isometry3d& worldTcamera, const int& step)
+cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const int& step)
 {
 	auto roi = cameraModel.rectifiedRoi();
 
@@ -30,7 +35,7 @@ cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeC
 	cv::Mat labels = cv::Mat::zeros(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_8U);
 	cv::Mat depthBuf(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_32F, std::numeric_limits<DepthT>::max());
 
-	std::map<int, std::shared_ptr<octomap::OcTree>> labelToOcTreeLookup = particle.voxelRegion->vertexLabelToOctrees(particle.state->vertexState, particle.state->uniqueObjectLabels);
+	std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>> labelToOcTreeLookup = particle.voxelRegion->vertexLabelToOctrees(particle.state->vertexState, particle.state->uniqueObjectLabels);
 	std::cerr << "labelToOcTreeLookup contains " << labelToOcTreeLookup.size() << " elements." << std::endl;
 
 	const Eigen::Vector3d r0_world = worldTcamera.translation();
@@ -59,7 +64,7 @@ cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeC
 					if (dist < zBuf)
 					{
 						zBuf = dist;
-						labels.at<LabelT>(v, u) = pair.first;
+						labels.at<LabelT>(v, u) = pair.first.id;
 //						std::cerr << "label value: " << labels.at<LabelT>(v, u) << std::endl;
 					}
 				}

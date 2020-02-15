@@ -27,49 +27,33 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MPS_PARTICLE_H
-#define MPS_PARTICLE_H
+#ifndef SRC_OBJECT_H
+#define SRC_OBJECT_H
 
 #include "mps_voxels/Indexes.h"
-#include "mps_voxels/VoxelRegion.h"
-#include "mps_voxels/moveit_pose_type.h"
+#include "mps_voxels/PointT.h"
 
-#include <opencv2/highgui.hpp>
-
-namespace image_geometry
-{
-class PinholeCameraModel;
-}
+#include <geometric_shapes/shapes.h>
+#include <octomap/OcTree.h>
 
 namespace mps
 {
 
-struct OccupancyData;
-
-std::set<ObjectIndex> getUniqueObjectLabels(const VoxelRegion::VertexLabels& input);
-
-struct Particle
+class Object
 {
-	using ParticleData = OccupancyData;
+public:
+	const ObjectIndex index;
+	pcl::PointCloud<PointT>::Ptr segment;
+	std::shared_ptr<octomap::OcTree> occupancy;
+	std::shared_ptr<shapes::Mesh> approximation;
+	octomap::point3d_collection points;
+	octomap::point3d_collection shadow;
+	Eigen::Vector3f minExtent;
+	Eigen::Vector3f maxExtent;
 
-	// Indexing properties of this particular particle
-	TimeIndex time;
-	SubproblemIndex problem;
-	ObjectIndex object;
-	ParticleIndex particle;
-
-	// Domain properties shared by this particle
-	std::shared_ptr<VoxelRegion> voxelRegion;
-
-	// The actual state data and its cached computations
-	std::shared_ptr<ParticleData> state;
-
-	// Our belief weight of this particle
-	double weight = 0;
+	Object(const ObjectIndex i, const std::shared_ptr<octomap::OcTree>& tree);
 };
-
-cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const int& step = 1);
 
 }
 
-#endif //MPS_PARTICLE_H
+#endif // SRC_OBJECT_H

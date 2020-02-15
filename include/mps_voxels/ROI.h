@@ -16,17 +16,6 @@ namespace mps
 {
 
 template <typename PointT>
-PointT toPoint3D(const float uIdx, const float vIdx, const float depthMeters, const image_geometry::PinholeCameraModel& cam)
-{
-	PointT pt;
-	pt.x() = (uIdx - cam.cx()) * depthMeters / cam.fx();
-	pt.y() = (vIdx - cam.cy()) * depthMeters / cam.fy();
-	pt.z() = depthMeters;
-	return pt;
-}
-
-
-template <typename PointT>
 std::vector<PointT> getCorners(const PointT& min, const PointT& max, const int dimension)
 {
 	// There will be 2^DIM corners to deal with
