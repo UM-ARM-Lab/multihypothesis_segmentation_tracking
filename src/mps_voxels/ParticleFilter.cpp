@@ -14,9 +14,10 @@ ParticleFilter::ParticleFilter(VoxelRegion::vertex_descriptor dims, double res, 
 }
 
 Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const image_geometry::PinholeCameraModel& cameraModel,
-                                          const Eigen::Isometry3d& worldTcamera, const int& segRes = 1,
+                                          const Eigen::Isometry3d& worldTcamera,
                                           SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out,
-                                          std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker)
+                                          std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker,
+                                          const int& segRes)
 {
 	cv::Mat segParticle = rayCastParticle(inputParticle, cameraModel, worldTcamera, segRes);
 	std::cerr << "Segmentation based on particle generated!" << std::endl;
@@ -27,7 +28,7 @@ Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const i
 	std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>(10);
 	for (auto& pair : labelToBBoxLookup)
 	{
-		oam->sampleAction(historian->buffer, *scene->segInfo, sparseTracker, denseTracker, pair.first, pair.second);
+		oam->sampleAction(buffer_out, seg_out, sparseTracker, denseTracker, pair.first, pair.second);
 	}
 
 	Particle outputParticle;

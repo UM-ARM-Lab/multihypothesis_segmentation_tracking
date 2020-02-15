@@ -24,9 +24,10 @@ public:
 	std::vector<Particle> particles;
 
 	Particle applyActionModel(const Particle& inputParticle, const image_geometry::PinholeCameraModel& cameraModel,
-	                          const Eigen::Isometry3d& worldTcamera, const int& segRes = 1,
+	                          const Eigen::Isometry3d& worldTcamera,
 	                          SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out,
-	                          std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker);
+	                          std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker,
+	                          const int& segRes = 1);
 };
 
 }
