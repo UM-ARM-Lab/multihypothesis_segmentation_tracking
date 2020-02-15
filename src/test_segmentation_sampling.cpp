@@ -261,14 +261,14 @@ int main(int argc, char* argv[])
 #ifndef NDEBUG
 	// Validate this cut
 	auto cutStar = treeSampler.sample(re, SAMPLE_TYPE::MAXIMUM);
-	for (size_t n = 0; n < size(T); ++n)
+	for (size_t n = 0; n < size(treeSampler.vt); ++n)
 	{
-		if (tree::children(T, n).empty())
+		if (tree::children(treeSampler.vt, n).empty())
 		{
-			auto an = ancestors(T, n);
+			auto an = ancestors(treeSampler.vt, n);
 			an.insert(n);
 			std::vector<int> crossover;
-			std::set_intersection(an.begin(), an.end(), cutStar.second.begin(), cutStar.second.end(), std::back_inserter(crossover));
+			std::set_intersection(an.begin(), an.end(), treeSampler.cutStar.begin(), treeSampler.cutStar.end(), std::back_inserter(crossover));
 			assert(crossover.size() == 1); // A leaf node should have exactly one leaf node that is a parent.
 		}
 	}

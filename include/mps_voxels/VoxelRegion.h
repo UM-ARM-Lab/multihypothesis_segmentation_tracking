@@ -67,10 +67,6 @@ public:
 
 	VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax);
 
-	double resolution;
-	Eigen::Vector3d regionMin;
-	Eigen::Vector3d regionMax;
-
 	size_t getEdgeIndex(vertex_descriptor a, vertex_descriptor b);
 
 	// From edge graph to vertex labels
@@ -79,6 +75,10 @@ public:
 	using edges_size_type = Grid::edges_size_type;
 	using edge_descriptor = Grid::edge_descriptor;
 	using vertices_size_type = Grid::vertices_size_type;
+
+	double resolution;
+	Eigen::Vector3d regionMin;
+	Eigen::Vector3d regionMax;
 
 	const vertex_descriptor m_dimension_lengths;
 	vertices_size_type m_num_vertices;
