@@ -8,9 +8,15 @@ namespace mps
 {
 
 ParticleFilter::ParticleFilter(const VoxelRegion::vertex_descriptor& dims, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n)
-	: voxRegion(dims, res, rmin, rmax), numParticles(n)
+	: numParticles(n)
 {
+	voxelRegion = std::make_shared<VoxelRegion>(dims, res, rmin, rmax);;
 	particles.resize(n);
+	for (int i=0; i<n; ++i)
+	{
+		particles[i].voxelRegion = voxelRegion;
+		particles[i].init();
+	}
 }
 
 Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const image_geometry::PinholeCameraModel& cameraModel,

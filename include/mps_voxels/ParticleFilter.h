@@ -18,7 +18,7 @@ class ParticleFilter
 public:
 	ParticleFilter(const VoxelRegion::vertex_descriptor& dims, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n=10);
 
-	VoxelRegion voxRegion;
+	std::shared_ptr<VoxelRegion> voxelRegion;
 
 	int numParticles;
 	std::vector<Particle> particles;

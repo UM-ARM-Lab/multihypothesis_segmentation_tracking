@@ -319,7 +319,7 @@ VoxelRegion::vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<Ob
 
 visualization_msgs::MarkerArray
 VoxelRegion::visualizeVertexLabelsDirectly(VertexLabels& vlabels,
-                                           const std::string& globalFrame)
+                                           const std::string& globalFrame, const std::string& ns)
 {
 	visualization_msgs::MarkerArray vertexLabelVis;
 	vertexLabelVis.markers.resize(1);
@@ -359,7 +359,7 @@ VoxelRegion::visualizeVertexLabelsDirectly(VertexLabels& vlabels,
 
 	vertexLabelVis.markers[0].header.frame_id = globalFrame;
 	vertexLabelVis.markers[0].header.stamp = ros::Time::now();
-	vertexLabelVis.markers[0].ns = "state";
+	vertexLabelVis.markers[0].ns = ns;
 	vertexLabelVis.markers[0].id = 0;
 	vertexLabelVis.markers[0].type = visualization_msgs::Marker::CUBE_LIST;
 	vertexLabelVis.markers[0].scale.x = resolution;
@@ -396,6 +396,21 @@ roiToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Ei
 	for (int i = 0; i < 3; ++i)
 	{
 		dims[i] = ceil((maxCoord[i]-minCoord[i])/octree->getResolution()) + 1;
+	}
+
+	return dims;
+}
+
+mps::VoxelRegion::vertex_descriptor
+roiToVoxelRegion(const double& resolution, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax)
+{
+	Eigen::Vector3d minCoord = {snapCoord(resolution, roiMin.x()), snapCoord(resolution, roiMin.y()), snapCoord(resolution, roiMin.z())};
+	Eigen::Vector3d maxCoord = {snapCoord(resolution, roiMax.x()), snapCoord(resolution, roiMax.y()), snapCoord(resolution, roiMax.z())};
+
+	mps::VoxelRegion::vertex_descriptor dims;
+	for (int i = 0; i < 3; ++i)
+	{
+		dims[i] = ceil((maxCoord[i]-minCoord[i])/resolution) + 1;
 	}
 
 	return dims;
@@ -558,6 +573,42 @@ mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, s
 				target[2] = query[2] + objMin[2];
 				mps::VoxelRegion::vertices_size_type index = vox.index_of(target);
 				if (index >= vox.num_vertices()) ROS_ERROR_STREAM("objects are outside voxel region!!!");
+				else
+					res[index] = label;
+			}
+		}
+		label ++;
+	}
+	return res;
+}
+
+VoxelRegion::VertexLabels
+VoxelRegion::objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects,
+                                          const Eigen::Vector3d& subRegionMinExtent)
+{
+	mps::VoxelRegion::VertexLabels res(num_vertices(), -1);
+	mps::VoxelRegion::vertex_descriptor subRegionMinVD = coordToVertexDesc(resolution, regionMin, subRegionMinExtent);
+
+	int label = 0;
+	for (auto& pair : objects)
+	{
+		auto obj = pair.second.get();
+		assert(obj);
+		mps::VoxelRegion::vertex_descriptor objDims = roiToGrid(obj->occupancy.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>());
+		mps::VoxelRegion objVS(objDims, obj->occupancy->getResolution(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>());
+		mps::VoxelRegion::vertex_descriptor objMin = coordToGrid(obj->occupancy.get(), subRegionMinExtent, obj->minExtent.cast<double>());
+
+		for (mps::VoxelRegion::vertices_size_type v = 0; v < objVS.num_vertices(); ++v)
+		{
+			auto query = objVS.vertex_at(v);
+			if ( isOccupied(obj->occupancy.get(), obj->minExtent.cast<double>(), query) )
+			{
+				mps::VoxelRegion::vertex_descriptor target;
+				target[0] = query[0] + objMin[0] + subRegionMinVD[0];
+				target[1] = query[1] + objMin[1] + subRegionMinVD[1];
+				target[2] = query[2] + objMin[2] + subRegionMinVD[2];
+				mps::VoxelRegion::vertices_size_type index = index_of(target);
+				if (index >= num_vertices()) ROS_ERROR_STREAM("objects are outside voxel region!!!");
 				else
 					res[index] = label;
 			}
