@@ -86,39 +86,6 @@ bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 	return true;
 }
 
-
-collision_detection::WorldPtr
-Scene::computeCollisionWorld()
-{
-	auto world = std::make_shared<collision_detection::World>();
-
-	Pose robotTworld = worldTrobot.inverse(Eigen::Isometry);
-
-	for (const auto& obstacle : scenario->staticObstacles)
-	{
-		world->addToObject(CLUTTER_NAME, obstacle.first, robotTworld * obstacle.second);
-	}
-
-	// Use aliasing shared_ptr constructor
-//	world->addToObject(CLUTTER_NAME,
-//	                   std::make_shared<shapes::OcTree>(std::shared_ptr<octomap::OcTree>(std::shared_ptr<octomap::OcTree>{}, sceneOctree)),
-//	                   robotTworld);
-
-	for (const auto& obj : objects)
-	{
-		const std::shared_ptr<octomap::OcTree>& segment = obj.second->occupancy;
-		world->addToObject(std::to_string(obj.first.id), std::make_shared<shapes::OcTree>(segment), robotTworld);
-	}
-
-//	for (auto& approxSegment : approximateSegments)
-//	{
-//		world->addToObject(CLUTTER_NAME, approxSegment, robotTworld);
-//	}
-
-	collisionWorld = world;
-	return world;
-}
-
 bool Scene::convertImages(const sensor_msgs::ImageConstPtr& rgb_msg,
                           const sensor_msgs::ImageConstPtr& depth_msg,
                           const sensor_msgs::CameraInfo& cam_msg)
@@ -538,8 +505,7 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 	return true;
 }
 
-
-bool SceneProcessor::performSegmentation(Scene& s)
+bool SceneProcessor::callSegmentation(Scene& s)
 {
 	s.segInfo = scenario->segmentationClient->segment(s.cv_rgb_cropped, s.cv_depth_cropped, s.cam_msg_cropped);
 
@@ -549,9 +515,82 @@ bool SceneProcessor::performSegmentation(Scene& s)
 		return false;
 	}
 
-	s.segments = segmentCloudsFromImage(s.pile_cloud, s.segInfo->objectness_segmentation->image, s.cameraModel, s.roi, &s.labelToIndexLookup);
+	return true;
+}
 
-	if (s.segments.empty())
+bool SceneProcessor::computeOcclusions(Scene& s)
+{
+	/////////////////////////////////////////////////////////////////
+	// Compute Occlusions
+	/////////////////////////////////////////////////////////////////
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+	{
+		// Recompute bounding box
+		Eigen::Vector3f min, max;
+		pcl::PointCloud<PointT>::Ptr transformed_cloud (new pcl::PointCloud<PointT>());
+		// You can either apply transform_1 or transform_2; they are the same
+		pcl::transformPointCloud (*s.cropped_cloud, *transformed_cloud, Eigen::Affine3d(s.worldTcamera));
+		getAABB(*transformed_cloud, min, max);
+		s.minExtent.head<3>() = min; s.maxExtent.head<3>() = max;
+	}
+
+	std::tie(s.occludedPts, s.occlusionTree) = getOcclusionsInFOV(s.sceneOctree, s.cameraModel, s.worldTcamera.inverse(Eigen::Isometry), s.minExtent.head<3>(), s.maxExtent.head<3>());
+
+	if (s.occludedPts.empty())
+	{
+		ROS_ERROR_STREAM("Occluded points returned empty.");
+		return false;
+	}
+
+	/////////////////////////////////////////////////////////////////
+	// Filter parts of models
+	/////////////////////////////////////////////////////////////////
+	{
+		std::vector<int> assignments(s.occludedPts.size(), -1);
+		const int nPts = static_cast<int>(s.occludedPts.size());
+		#pragma omp parallel for schedule(dynamic)
+		for (int i = 0; i < nPts; ++i)
+		{
+			Eigen::Vector3d pt(s.occludedPts[i].x(), s.occludedPts[i].y(), s.occludedPts[i].z());
+			int m = 0;
+			double maxL = std::numeric_limits<double>::lowest();
+			for (const auto& model : s.selfModels)
+			{
+				double L = model.second->membershipLikelihood(pt);
+				if (L > 0.0 && L > maxL)
+				{
+					maxL = L;
+					assignments[i] = m;
+				}
+				++m;
+			}
+		}
+
+		for (int i = 0; i < nPts; ++i)
+		{
+			if (assignments[i] >= 0)
+			{
+				s.occlusionTree->deleteNode(s.occludedPts[i]);
+				s.sceneOctree->deleteNode(s.occludedPts[i]);
+			}
+		}
+		s.occlusionTree->updateInnerOccupancy();
+		// Lambda function: capture by reference, get contained value, predicate function
+		s.occludedPts.erase(std::remove_if(s.occludedPts.begin(), s.occludedPts.end(),
+		                                   [&](const octomath::Vector3& p){ return assignments[&p - &*s.occludedPts.begin()] >= 0;}),
+		                    s.occludedPts.end());
+		MPS_ASSERT(!s.occludedPts.empty());
+	}
+
+	return true;
+}
+
+
+bool SceneProcessor::performSegmentation(const Scene& s, const std::shared_ptr<SegmentationInfo>& segHypo, OccupancyData& occupancy)
+{
+	occupancy.segments = segmentCloudsFromImage(s.pile_cloud, segHypo->objectness_segmentation->image, s.cameraModel, s.roi, &occupancy.labelToIndexLookup);
+
+	if (occupancy.segments.empty())
 	{
 		ROS_WARN_STREAM("No clusters were detected!");
 		return false;
@@ -559,7 +598,7 @@ bool SceneProcessor::performSegmentation(Scene& s)
 
 	for (const auto label : unique(s.segInfo->objectness_segmentation->image))
 	{
-		if (s.labelToIndexLookup.find(label) == s.labelToIndexLookup.end())
+		if (occupancy.labelToIndexLookup.left.find(label) == occupancy.labelToIndexLookup.left.end())
 		{
 			s.segInfo->objectness_segmentation->image.setTo(0, label == s.segInfo->objectness_segmentation->image);
 		}
@@ -568,19 +607,19 @@ bool SceneProcessor::performSegmentation(Scene& s)
 	return true;
 }
 
-bool SceneProcessor::buildObjects(Scene& s)
+bool SceneProcessor::buildObjects(const Scene& s, OccupancyData& occupancy)
 {
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-	s.objects.clear();
+	occupancy.objects.clear();
 
-	bool completionIsAvailable = scenario->completionClient->completionClient.exists()
-		&& FEATURE_AVAILABILITY::FORBIDDEN != useShapeCompletion;
+	bool completionIsAvailable = FEATURE_AVAILABILITY::FORBIDDEN != useShapeCompletion &&
+		scenario->completionClient->completionClient.exists();
 	if (FEATURE_AVAILABILITY::REQUIRED == useShapeCompletion && !completionIsAvailable)
 	{
 		throw std::runtime_error("Shape completion is set to REQUIRED, but the server is unavailable.");
 	}
 
-	for (const auto& seg : s.segments)
+	for (const auto& seg : occupancy.segments)
 	{
 		if (!ros::ok()) { return false; }
 
@@ -643,7 +682,7 @@ bool SceneProcessor::buildObjects(Scene& s)
 		auto approx = approximateShape(subtree.get());
 		if (approx)
 		{
-			auto res = s.objects.insert(std::make_pair(seg.first, std::make_unique<Object>(seg.first, subtree)));
+			auto res = occupancy.objects.insert(std::make_pair(seg.first, std::make_unique<Object>(seg.first, subtree)));
 			res.first->second->segment = seg.second;
 			res.first->second->approximation = approx;
 			res.first->second->points = getPoints(subtree.get());
@@ -652,132 +691,25 @@ bool SceneProcessor::buildObjects(Scene& s)
 
 	}
 
-	/////////////////////////////////////////////////////////////////
-	// Compute Occlusions
-	/////////////////////////////////////////////////////////////////
-	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-	{
-		// Recompute bounding box
-		Eigen::Vector3f min, max;
-		pcl::PointCloud<PointT>::Ptr transformed_cloud (new pcl::PointCloud<PointT>());
-		// You can either apply transform_1 or transform_2; they are the same
-		pcl::transformPointCloud (*s.cropped_cloud, *transformed_cloud, Eigen::Affine3d(s.worldTcamera));
-		getAABB(*transformed_cloud, min, max);
-		s.minExtent.head<3>() = min; s.maxExtent.head<3>() = max;
-	}
 
-	std::tie(s.occludedPts, s.occlusionTree) = getOcclusionsInFOV(s.sceneOctree, s.cameraModel, s.worldTcamera.inverse(Eigen::Isometry), s.minExtent.head<3>(), s.maxExtent.head<3>());
-//	scene->occluded_pts = occluded_pts;
-
-	if (s.occludedPts.empty())
-	{
-		ROS_ERROR_STREAM("Occluded points returned empty.");
-		return false;
-	}
-
-	/////////////////////////////////////////////////////////////////
-	// Filter completion results
-	/////////////////////////////////////////////////////////////////
-	{
-		const int nPts = static_cast<int>(s.occludedPts.size());
-		std::set<octomap::point3d, vector_less_than<3, octomap::point3d>> rejects;
-//		#pragma omp parallel for schedule(dynamic)
-//		#pragma omp parallel
-		{
-//			#pragma omp single
-			{
-				for (const auto& obj : s.objects)
-				{
-//					#pragma omp task
-					{
-						const std::shared_ptr<octomap::OcTree>& segment = obj.second->occupancy;
-						unsigned d = segment->getTreeDepth();
-						for (int i = 0; i<nPts; ++i)
-						{
-							octomap::OcTreeNode* node = segment->search(s.occludedPts[i], d);
-							if (node && node->getOccupancy()>0.5)
-							{
-//								#pragma omp critical
-								{
-									rejects.insert(s.occludedPts[i]);
-									s.occlusionTree->setNodeValue(s.occludedPts[i], -std::numeric_limits<float>::infinity(),
-									                            true);
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-		std::cerr << "Rejected " << rejects.size() << " hidden voxels due to shape completion." << std::endl;
-		if (completionIsAvailable && rejects.empty())
-		{
-			throw std::runtime_error("Shape completion did not contribute any points.");
-		}
-		s.occlusionTree->updateInnerOccupancy();
-		s.occludedPts.erase(std::remove_if(s.occludedPts.begin(), s.occludedPts.end(),
-		                                 [&](const octomath::Vector3& p){ return rejects.find(p) != rejects.end();}),
-		                  s.occludedPts.end());
-		MPS_ASSERT(!s.occludedPts.empty());
-	}
-
-	/////////////////////////////////////////////////////////////////
-	// Filter parts of models
-	/////////////////////////////////////////////////////////////////
-	{
-		std::vector<int> assignments(s.occludedPts.size(), -1);
-		const int nPts = static_cast<int>(s.occludedPts.size());
-		#pragma omp parallel for schedule(dynamic)
-		for (int i = 0; i < nPts; ++i)
-		{
-			Eigen::Vector3d pt(s.occludedPts[i].x(), s.occludedPts[i].y(), s.occludedPts[i].z());
-			int m = 0;
-			double maxL = std::numeric_limits<double>::lowest();
-			for (const auto& model : s.selfModels)
-			{
-				double L = model.second->membershipLikelihood(pt);
-				if (L > 0.0 && L > maxL)
-				{
-					maxL = L;
-					assignments[i] = m;
-				}
-				++m;
-			}
-		}
-
-		for (int i = 0; i < nPts; ++i)
-		{
-			if (assignments[i] >= 0)
-			{
-				s.occlusionTree->deleteNode(s.occludedPts[i]);
-				s.sceneOctree->deleteNode(s.occludedPts[i]);
-			}
-		}
-		s.occlusionTree->updateInnerOccupancy();
-		// Lambda function: capture by reference, get contained value, predicate function
-		s.occludedPts.erase(std::remove_if(s.occludedPts.begin(), s.occludedPts.end(),
-		                                 [&](const octomath::Vector3& p){ return assignments[&p - &*s.occludedPts.begin()] >= 0;}),
-		                  s.occludedPts.end());
-		MPS_ASSERT(!s.occludedPts.empty());
-	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	/////////////////////////////////////////////////////////////////
 	// Compute the Most Occluding Segment
 	/////////////////////////////////////////////////////////////////
 	auto octree = s.sceneOctree;
-	for (const auto& seg : s.segments)
+	for (const auto& seg : occupancy.segments)
 	{
 		// PC may be rejected by object fitting
-		if (s.objects.find(seg.first) == s.objects.end()) { continue; }
+		if (occupancy.objects.find(seg.first) == occupancy.objects.end()) { continue; }
 
 		const pcl::PointCloud<PointT>::Ptr& pc = seg.second;
 		for (const PointT& pt : *pc)
 		{
 			Eigen::Vector3f worldPt = s.worldTcamera.cast<float>()*pt.getVector3fMap();
 			octomap::point3d coord = octree->keyToCoord(octree->coordToKey(octomap::point3d(worldPt.x(), worldPt.y(), worldPt.z())));
-			s.surfaceCoordToObject.insert({coord, seg.first});
-			s.coordToObject.insert({coord, seg.first});
+			occupancy.surfaceCoordToObject.insert({coord, seg.first});
+			occupancy.coordToObject.insert({coord, seg.first});
 		}
 	}
 
@@ -793,19 +725,76 @@ bool SceneProcessor::buildObjects(Scene& s)
 		MPS_ASSERT(hit);
 		collision = octree->keyToCoord(octree->coordToKey(collision)); // regularize
 
-		const auto& iter = s.coordToObject.find(collision);
-		if (iter != s.coordToObject.end())
+		const auto& iter = occupancy.coordToObject.find(collision);
+		if (iter != occupancy.coordToObject.end())
 		{
 			#pragma omp critical
 			{
-				s.occludedBySegmentCount[iter->second]++;
-				s.coordToObject.insert({pt_world, iter->second});
-				s.objects.at(iter->second)->shadow.push_back(pt_world);
+				occupancy.occludedBySegmentCount[iter->second]++;
+				occupancy.coordToObject.insert({pt_world, iter->second});
+				occupancy.objects.at(iter->second)->shadow.push_back(pt_world);
 			}
 		}
 	}
 
 	return true;
+}
+
+bool SceneProcessor::removeAccountedForOcclusion(
+	octomap::point3d_collection& occludedPts,
+	std::shared_ptr<octomap::OcTree>& occlusionTree,
+	const OccupancyData& occupancy)
+{
+	/////////////////////////////////////////////////////////////////
+	// Filter completion results
+	/////////////////////////////////////////////////////////////////
+	{
+		const int nPts = static_cast<int>(occludedPts.size());
+		std::set<octomap::point3d, vector_less_than<3, octomap::point3d>> rejects;
+//		#pragma omp parallel for schedule(dynamic)
+//		#pragma omp parallel
+		{
+//			#pragma omp single
+			{
+				for (const auto& obj : occupancy.objects)
+				{
+//					#pragma omp task
+					{
+						const std::shared_ptr<octomap::OcTree>& segment = obj.second->occupancy;
+						unsigned d = segment->getTreeDepth();
+						for (int i = 0; i<nPts; ++i)
+						{
+							octomap::OcTreeNode* node = segment->search(occludedPts[i], d);
+							if (node && node->getOccupancy()>0.5)
+							{
+//								#pragma omp critical
+								{
+									rejects.insert(occludedPts[i]);
+									occlusionTree->setNodeValue(occludedPts[i], -std::numeric_limits<float>::infinity(),
+									                            true);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		std::cerr << "Rejected " << rejects.size() << " hidden voxels due to shape completion." << std::endl;
+		bool completionIsAvailable = FEATURE_AVAILABILITY::FORBIDDEN != useShapeCompletion &&
+		                             scenario->completionClient->completionClient.exists();
+		if (completionIsAvailable && rejects.empty())
+		{
+			throw std::runtime_error("Shape completion did not contribute any points.");
+		}
+		occlusionTree->updateInnerOccupancy();
+		occludedPts.erase(std::remove_if(occludedPts.begin(), occludedPts.end(),
+		                                 [&](const octomath::Vector3& p){ return rejects.find(p) != rejects.end();}),
+		                  occludedPts.end());
+		MPS_ASSERT(!occludedPts.empty());
+
+		return true;
+	}
+
 }
 
 }

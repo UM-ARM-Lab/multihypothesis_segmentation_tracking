@@ -27,42 +27,18 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mps_voxels/OccupancyData.h"
-#include "mps_voxels/moveit_pose_type.h"
-#include "mps_voxels/Scene.h"
+#ifndef MPS_CONTAINERS_HPP
+#define MPS_CONTAINERS_HPP
 
 namespace mps
 {
 
-collision_detection::WorldPtr
-computeCollisionWorld(const OccupancyData& occupancy)
+template <typename T>
+void operator+=(std::vector<T> &v1, const std::vector<T> &v2)
 {
-	auto world = std::make_shared<collision_detection::World>();
-
-	moveit::Pose robotTworld = occupancy.parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
-
-	for (const auto& obstacle : occupancy.parentScene.lock()->scenario->staticObstacles)
-	{
-		world->addToObject(OccupancyData::CLUTTER_NAME, obstacle.first, robotTworld * obstacle.second);
-	}
-
-	// Use aliasing shared_ptr constructor
-//	world->addToObject(CLUTTER_NAME,
-//	                   std::make_shared<shapes::OcTree>(std::shared_ptr<octomap::OcTree>(std::shared_ptr<octomap::OcTree>{}, sceneOctree)),
-//	                   robotTworld);
-
-	for (const auto& obj : occupancy.objects)
-	{
-		const std::shared_ptr<octomap::OcTree>& segment = obj.second->occupancy;
-		world->addToObject(std::to_string(obj.first.id), std::make_shared<shapes::OcTree>(segment), robotTworld);
-	}
-
-//	for (auto& approxSegment : approximateSegments)
-//	{
-//		world->addToObject(CLUTTER_NAME, approxSegment, robotTworld);
-//	}
-
-	return world;
+	v1.insert(v1.end(), v2.begin(), v2.end());
 }
 
 }
+
+#endif // MPS_CONTAINERS_HPP

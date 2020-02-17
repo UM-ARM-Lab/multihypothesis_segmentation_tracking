@@ -109,7 +109,7 @@ CachingRGBDSegmenter::CachingRGBDSegmenter(ros::NodeHandle& nh)
 std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	const pcl::PointCloud<PointT>::Ptr& cloud, const cv::Mat& labels,
 	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi,
-	std::map<uint16_t, ObjectIndex>* labelToIndexLookup)
+	boost::bimap<uint16_t, ObjectIndex>* labelToIndexLookup)
 {
 	MPS_ASSERT(roi.width == labels.cols);
 	MPS_ASSERT(roi.height == labels.rows);

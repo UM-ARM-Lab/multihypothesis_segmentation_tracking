@@ -71,6 +71,7 @@ public:
 
 	explicit
 	SegmentationTreeSampler(std::shared_ptr<const SegmentationInfo> originalInfo, const Options& opts = Options());
+	~SegmentationTreeSampler();
 
 	std::pair<double, SegmentationInfo> sample(RNG& rng, const SAMPLE_TYPE type) override;
 };

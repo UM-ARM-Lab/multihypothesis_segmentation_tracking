@@ -15,7 +15,10 @@
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/shape_utils.h"
 #include "mps_voxels/util/map_nearest.hpp"
+#include "mps_voxels/image_output.h"
+#include "mps_voxels/SegmentationTreeSampler.h"
 #include "mps_voxels/planning/MotionPlanner.h"
+#include "mps_voxels/MarkerSet.h"
 #include "mps_voxels/ObjectLogger.h"
 #include "mps_voxels/util/assert.h"
 #include "mps_voxels/ObjectActionModel.h"
@@ -85,30 +88,6 @@
 
 #define _unused(x) ((void)(x))
 
-#define HEADLESS true
-
-//#if !HEADLESS
-#include <opencv2/highgui.hpp>
-//#endif
-
-#if HEADLESS
-#define waitKey(x) _unused((x))
-#else
-#define waitKey(x) cv::waitKey((x))
-#endif
-
-#if HEADLESS
-#define imshow(n, t) _unused((n)); _unused((t))
-#else
-#define imshow(n, t) cv::imshow((n), (t))
-#endif
-
-#if HEADLESS
-#define namedWindow(n, t) _unused((n)); _unused((t))
-#else
-#define namedWindow(n, t) cv::namedWindow((n), (t))
-#endif
-
 using namespace mps;
 
 sensor_msgs::JointState::ConstPtr latestJoints;
@@ -128,12 +107,6 @@ void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 	ROS_DEBUG_ONCE("Joint joints!");
 }
 
-template <typename T>
-void operator+=(std::vector<T> &v1, const std::vector<T> &v2)
-{
-	v1.insert(v1.end(), v2.begin(), v2.end());
-}
-
 void insertDirect(const octomap::point3d_collection& points, const moveit::Pose& T, octomap::OcTree* tree)
 {
 	for (const auto& p : points)
@@ -144,21 +117,6 @@ void insertDirect(const octomap::point3d_collection& points, const moveit::Pose&
 	tree->updateInnerOccupancy();
 	tree->prune();
 }
-
-struct MarkerSet
-{
-	std::map<std::string, visualization_msgs::MarkerArray> arrays;
-	visualization_msgs::MarkerArray& operator[](const std::string& s) { return arrays[s]; }
-	visualization_msgs::MarkerArray flatten() const
-	{
-		visualization_msgs::MarkerArray ma;
-		for (const auto& a : arrays)
-		{
-			ma.markers += a.second.markers;
-		}
-		return ma;
-	}
-};
 
 void setAlpha(visualization_msgs::MarkerArray& ma, const float alpha)
 {
@@ -226,6 +184,8 @@ public:
 
 	std_msgs::ColorRGBA mapColor;
 
+	std::default_random_engine rng;
+
 	SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 
 	robot_state::RobotState getCurrentRobotState();
@@ -238,6 +198,8 @@ public:
 	               const sensor_msgs::CameraInfoConstPtr& cam_msg);
 //    void manCallback(const std_msgs::Int64& msg);
 	moveit_msgs::DisplayTrajectory visualize(const std::shared_ptr<Motion>& motion, const bool primaryOnly = false);
+
+	visualization_msgs::MarkerArray generateRobotCollisionSpheres(const std::string& globalFrame) const;
 };
 
 robot_state::RobotState SceneExplorer::getCurrentRobotState()
@@ -522,9 +484,8 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		{
 			oam->sampleAction(historian->buffer, *scene->segInfo, sparseTracker, denseTracker, pair.first, pair.second);
 
-			cv::RNG rng;
-			ObjectIndex objIx = scene->labelToIndexLookup[pair.first];
-			auto& obj = scene->objects[objIx];
+			ObjectIndex objIx = scene->bestGuess->labelToIndexLookup.left.at(pair.first);
+			auto& obj = scene->bestGuess->objects[objIx];
 
 			std_msgs::ColorRGBA colorRGBA;
 			colorRGBA.a = 1.0f;
@@ -585,9 +546,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	scene->scenario = scenario;
 	scene->selfModels = selfModels;
 
-	planner->env = scene.get();
+//	planner->env = scene.get(); // TODO: Fix this
 	scene->worldFrame = mapServer->getWorldFrame();
-	scene->visualize = true;
 
 	// NB: We do this every loop because we shrink the box during the crop/filter process
 	Eigen::Vector4f maxExtent(0.4f, 0.6f, 0.5f, 1);
@@ -621,40 +581,74 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	// Show robot collision
 	{
-		visualization_msgs::MarkerArray markers;
-		int id = 0;
-		for (const auto& model : scene->selfModels)
-		{
-			visualization_msgs::Marker m;
-			m.ns = "collision";
-			m.id = id++;
-			m.type = visualization_msgs::Marker::SPHERE;
-			m.action = visualization_msgs::Marker::ADD;
-			m.scale.x = m.scale.y = m.scale.z = model.second->boundingSphere.radius*2.0;
-			m.color.a = 0.5f;
-			Eigen::Vector3d p = model.second->localTglobal.inverse() * model.second->boundingSphere.center;
-			m.pose.position.x = p.x();
-			m.pose.position.y = p.y();
-			m.pose.position.z = p.z();
-			m.pose.orientation.w = 1.0;
-			m.frame_locked = true;
-			m.header.stamp = ros::Time::now();//cam_msg->header.stamp;
-			m.header.frame_id = globalFrame;
-			markers.markers.push_back(m);
-		}
-		allMarkers["collision"] = markers;
-		octreePub.publish(allMarkers.flatten());
+		this->allMarkers["collision"] = generateRobotCollisionSpheres(globalFrame);
+		this->octreePub.publish(this->allMarkers.flatten());
 	}
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	PROFILE_START("Segment Scene");
 
-	bool getSegmentation = processor->performSegmentation(*scene);
+	bool getSegmentation = processor->callSegmentation(*scene);
 	if (!getSegmentation)
 	{
 		return;
 	}
+
+	/////////////////////////////////////////////
+	//// Sample state particles
+	/////////////////////////////////////////////
+	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
+
+	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(scene->sceneOctree,
+	                                                     scene->minExtent.head<3>().cast<double>(),
+	                                                     scene->maxExtent.head<3>().cast<double>());
+	auto voxelRegion = std::make_shared<VoxelRegion>( dims,
+	                                                  scene->sceneOctree->getResolution(),
+	                                                  scene->minExtent.head<3>().cast<double>(),
+	                                                  scene->maxExtent.head<3>().cast<double>());
+
+	SegmentationTreeSampler treeSampler(scene->segInfo);
+	const size_t nParticles = 5;
+	std::vector<Particle> particles;
+	for (size_t p = 0; p < nParticles; ++p)
+	{
+		auto sample = treeSampler.sample(rng, SAMPLE_TYPE::RANDOM);
+		Particle particle;
+		particle.particle.id = p;
+		particle.state = std::make_shared<OccupancyData>();
+		particle.state->segInfo = std::make_shared<SegmentationInfo>(sample.second);
+		particle.weight = sample.first;
+		particle.voxelRegion = voxelRegion;
+		bool execSegmentation = processor->performSegmentation(*scene, particle.state->segInfo, *particle.state);
+		if (!execSegmentation)
+		{
+			std::cerr << "Particle " << particle.particle << " failed to segment." << std::endl;
+			return;
+		}
+
+		bool getCompletion = processor->buildObjects(*scene, *particle.state);
+		if (!getCompletion)
+		{
+			return;
+		}
+
+		particle.state->vertexState = objectsToVoxelLabel(particle.state->objects,
+		                                                  scene->minExtent.head<3>().cast<double>(),
+		                                                  scene->maxExtent.head<3>().cast<double>());
+		particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
+
+		cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
+		std::cerr << "Segmentation based on particle generated!" << std::endl;
+		IMSHOW("particle", segParticle);
+		WAIT_KEY(0);
+
+		particles.push_back(particle);
+
+
+	}
+
+
 
 //	const long invalidGoalID = rand();
 //	ObjectIndex goalSegmentID{invalidGoalID};
@@ -665,11 +659,11 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		// Search for target object
 		/////////////////////////////////////////////////////////////////
 		cv::Mat targetMask = targetDetector->getMask(scene->cv_rgb_cropped.image);
-		imshow("Target Mask", targetMask);
-		waitKey(10);
+		IMSHOW("target_mask", targetMask);
+		WAIT_KEY(10);
 
-		imshow("rgb", scene->cv_rgb_cropped.image);
-		waitKey(10);
+		IMSHOW("rgb", scene->cv_rgb_cropped.image);
+		WAIT_KEY(10);
 		std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 		if (!scene->segInfo)
@@ -681,52 +675,44 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		cv::Mat labelColorsMap = colorByLabel(scene->segInfo->objectness_segmentation->image);
 		labelColorsMap.setTo(0, 0 == scene->segInfo->objectness_segmentation->image);
 		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*scene->cv_rgb_cropped.image;
-		imshow("segmentation", labelColorsMap);
-		waitKey(10);
-
-		if (segmentationPub->getNumSubscribers() > 0)
-		{
-			segmentationPub->publish(cv_bridge::CvImage(cam_msg->header, "bgr8", labelColorsMap).toImageMsg());
-		}
+		IMSHOW("segmentation", labelColorsMap);
+		WAIT_KEY(10);
 
 
 //		int matchID = -1;
 //		matchID = targetDetector->matchGoalSegment(targetMask, scene->segInfo->objectness_segmentation->image);
 //		if (matchID >= 0)
 //		{
-//			scene->targetObjectID = std::make_shared<ObjectIndex>(scene->labelToIndexLookup.at((unsigned)matchID));
+//			scene->bestGuess->targetObjectID = std::make_shared<ObjectIndex>(scene->bestGuess->labelToIndexLookup.at((unsigned)matchID));
 //			std::cerr << "**************************" << std::endl;
-//			std::cerr << "Found target: " << matchID << " -> " << scene->targetObjectID->id << std::endl;
+//			std::cerr << "Found target: " << matchID << " -> " << scene->bestGuess->targetObjectID->id << std::endl;
 //			std::cerr << "**************************" << std::endl;
 //		}
 //        if (mostAmbNode >= 0)
 //        {
 //            ObjectIndex manidx;
 //            manidx.id=(unsigned)mostAmbNode;
-//            scene->targetObjectID = std::make_shared<ObjectIndex>(manidx);
+//            scene->bestGuess->targetObjectID = std::make_shared<ObjectIndex>(manidx);
 //        }
-        if (mostAmbNode >= 0)
-        {
-            auto res = scene->labelToIndexLookup.find((unsigned)mostAmbNode);
-            if (res == scene->labelToIndexLookup.end())
-            {
-                ROS_ERROR_STREAM("Most ambiguous node '" << mostAmbNode << "' is not in the label to object map.");
-            }
-            else
-            {
-                //scene->targetObjectID = std::make_shared<ObjectIndex>(res->second);
-//                std::cerr<<"Target is set to '"<< (scene->targetObjectID)->id << "' successfully. (label: "<<mostAmbNode <<")"<<std::endl;
-            }
-        }
-        else
-        {
-            ROS_ERROR_STREAM("Most ambiguous node '" << mostAmbNode << "' not received.");
-        }
+//        if (mostAmbNode >= 0)
+//        {
+//            auto res = scene->bestGuess->labelToIndexLookup.find((unsigned)mostAmbNode);
+//            if (res == scene->bestGuess->labelToIndexLookup.end())
+//            {
+//                ROS_ERROR_STREAM("Most ambiguous node '" << mostAmbNode << "' is not in the label to object map.");
+//            }
+//            else
+//            {
+//                //scene->bestGuess->targetObjectID = std::make_shared<ObjectIndex>(res->second);
+////                std::cerr<<"Target is set to '"<< (scene->bestGuess->targetObjectID)->id << "' successfully. (label: "<<mostAmbNode <<")"<<std::endl;
+//            }
+//        }
+//        else
+//        {
+//            ROS_ERROR_STREAM("Most ambiguous node '" << mostAmbNode << "' not received.");
+//        }
 
-		if (targetPub->getNumSubscribers() > 0)
-		{
-			targetPub->publish(cv_bridge::CvImage(cam_msg->header, "mono8", targetMask).toImageMsg());
-		}
+		IMSHOW("target", targetMask);
 	}
 
 	PROFILE_RECORD("Segment Scene");
@@ -752,15 +738,9 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_START("Complete Scene");
 
-	bool getCompletion = processor->buildObjects(*scene);
-	if (!getCompletion)
-	{
-		return;
-	}
+
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-
-	std::cerr << "Completed segments: " << scene->objects.size() << " " << __FILE__ << ": " << __LINE__ << std::endl;
 
 //	{
 //
@@ -793,8 +773,10 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		}
 //	}
 
+// TODO: Visualize OccupancyData
+/*
 	// Remove objects from "map" tree visualization
-	for (const auto& obj : scene->objects)
+	for (const auto& obj : scene->bestGuess->objects)
 	{
 		auto& mapPts = allMarkers["map"];
 		for (auto& m : mapPts.markers)
@@ -810,7 +792,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 	}
 
-	for (const auto& obj : scene->objects)
+	for (const auto& obj : scene->bestGuess->objects)
 	{
 		MPS_ASSERT(scene->segments.find(obj.first) != scene->segments.end());
 
@@ -851,28 +833,12 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 		allMarkers["bounds"] = ms;
 		octreePub.publish(allMarkers.flatten());
-		waitKey(200);
+		WAIT_KEY(200);
 
 	}
+ */
 
-	/////////////////////////////////////////////
-	//// Sample state particles
-	/////////////////////////////////////////////
-	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	Particle particle;
-	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(scene->objects.begin()->second->occupancy.get(),
-	                                                     scene->minExtent.head<3>().cast<double>(),
-	                                                     scene->maxExtent.head<3>().cast<double>());
-	particle.voxelRegion = std::make_shared<VoxelRegion>( dims,
-	                                                      scene->objects.begin()->second->occupancy->getResolution(),
-	                                                      scene->minExtent.head<3>().cast<double>(),
-	                                                      scene->maxExtent.head<3>().cast<double>());
-	particle.state = std::make_shared<OccupancyData>();
-	particle.state->vertexState = objectsToVoxelLabel(scene->objects,
-	                                                  scene->minExtent.head<3>().cast<double>(),
-	                                                  scene->maxExtent.head<3>().cast<double>());
-	particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
 	//// Visualize state
 //	auto markers = particle.voxelRegion->visualizeVertexLabelsDirectly(particle.state->vertexState, scene->worldFrame);
 //	octreePub.publish(markers);
@@ -907,11 +873,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		sleep(5);
 //	}
 
-	cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
-	std::cerr << "Segmentation based on particle generated!" << std::endl;
-
 //	cv::RNG rng;
-//	for (const auto& obj : scene->objects)
+//	for (const auto& obj : scene->bestGuess->objects)
 //	{
 //		if (!ros::ok()) { return; }
 //
@@ -951,10 +914,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		m.ns = "worst";// + std::to_string(m.id);
 //	}
 //	octreePub.publish(objToMoveVis);
-//	waitKey(10);
-
-	std::random_device rd;
-	std::mt19937 g(rd());
+//	WAIT_KEY(10);
 
 	{//visualize the shadow
 		std_msgs::ColorRGBA shadowColor;
@@ -1074,18 +1034,17 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	auto comp = [](const RankedMotion& a, const RankedMotion& b ) { return a.first < b.first; };
 	std::priority_queue<RankedMotion, std::vector<RankedMotion>, decltype(comp)> motionQueue(comp);
 
-	scene->visualize = false;
-	scene->obstructions.clear();
-	scene->computeCollisionWorld();
+	scene->bestGuess->obstructions.clear();
+//	scene->computeCollisionWorld();
 	planner->computePlanningScene();
 	auto rs = getCurrentRobotState();
 
 	std::shared_ptr<Motion> motion;
 	MotionPlanner::Introspection pushInfo;
-	if (scene->targetObjectID)
+	if (scene->bestGuess->targetObjectID)
 	{
 		ROS_WARN_STREAM("Got target Object ID.");
-//		motion = planner->pick(rs, *scene->targetObjectID, scene->obstructions);
+//		motion = planner->pick(rs, *scene->bestGuess->targetObjectID, scene->bestGuess->obstructions);
 		motion = planner->samplePush(rs, &pushInfo);
 		if (motion)
 		{
@@ -1094,15 +1053,15 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		if (!motion)
 		{
 			ROS_WARN_STREAM("Saw target object, but failed to compute grasp plan.");
-			std::cerr << "Saw target object, but failed to compute grasp plan." << " (" << scene->obstructions.size() << " obstructions)" << std::endl;
+			std::cerr << "Saw target object, but failed to compute grasp plan." << " (" << scene->bestGuess->obstructions.size() << " obstructions)" << std::endl;
 		}
-//		MPS_ASSERT(scene->obstructions.find(*scene->targetObjectID) == scene->obstructions.end());
+//		MPS_ASSERT(scene->bestGuess->obstructions.find(*scene->bestGuess->targetObjectID) == scene->bestGuess->obstructions.end());
 	}
 
-	if (scene->targetObjectID && !motion && processor->useShapeCompletion != FEATURE_AVAILABILITY::FORBIDDEN)
+	if (scene->bestGuess->targetObjectID && !motion && processor->useShapeCompletion != FEATURE_AVAILABILITY::FORBIDDEN)
 	{
 		// We've seen the target, but can't pick it up
-		bool hasVisualObstructions = planner->addVisualObstructions(*scene->targetObjectID, scene->obstructions);
+		bool hasVisualObstructions = planner->addVisualObstructions(*scene->bestGuess->targetObjectID, scene->bestGuess->obstructions);
 		if (hasVisualObstructions)
 		{
 			ROS_INFO_STREAM("Added visual occlusion(s)");
@@ -1243,7 +1202,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 ////		sleep(3);
 //	}
 
-	waitKey(10);
+	WAIT_KEY(10);
 
 	PROFILE_START("Execution");
 
@@ -1331,14 +1290,14 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 					tf::poseEigenToTF(action->palm_trajectory.back(), temp);
 					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), globalFrame, frameID+"back"));
 
-					insertDirect(scene->objects.at(p.first)->points, p.second, scene->sceneOctree);
+					insertDirect(scene->bestGuess->objects.at(p.first)->points, p.second, scene->sceneOctree);
 
 					std_msgs::ColorRGBA positiveMemoryColor;
 					positiveMemoryColor.a = 1.0;
 					positiveMemoryColor.r = 20/255.0f;
 					positiveMemoryColor.g = 90/255.0f;
 					positiveMemoryColor.b = 200/255.0f;
-					visualization_msgs::MarkerArray ma = visualizeOctree(scene->objects.at(p.first)->occupancy.get(), frameID, &positiveMemoryColor);
+					visualization_msgs::MarkerArray ma = visualizeOctree(scene->bestGuess->objects.at(p.first)->occupancy.get(), frameID, &positiveMemoryColor);
 					for (visualization_msgs::Marker& m : ma.markers)
 					{
 						m.ns = frameID;
@@ -1369,8 +1328,34 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //
 //	}
 
-	waitKey(10);
+	WAIT_KEY(10);
 
+}
+
+visualization_msgs::MarkerArray SceneExplorer::generateRobotCollisionSpheres(const std::string& globalFrame) const
+{
+	visualization_msgs::MarkerArray markers;
+	int id = 0;
+	for (const auto& model : this->scene->selfModels)
+	{
+		visualization_msgs::Marker m;
+		m.ns = "collision";
+		m.id = id++;
+		m.type = visualization_msgs::Marker::SPHERE;
+		m.action = visualization_msgs::Marker::ADD;
+		m.scale.x = m.scale.y = m.scale.z = model.second->boundingSphere.radius*2.0;
+		m.color.a = 0.5f;
+		Eigen::Vector3d p = model.second->localTglobal.inverse() * model.second->boundingSphere.center;
+		m.pose.position.x = p.x();
+		m.pose.position.y = p.y();
+		m.pose.position.z = p.z();
+		m.pose.orientation.w = 1.0;
+		m.frame_locked = true;
+		m.header.stamp = ros::Time::now();//cam_msg->header.stamp;
+		m.header.frame_id = globalFrame;
+		markers.markers.push_back(m);
+	}
+	return markers;
 }
 
 
@@ -1664,9 +1649,9 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 //	message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(10), point_sub, info_sub);
 //	sync.registerCallback(cloud_cb);
 
-	namedWindow("Target Mask", cv::WINDOW_GUI_NORMAL);
-	namedWindow("rgb", cv::WINDOW_GUI_NORMAL);
-	namedWindow("segmentation", cv::WINDOW_GUI_NORMAL);
+	NAMED_WINDOW("target_mask", cv::WINDOW_GUI_NORMAL);
+	NAMED_WINDOW("rgb", cv::WINDOW_GUI_NORMAL);
+	NAMED_WINDOW("segmentation", cv::WINDOW_GUI_NORMAL);
 
 	SensorHistorian::SubscriptionOptions options(topic_prefix);
 
@@ -1675,9 +1660,6 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	vizPub.publish(ma);
 
 	image_transport::ImageTransport it(nh);
-
-	segmentationPub = std::make_unique<image_transport::Publisher>(it.advertise("segmentation", 1));
-	targetPub = std::make_unique<image_transport::Publisher>(it.advertise("target", 1));
 
 	rgb_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.rgb_topic, options.queue_size, options.hints);
 	depth_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.depth_topic, options.queue_size, options.hints);

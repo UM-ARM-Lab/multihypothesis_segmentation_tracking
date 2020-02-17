@@ -8,6 +8,8 @@
 #include <ros/time.h>
 
 #define IMPLEMENT_INDEX_INTERNALS(Type) \
+struct Type \
+{\
 using IDType = int; \
 IDType id = -1; \
 explicit Type(const IDType init = -1) : id(init) {} \
@@ -35,6 +37,17 @@ bool operator>(const Type& rhs) const \
 { \
     return this->id > rhs.id; \
 } \
+friend \
+std::ostream& operator<<(std::ostream& os, const Type& t); \
+}; \
+\
+inline \
+std::ostream& operator<<(std::ostream& os, const Type& t) \
+{ \
+    os << t.id; \
+    return os; \
+} \
+
 
 
 namespace mps
@@ -43,34 +56,19 @@ namespace mps
 using TimeIndex = ros::Time;
 
 /// @brief If a problem can be decomposed into disjoint e.g. ROIs, index them with this
-struct SubproblemIndex
-{
-	IMPLEMENT_INDEX_INTERNALS(SubproblemIndex)
-};
+IMPLEMENT_INDEX_INTERNALS(SubproblemIndex)
 
 /// @brief An Object here is the result of the "objectness" segmentation in a single frame
-struct ObjectIndex
-{
-	IMPLEMENT_INDEX_INTERNALS(ObjectIndex)
-};
+IMPLEMENT_INDEX_INTERNALS(ObjectIndex)
 
 /// @brief If a belief is represented as discrete particles, index them with this
-struct ParticleIndex
-{
-	IMPLEMENT_INDEX_INTERNALS(ParticleIndex)
-};
+IMPLEMENT_INDEX_INTERNALS(ParticleIndex)
 
 /// @brief Similar to time, but without any absolute measurement
-struct IterationIndex
-{
-	IMPLEMENT_INDEX_INTERNALS(IterationIndex)
-};
+IMPLEMENT_INDEX_INTERNALS(IterationIndex)
 
 /// @brief Represents the trajectory of a (single-frame) object across many frames of a video
-struct BundleIndex
-{
-	IMPLEMENT_INDEX_INTERNALS(BundleIndex)
-};
+IMPLEMENT_INDEX_INTERNALS(BundleIndex)
 
 }
 

@@ -261,9 +261,11 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/SceneCut.cpp
   src/${PROJECT_NAME}/MCMCTreeCut.cpp
   src/${PROJECT_NAME}/SegmentationTreeSampler.cpp
+  src/${PROJECT_NAME}/image_output.cpp
   src/${PROJECT_NAME}/Manipulator.cpp
   src/${PROJECT_NAME}/VictorManipulator.cpp
   src/${PROJECT_NAME}/Object.cpp
+  src/${PROJECT_NAME}/OccupancyData.cpp
   src/${PROJECT_NAME}/MotionModel.cpp
   src/${PROJECT_NAME}/OctreeMotionModel.cpp
   src/${PROJECT_NAME}/ObjectActionModel.cpp

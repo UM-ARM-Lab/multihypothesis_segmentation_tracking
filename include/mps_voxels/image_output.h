@@ -27,42 +27,64 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mps_voxels/OccupancyData.h"
-#include "mps_voxels/moveit_pose_type.h"
-#include "mps_voxels/Scene.h"
+#ifndef MPS_IMAGE_OUTPUT_H
+#define MPS_IMAGE_OUTPUT_H
+
+#include <opencv2/core.hpp>
+#include <string>
+#include <memory>
+
+#define IMAGES_NONE 0
+#define IMAGES_ROS  1
+#define IMAGES_OCV  2
+
+#ifndef IMAGE_VIEW_MODE
+#define IMAGE_VIEW_MODE IMAGES_ROS
+#endif
+
+#define _unused(x) ((void)(x))
+
+#if IMAGE_VIEW_MODE == IMAGES_OCV
+#include <opencv2/highgui.hpp>
+#endif
+
+#if IMAGE_VIEW_MODE == IMAGES_NONE
+#define WAIT_KEY(x) _unused((x))
+#define IMSHOW(n, t) _unused((n)); _unused((t))
+#define NAMEDWINDOW(n, t) _unused((n)); _unused((t))
+#elif IMAGE_VIEW_MODE == IMAGES_ROS
+#define WAIT_KEY(x) _unused((x))
+#define IMSHOW(n, t) ::mps::ImageOutputSingleton::sendImage((n), (t))
+#define NAMED_WINDOW(n, t) ::mps::ImageOutputSingleton::initChannel((n)); _unused((t))
+#else
+#define WAIT_KEY(x) cv::waitKey((x))
+#define IMSHOW(n, t) cv::imshow((n), (t))
+#define NAMEDWINDOW(n, t) cv::namedWindow((n), (t))
+#endif
+
 
 namespace mps
 {
 
-collision_detection::WorldPtr
-computeCollisionWorld(const OccupancyData& occupancy)
+class ImageOutputImpl;
+
+class ImageOutputSingleton
 {
-	auto world = std::make_shared<collision_detection::World>();
+public:
+	static ImageOutputSingleton& instance();
+	static void initChannel(const std::string& channel);
+	static void sendImage(const std::string& channel, const cv::Mat& img);
+private:
+	ImageOutputSingleton();
 
-	moveit::Pose robotTworld = occupancy.parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
+	std::unique_ptr<ImageOutputImpl> sImpl;
+public:
+	ImageOutputSingleton(const ImageOutputSingleton&) = delete;
+	void operator=(const ImageOutputSingleton&)  = delete;
+	~ImageOutputSingleton() = default;
 
-	for (const auto& obstacle : occupancy.parentScene.lock()->scenario->staticObstacles)
-	{
-		world->addToObject(OccupancyData::CLUTTER_NAME, obstacle.first, robotTworld * obstacle.second);
-	}
-
-	// Use aliasing shared_ptr constructor
-//	world->addToObject(CLUTTER_NAME,
-//	                   std::make_shared<shapes::OcTree>(std::shared_ptr<octomap::OcTree>(std::shared_ptr<octomap::OcTree>{}, sceneOctree)),
-//	                   robotTworld);
-
-	for (const auto& obj : occupancy.objects)
-	{
-		const std::shared_ptr<octomap::OcTree>& segment = obj.second->occupancy;
-		world->addToObject(std::to_string(obj.first.id), std::make_shared<shapes::OcTree>(segment), robotTworld);
-	}
-
-//	for (auto& approxSegment : approximateSegments)
-//	{
-//		world->addToObject(CLUTTER_NAME, approxSegment, robotTworld);
-//	}
-
-	return world;
-}
+};
 
 }
+
+#endif // MPS_IMAGE_OUTPUT_H

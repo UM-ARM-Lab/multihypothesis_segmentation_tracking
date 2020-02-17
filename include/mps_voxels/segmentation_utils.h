@@ -19,14 +19,10 @@
 #include <actionlib/client/simple_action_client.h>
 #include <ros/ros.h>
 
+#include <boost/bimap.hpp>
+
 namespace mps
 {
-
-struct xycoor
-{
-	int x;
-	int y;
-};
 
 class RGBDSegmenter
 {
@@ -68,9 +64,7 @@ public:
 std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	const pcl::PointCloud<PointT>::Ptr &cloud, const cv::Mat &labels,
 	const image_geometry::PinholeCameraModel &cameraModel, const cv::Rect &roi,
-	std::map<uint16_t, ObjectIndex> *labelToIndexLookup = nullptr);
-
-//std::map<uint16_t, std::vector<xycoor>> segmentMaskFromImage(const cv::Mat& labels,const cv::Rect& roi);
+	boost::bimap<uint16_t, ObjectIndex> *labelToIndexLookup = nullptr);
 
 std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat &labels, const cv::Rect& roi = {0, 0, 1920,1080});
 

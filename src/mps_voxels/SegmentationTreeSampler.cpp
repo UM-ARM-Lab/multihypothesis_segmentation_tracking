@@ -79,4 +79,6 @@ SegmentationTreeSampler::sample(RNG& rng, const SAMPLE_TYPE type)
 	return {res.first, newSeg};
 }
 
+SegmentationTreeSampler::~SegmentationTreeSampler() = default;
+
 }

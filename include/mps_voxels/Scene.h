@@ -14,8 +14,6 @@
 #include "segmentation_utils.h"
 #include "mps_voxels/util/vector_less_than.hpp"
 
-#include <moveit/collision_detection/world.h>
-
 #include <octomap/OcTree.h>
 
 #include <tf/transform_broadcaster.h>
@@ -74,11 +72,10 @@ class Scene
 {
 public:
 	using Pose = moveit::Pose;
-	using ObstructionList = std::map<ObjectIndex, double>;
 
 	// Per-instant properties
 
-	bool visualize = true;
+	std::map<std::string, bool> visualize;
 
 	std::shared_ptr<Scenario> scenario;
 	std::map<std::string, std::shared_ptr<MotionModel>> selfModels;
@@ -103,30 +100,27 @@ public:
 	sensor_msgs::CameraInfo cam_msg_cropped;
 
 	octomap::OcTree* sceneOctree;
+	octomap::point3d_collection occludedPts;
+	std::shared_ptr<octomap::OcTree> occlusionTree;
 
 	// Properties that will depend on belief particle
-	std::shared_ptr<SegmentationInfo> segInfo;
-	std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segments;
-	std::map<uint16_t, ObjectIndex> labelToIndexLookup; ///< Carries body segmentation to object index in this scene
-	std::map<uint16_t, std::vector<xycoor>> labelToMaskLookup;
-	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup;
+	std::shared_ptr<SegmentationInfo> segInfo; ///< "Optimal" (best-guess) segmentation
+	std::shared_ptr<OccupancyData> bestGuess;
+//	std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segments;
+//	std::map<uint16_t, ObjectIndex> labelToIndexLookup; ///< Carries body segmentation to object index in this scene
+//	std::map<uint16_t, std::vector<xycoor>> labelToMaskLookup;
+//	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup;
 
-	std::map<ObjectIndex, std::unique_ptr<Object>> objects;
+//	std::map<ObjectIndex, std::unique_ptr<Object>> objects;
 //	std::map<ObjectIndex, octomap::point3d_collection> objectToShadow;
 //	std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>> completedSegments;
 //	std::map<ObjectIndex, std::shared_ptr<shapes::Mesh>> approximateSegments;
-	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> coordToObject;
-	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> surfaceCoordToObject;
-	octomap::point3d_collection occludedPts;
-	std::shared_ptr<octomap::OcTree> occlusionTree;
-	std::map<ObjectIndex, int> occludedBySegmentCount;
-
-	ObstructionList obstructions; // std::set<ObjectIndex>
-	std::shared_ptr<ObjectIndex> targetObjectID;
-
-	static const std::string CLUTTER_NAME;
-	collision_detection::WorldConstPtr collisionWorld;
-	collision_detection::WorldPtr computeCollisionWorld();
+//	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> coordToObject;
+//	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> surfaceCoordToObject;
+//	std::map<ObjectIndex, int> occludedBySegmentCount;
+//
+//	ObstructionList obstructions; // std::set<ObjectIndex>
+//	std::shared_ptr<ObjectIndex> targetObjectID;
 
 	ros::Time getTime() const { return cv_rgb_ptr->header.stamp; }
 
@@ -153,9 +147,17 @@ public:
 
 	bool loadAndFilterScene(Scene& s);
 
-	bool performSegmentation(Scene& s);
+	bool callSegmentation(Scene& s);
 
-	bool buildObjects(Scene& s);
+	bool computeOcclusions(Scene& s);
+
+	bool performSegmentation(const Scene& s, const std::shared_ptr<SegmentationInfo>& segHypo, OccupancyData& occupancy);
+
+	bool buildObjects(const Scene& s, OccupancyData& occupancy);
+
+	bool removeAccountedForOcclusion(octomap::point3d_collection& occludedPts,
+	                                 std::shared_ptr<octomap::OcTree>& occlusionTree,
+	                                 const OccupancyData& occupancy);
 
 };
 

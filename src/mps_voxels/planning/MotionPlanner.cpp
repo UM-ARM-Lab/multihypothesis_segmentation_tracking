@@ -26,7 +26,7 @@
 namespace mps
 {
 
-const std::string Scene::CLUTTER_NAME = "clutter";
+const std::string OccupancyData::CLUTTER_NAME = "clutter";
 
 State stateFactory(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects)
 {
@@ -151,11 +151,11 @@ std::priority_queue<MotionPlanner::RankedPose, std::vector<MotionPlanner::Ranked
 }
 
 
-ObjectSampler::ObjectSampler(const Scene* env)
+ObjectSampler::ObjectSampler(const OccupancyData* env)
 	: succeeded(false)
 {
 	// By default, search through all shadow points
-	const octomap::point3d_collection* shadowPoints = &env->occludedPts;
+	const octomap::point3d_collection* shadowPoints = &env->parentScene.lock()->occludedPts;
 
 	if (!env->obstructions.empty())
 	{
@@ -178,7 +178,7 @@ ObjectSampler::ObjectSampler(const Scene* env)
 		for (const auto& i : env->obstructions) { weights.push_back(i.second); }
 		std::discrete_distribution<size_t> distr(weights.begin(), weights.end());
 
-		size_t idx = distr(env->scenario->rng);
+		size_t idx = distr(env->parentScene.lock()->scenario->rng);
 
 		auto it(env->obstructions.begin());
 		std::advance(it, idx);
@@ -193,11 +193,11 @@ ObjectSampler::ObjectSampler(const Scene* env)
 	const int N = static_cast<int>(shadowPoints->size());
 	std::vector<unsigned int> indices(N);
 	std::iota(indices.begin(), indices.end(), 0);
-	std::shuffle(indices.begin(), indices.end(), env->scenario->rng);
+	std::shuffle(indices.begin(), indices.end(), env->parentScene.lock()->scenario->rng);
 
-	cameraOrigin = octomap::point3d((float) env->worldTcamera.translation().x(),
-	                                (float) env->worldTcamera.translation().y(),
-	                                (float) env->worldTcamera.translation().z());
+	cameraOrigin = octomap::point3d((float) env->parentScene.lock()->worldTcamera.translation().x(),
+	                                (float) env->parentScene.lock()->worldTcamera.translation().y(),
+	                                (float) env->parentScene.lock()->worldTcamera.translation().z());
 
 	for (const unsigned int index : indices)
 	{
@@ -206,18 +206,18 @@ ObjectSampler::ObjectSampler(const Scene* env)
 		// Get a randomly selected shadowed point
 		if (samplePoint.z()<0.05) { continue; }
 		ray = samplePoint-cameraOrigin;
-		bool hit = env->sceneOctree->castRay(cameraOrigin, ray, collision, true);
+		bool hit = env->parentScene.lock()->sceneOctree->castRay(cameraOrigin, ray, collision, true);
 		MPS_ASSERT(hit);
-		collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision)); // regularize
+		collision = env->parentScene.lock()->sceneOctree->keyToCoord(env->parentScene.lock()->sceneOctree->coordToKey(collision)); // regularize
 
-		if (env->visualize)
+		if (env->parentScene.lock()->visualize["object_sampling"])
 		{
 			// Display occluded point and push frame
 			Eigen::Vector3d pt(samplePoint.x(), samplePoint.y(), samplePoint.z());
 			tf::Transform t = tf::Transform::getIdentity();
-			Eigen::Vector3d pt_camera = env->worldTcamera.inverse(Eigen::Isometry)*pt;
+			Eigen::Vector3d pt_camera = env->parentScene.lock()->worldTcamera.inverse(Eigen::Isometry)*pt;
 			t.setOrigin({pt_camera.x(), pt_camera.y(), pt_camera.z()});
-			env->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->cameraFrame, "occluded_point"));
+			env->parentScene.lock()->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->parentScene.lock()->cameraFrame, "occluded_point"));
 		}
 
 //		if (!env->obstructions.empty())
@@ -275,7 +275,7 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 		const std::shared_ptr<octomap::OcTree>& segment = obj.second->occupancy;
 
 //		const Pose worldTobj_init = Pose::Identity();
-		const Pose worldTcamera_prime = /*worldTobj_init * */ worldTobj_prime.inverse(Eigen::Isometry) * env->worldTcamera;
+		const Pose worldTcamera_prime = /*worldTobj_init * */ worldTobj_prime.inverse(Eigen::Isometry) * env->parentScene.lock()->worldTcamera;
 
 		octomap::point3d cameraOrigin((float) worldTcamera_prime.translation().x(), (float) worldTcamera_prime.translation().y(),
 		                              (float) worldTcamera_prime.translation().z());
@@ -330,11 +330,11 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 		auto jointTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(compositeAction->actions[actionIdx]);
 		if (jointTraj)
 		{
-//			auto* arm = env->manipulators.front()->pModel->getJointModelGroup(jointTraj->jointGroupName);
-			const auto& manipulator = env->scenario->jointToManipulator[jointTraj->cmd.joint_names.front()];
+//			auto* arm = env->parentScene.lock()->manipulators.front()->pModel->getJointModelGroup(jointTraj->jointGroupName);
+			const auto& manipulator = env->parentScene.lock()->scenario->jointToManipulator[jointTraj->cmd.joint_names.front()];
 			collision_detection::AllowedCollisionMatrix acm = gripperEnvironmentACM(manipulator);
 
-			if (motion->state->poses.size() != env->objects.size()) { throw std::runtime_error("Whoopsie."); }
+			if (motion->state->poses.size() !=  env->objects.size()) { throw std::runtime_error("Whoopsie."); }
 
 			for (const auto& obj : env->objects)
 			{
@@ -400,13 +400,13 @@ MotionPlanner::computePlanningScene(bool useCollisionObjects)
 	collision_detection::WorldPtr world;
 	if (useCollisionObjects)
 	{
-		world = env->computeCollisionWorld();
+		world = computeCollisionWorld(*env);
 	}
 	else
 	{
 		world = std::make_shared<collision_detection::World>();
 	}
-	planningScene = std::make_shared<planning_scene::PlanningScene>(env->scenario->manipulators.front()->pModel, world);
+	planningScene = std::make_shared<planning_scene::PlanningScene>(env->parentScene.lock()->scenario->manipulators.front()->pModel, world);
 	return planningScene;
 }
 
@@ -479,7 +479,7 @@ MotionPlanner::gripperEnvironmentCollision(const std::shared_ptr<Manipulator>& m
 
 bool MotionPlanner::addPhysicalObstructions(const std::shared_ptr<Manipulator>& manipulator,
                                             const robot_state::RobotState& collisionState,
-                                            Scene::ObstructionList& collisionObjects) const
+                                            OccupancyData::ObstructionList& collisionObjects) const
 {
 	if (gripperEnvironmentCollision(manipulator, collisionState))
 	{
@@ -491,9 +491,9 @@ bool MotionPlanner::addPhysicalObstructions(const std::shared_ptr<Manipulator>& 
 		collision_detection::AllowedCollisionMatrix acm = gripperEnvironmentACM(manipulator);
 		planningScene->checkCollision(collision_request, collision_result, collisionState, acm);
 
-		octomap::point3d cameraOrigin((float) env->worldTcamera.translation().x(),
-		                              (float) env->worldTcamera.translation().y(),
-		                              (float) env->worldTcamera.translation().z());
+		octomap::point3d cameraOrigin((float) env->parentScene.lock()->worldTcamera.translation().x(),
+		                              (float) env->parentScene.lock()->worldTcamera.translation().y(),
+		                              (float) env->parentScene.lock()->worldTcamera.translation().z());
 		for (auto& cts : collision_result.contacts)
 		{
 			std::cerr << cts.second.size() << std::endl;
@@ -506,11 +506,11 @@ bool MotionPlanner::addPhysicalObstructions(const std::shared_ptr<Manipulator>& 
 				// For each contact point, cast ray from camera to point; see if it hits completed shape
 				for (auto& c : cts.second)
 				{
-					Eigen::Vector3d p = env->worldTrobot * c.pos;
+					Eigen::Vector3d p = env->parentScene.lock()->worldTrobot * c.pos;
 					std::cerr << p.transpose() << std::endl;
 
 					octomap::point3d collision = octomap::point3d((float)p.x(), (float)p.y(), (float)p.z());
-					//								collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision));
+					//								collision = env->parentScene.lock()->sceneOctree->keyToCoord(env->parentScene.lock()->sceneOctree->coordToKey(collision));
 
 					std::cerr << "raycasting" << std::endl;
 					octomath::Vector3 ray = collision-cameraOrigin;
@@ -536,19 +536,19 @@ bool MotionPlanner::addPhysicalObstructions(const std::shared_ptr<Manipulator>& 
 	return false;
 }
 
-bool MotionPlanner::addVisualObstructions(const ObjectIndex target, Scene::ObstructionList& collisionObjects) const
+bool MotionPlanner::addVisualObstructions(const ObjectIndex target, OccupancyData::ObstructionList& collisionObjects) const
 {
 	bool hasVisualObstruction = false;
 	for (const auto& targetPt : env->objects.at(target)->points)
 	{
-		octomap::point3d cameraOrigin((float) env->worldTcamera.translation().x(), (float) env->worldTcamera.translation().y(),
-		                              (float) env->worldTcamera.translation().z());
+		octomap::point3d cameraOrigin((float) env->parentScene.lock()->worldTcamera.translation().x(), (float) env->parentScene.lock()->worldTcamera.translation().y(),
+		                              (float) env->parentScene.lock()->worldTcamera.translation().z());
 		octomath::Vector3 ray = targetPt-cameraOrigin;
 		octomap::point3d collision;
-		bool hit = env->sceneOctree->castRay(cameraOrigin, ray, collision);
+		bool hit = env->parentScene.lock()->sceneOctree->castRay(cameraOrigin, ray, collision);
 		if (hit)
 		{
-			collision = env->sceneOctree->keyToCoord(env->sceneOctree->coordToKey(collision));
+			collision = env->parentScene.lock()->sceneOctree->keyToCoord(env->parentScene.lock()->sceneOctree->coordToKey(collision));
 			const auto& iter = env->surfaceCoordToObject.find(collision);
 			if (iter!=env->surfaceCoordToObject.end())
 			{
@@ -568,7 +568,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 {
 	// TODO: Set hand posture before planning
 	// Check whether the hand collides with the scene
-	for (const auto& manipulator : env->scenario->manipulators)
+	for (const auto& manipulator : env->parentScene.lock()->scenario->manipulators)
 	{
 		if (gripperEnvironmentCollision(manipulator, robotState))
 		{
@@ -577,7 +577,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 		}
 	}
 
-	Pose robotTworld = env->worldTrobot.inverse(Eigen::Isometry);
+	Pose robotTworld = env->parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
 	State objectState = stateFactory(env->objects);
 
 	// Get an object to slide
@@ -625,15 +625,15 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	                                  *Eigen::AngleAxisd(-M_PI/2.0, Eigen::Vector3d::UnitZ())).matrix();
 
 	// Display occluded point and push frame
-	if (env->visualize)
+	if (env->parentScene.lock()->visualize["push_sampling"])
 	{
 		tf::Transform t = tf::Transform::getIdentity();
 		tf::poseEigenToTF(pushFrame, t);
-		env->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->worldFrame, "push_frame"));
+		env->parentScene.lock()->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->parentScene.lock()->worldFrame, "push_frame"));
 		tf::poseEigenToTF(pushGripperFrames[0], t);
-		env->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->worldFrame, "push_gripper_frame_0"));
+		env->parentScene.lock()->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->parentScene.lock()->worldFrame, "push_gripper_frame_0"));
 		tf::poseEigenToTF(pushGripperFrames[1], t);
-		env->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->worldFrame, "push_gripper_frame_1"));
+		env->parentScene.lock()->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->parentScene.lock()->worldFrame, "push_gripper_frame_1"));
 	}
 
 	pushGripperFrames.erase(std::remove_if(pushGripperFrames.begin(), pushGripperFrames.end(),
@@ -645,14 +645,14 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	}
 
 	// Shuffle manipulators (without shuffling underlying array)
-	std::vector<unsigned int> manip_indices(env->scenario->manipulators.size());
+	std::vector<unsigned int> manip_indices(env->parentScene.lock()->scenario->manipulators.size());
 	std::iota(manip_indices.begin(), manip_indices.end(), 0);
-	std::shuffle(manip_indices.begin(), manip_indices.end(), env->scenario->rng);
+	std::shuffle(manip_indices.begin(), manip_indices.end(), env->parentScene.lock()->scenario->rng);
 
 	// Shuffle push directions (without shuffling underlying array)
 	std::vector<unsigned int> push_indices(pushGripperFrames.size());
 	std::iota(push_indices.begin(), push_indices.end(), 0);
-	std::shuffle(push_indices.begin(), push_indices.end(), env->scenario->rng);
+	std::shuffle(push_indices.begin(), push_indices.end(), env->parentScene.lock()->scenario->rng);
 
 	std::uniform_int_distribution<int> stepDistr(15, 20);
 
@@ -668,7 +668,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	{
 		const auto& pushGripperFrame = pushGripperFrames[push_idx];
 		const double stepSize = 0.015;
-		const int nSteps = stepDistr(env->scenario->rng);
+		const int nSteps = stepDistr(env->parentScene.lock()->scenario->rng);
 		PoseSequence pushTrajectory;
 		for (int s = -15; s < nSteps; ++s)
 		{
@@ -679,7 +679,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 
 		for (unsigned int manip_idx : manip_indices)
 		{
-			auto& manipulator = env->scenario->manipulators[manip_idx];
+			auto& manipulator = env->parentScene.lock()->scenario->manipulators[manip_idx];
 
 			std::vector<std::vector<double>> sln;
 
@@ -801,7 +801,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 {
 	// TODO: Set hand posture before planning
 	// Check whether the hand collides with the scene
-	for (const auto& manipulator : env->scenario->manipulators)
+	for (const auto& manipulator : env->parentScene.lock()->scenario->manipulators)
 	{
 		if (gripperEnvironmentCollision(manipulator, robotState))
 		{
@@ -810,7 +810,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 		}
 	}
 
-	Pose robotTworld = env->worldTrobot.inverse(Eigen::Isometry);
+	Pose robotTworld = env->parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
 	State objectState = stateFactory(env->objects);
 
 	// Get an object to slide
@@ -833,14 +833,14 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 	const double Z_SAFETY_HEIGHT = 0.16;
 
 	trajectory_msgs::JointTrajectory cmd;
-	std::uniform_real_distribution<double> xDistr(env->minExtent.x()+TABLE_BUFFER, env->maxExtent.x()-TABLE_BUFFER);
-	std::uniform_real_distribution<double> yDistr(env->minExtent.y()+TABLE_BUFFER, env->maxExtent.y()-TABLE_BUFFER);
+	std::uniform_real_distribution<double> xDistr(env->parentScene.lock()->minExtent.x()+TABLE_BUFFER, env->parentScene.lock()->maxExtent.x()-TABLE_BUFFER);
+	std::uniform_real_distribution<double> yDistr(env->parentScene.lock()->minExtent.y()+TABLE_BUFFER, env->parentScene.lock()->maxExtent.y()-TABLE_BUFFER);
 	std::uniform_real_distribution<double> thetaDistr(0.0, 2.0*M_PI);
 
 	// Shuffle manipulators (without shuffling underlying array)
-	std::vector<unsigned int> manip_indices(env->scenario->manipulators.size());
+	std::vector<unsigned int> manip_indices(env->parentScene.lock()->scenario->manipulators.size());
 	std::iota(manip_indices.begin(), manip_indices.end(), 0);
-	std::shuffle(manip_indices.begin(), manip_indices.end(), env->scenario->rng);
+	std::shuffle(manip_indices.begin(), manip_indices.end(), env->parentScene.lock()->scenario->rng);
 
 	while (!graspPoses.empty())
 	{
@@ -855,16 +855,16 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 			continue;
 		}
 
-		if (env->visualize)
+		if (env->parentScene.lock()->visualize["slide_sampling"])
 		{
 			tf::Transform t = tf::Transform::getIdentity();
 			tf::poseEigenToTF(gripperPose, t);
-			env->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->worldFrame, "putative_start"));
+			env->parentScene.lock()->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->parentScene.lock()->worldFrame, "putative_start"));
 		}
 
 		for (unsigned int manip_idx : manip_indices)
 		{
-			auto& manipulator = env->scenario->manipulators[manip_idx];
+			auto& manipulator = env->parentScene.lock()->scenario->manipulators[manip_idx];
 			std::vector<std::vector<double>> sln = manipulator->IK(gripperPose, robotTworld, robotState);
 			if (!sln.empty())
 			{
@@ -885,15 +885,15 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 				{
 					goalPose = moveit::Pose::Identity();
 					goalPose.linear() = goalPose.linear() * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).matrix();
-					goalPose.linear() = goalPose.linear() * Eigen::AngleAxisd(thetaDistr(env->scenario->rng), Eigen::Vector3d::UnitZ()).matrix();
-					goalPose.translation() = Eigen::Vector3d(xDistr(env->scenario->rng), yDistr(env->scenario->rng), gripperPose.translation().z());
+					goalPose.linear() = goalPose.linear() * Eigen::AngleAxisd(thetaDistr(env->parentScene.lock()->scenario->rng), Eigen::Vector3d::UnitZ()).matrix();
+					goalPose.translation() = Eigen::Vector3d(xDistr(env->parentScene.lock()->scenario->rng), yDistr(env->parentScene.lock()->scenario->rng), gripperPose.translation().z());
 					goalPose.translation() -= PALM_DISTANCE/10.0*goalPose.linear().col(2); // Go up very slightly during drag
 					sln = manipulator->IK(goalPose, robotTworld, robotState);
 
-					if (env->visualize)
+					if (env->parentScene.lock()->visualize["slide_sampling"])
 					{
 						tf::Transform temp; tf::poseEigenToTF(goalPose, temp);
-						env->scenario->broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), env->worldFrame, "putative_goal"));
+						env->parentScene.lock()->scenario->broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), env->parentScene.lock()->worldFrame, "putative_goal"));
 					}
 
 					if (!sln.empty())
@@ -1033,11 +1033,11 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 
 
 std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robotState, const ObjectIndex targetID,
-                                            Scene::ObstructionList& collisionObjects) const
+                                            OccupancyData::ObstructionList& collisionObjects) const
 {
 	MPS_ASSERT(targetID.id == env->targetObjectID->id);
 	// Check whether the hand collides with the scene
-	for (const auto& manipulator : env->scenario->manipulators)
+	for (const auto& manipulator : env->parentScene.lock()->scenario->manipulators)
 	{
 		if (gripperEnvironmentCollision(manipulator, robotState))
 		{
@@ -1046,7 +1046,7 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 		}
 	}
 
-	Pose robotTworld = env->worldTrobot.inverse(Eigen::Isometry);
+	Pose robotTworld = env->parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
 	State objectState = stateFactory(env->objects);
 
 	// Get an object to slide
@@ -1062,9 +1062,9 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 	const double Z_SAFETY_HEIGHT = 0.16;
 
 	// Shuffle manipulators (without shuffling underlying array)
-	std::vector<unsigned int> manip_indices(env->scenario->manipulators.size());
+	std::vector<unsigned int> manip_indices(env->parentScene.lock()->scenario->manipulators.size());
 	std::iota(manip_indices.begin(), manip_indices.end(), 0);
-	std::shuffle(manip_indices.begin(), manip_indices.end(), env->scenario->rng);
+	std::shuffle(manip_indices.begin(), manip_indices.end(), env->parentScene.lock()->scenario->rng);
 
 	while (!graspPoses.empty())
 	{
@@ -1079,16 +1079,16 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 			continue;
 		}
 
-		if (env->visualize)
+		if (env->parentScene.lock()->visualize["pick_sampling"])
 		{
 			tf::Transform t = tf::Transform::getIdentity();
 			tf::poseEigenToTF(gripperPose, t);
-			env->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->worldFrame, "putative_start"));
+			env->parentScene.lock()->scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->parentScene.lock()->worldFrame, "putative_start"));
 		}
 
 		for (unsigned int manip_idx : manip_indices)
 		{
-			auto& manipulator = env->scenario->manipulators[manip_idx];
+			auto& manipulator = env->parentScene.lock()->scenario->manipulators[manip_idx];
 			std::vector<std::vector<double>> sln = manipulator->IK(gripperPose, robotTworld, robotState);
 			if (sln.empty())
 			{
@@ -1218,7 +1218,7 @@ MotionPlanner::recoverCrash(const robot_state::RobotState& currentState,
                             const robot_state::RobotState& recoveryState) const
 {
 	// Check whether the hand collides with the scene
-	for (const auto& manipulator : env->scenario->manipulators)
+	for (const auto& manipulator : env->parentScene.lock()->scenario->manipulators)
 	{
 		if (gripperEnvironmentCollision(manipulator, currentState))
 		{
@@ -1231,7 +1231,7 @@ MotionPlanner::recoverCrash(const robot_state::RobotState& currentState,
 	const int INTERPOLATE_STEPS = 10;
 	const int TRANSIT_INTERPOLATE_STEPS = 50;
 
-	for (const auto& manipulator : env->scenario->manipulators)
+	for (const auto& manipulator : env->parentScene.lock()->scenario->manipulators)
 	{
 		// See if needs recovery
 		Eigen::VectorXd qCurrent, qRecovery;
@@ -1245,10 +1245,10 @@ MotionPlanner::recoverCrash(const robot_state::RobotState& currentState,
 			continue;
 		}
 
-		Pose worldThand = env->worldTrobot*currentState.getFrameTransform(manipulator->palmName);
+		Pose worldThand = env->parentScene.lock()->worldTrobot*currentState.getFrameTransform(manipulator->palmName);
 		Pose worldTretreat = worldThand;
 		worldTretreat.translation().z() += RETREAT_DISTANCE;
-		Pose robotTworld = env->worldTrobot.inverse(Eigen::Isometry);
+		Pose robotTworld = env->parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
 
 		std::shared_ptr<CompositeAction> compositeAction = std::make_shared<CompositeAction>();
 		auto releaseAction = std::make_shared<GripperCommandAction>();
