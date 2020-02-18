@@ -325,6 +325,86 @@ void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, Segmentati
 	}
 }
 
+void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& firstFrameSeg, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
+{
+	actionSamples.clear();
+	/////////////////////////////////////////////
+	//// Construct tracking time steps
+	/////////////////////////////////////////////
+	std::vector<ros::Time> steps; // SiamMask tracks all these time steps except the first frame;
+	for (auto iter = buffer_out.rgb.begin(); iter != buffer_out.rgb.end(); std::advance(iter, 5))
+	{
+		steps.push_back(iter->first);
+	}
+	std::vector<ros::Time> timeStartEnd;
+	timeStartEnd.push_back(steps[0]);
+	timeStartEnd.push_back(steps[steps.size()-1]);
+
+	/////////////////////////////////////////////
+	//// Look up worldTcamera
+	/////////////////////////////////////////////
+	const std::string tableFrame = "table_surface";
+	tf::StampedTransform worldTcameraTF;
+	geometry_msgs::TransformStamped wTc = buffer_out.tfs->lookupTransform(tableFrame, buffer_out.cameraModel.tfFrame(), ros::Time(0));
+	tf::transformStampedMsgToTF(wTc, worldTcameraTF);
+	moveit::Pose worldTcamera;
+	tf::transformTFToEigen(worldTcameraTF, worldTcamera);
+
+	/////////////////////////////////////////////
+	//// Tracking
+	/////////////////////////////////////////////
+	std::cout << "-------------------------------------------------------------------------------------" << std::endl;
+	//// SiamMask tracking
+	std::map<ros::Time, cv::Mat> masks;
+	denseTracker->track(steps, buffer_out, bbox, masks);
+
+	//// Fill in the first frame mask
+	cv::Mat startMask = label == firstFrameSeg;
+	masks.insert(masks.begin(), {steps.front(), startMask});
+	cv::imwrite("/home/kunhuang/Pictures/startMask.jpg", colorByLabel(startMask));
+	for (auto& m : masks)
+	{
+		std::cerr << cv::countNonZero(m.second) << std::endl;
+	}
+
+	//// Estimate motion using SiamMask
+	if (masks.find(steps[0]) == masks.end() || masks.find(steps[steps.size()-1]) == masks.end())
+	{
+		ROS_ERROR_STREAM("Failed to estimate motion because of insufficient masks! Return!");
+		return;
+	}
+	Eigen::Vector3d roughMotion = sampleActionFromMask(masks[steps[0]], buffer_out.depth[steps[0]]->image,
+	                                                   masks[steps[steps.size()-1]], buffer_out.depth[steps[steps.size()-1]]->image,
+	                                                   buffer_out.cameraModel, worldTcamera);
+	std::cerr << "Rough Motion from SiamMask: " << roughMotion.x() << " " << roughMotion.y() << " " << roughMotion.z() << std::endl;
+
+	//// SIFT
+	sparseTracker->track(timeStartEnd, buffer_out, masks, "/home/kunhuang/Videos/" + std::to_string((int)label) + "_");
+
+	/////////////////////////////////////////////
+	//// send request to jlinkage server & sample object motions
+	/////////////////////////////////////////////
+	if (clusterRigidBodyTransformation(sparseTracker->flows3, worldTcamera))
+	{
+		std::cerr << "USE sift" << std::endl;
+		weightedSampleSIFT((int)round(numSamples * 0.6));
+		for (int i = 0; i < numSamples - (int)round(numSamples * 0.6) + 1; ++i) // TODO: delete this +1
+		{
+			rigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
+			actionSamples.push_back(rbt);
+		}
+	}
+	else
+	{
+		std::cerr << "USE SiamMask Manifold" << std::endl;
+		for (int i = 0; i < numSamples; ++i)
+		{
+			rigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
+			actionSamples.push_back(rbt);
+		}
+	}
+}
+
 void objectActionModel::weightedSampleSIFT(int n)
 {
 	std::default_random_engine generator;
@@ -376,6 +456,7 @@ moveParticle(const Particle& inputParticle, const std::map<int, rigidTF>& labelT
 	for (auto& pair : labelToMotionLookup)
 	{
 		decomposedRigidTF drtf;
+		drtf.linear = pair.second.linear;
 		drtf.theta = pair.second.angular.norm();
 		if (drtf.theta == 0) { drtf.e = {0, 0, 0}; }
 		else { drtf.e = pair.second.angular / drtf.theta; }
@@ -398,8 +479,8 @@ moveParticle(const Particle& inputParticle, const std::map<int, rigidTF>& labelT
 			newCoord = cos(tf.theta) * originalCoord + sin(tf.theta) * tf.e.cross(originalCoord) + (1 - cos(tf.theta)) * tf.e.dot(originalCoord) * tf.e;
 			newCoord += tf.linear;
 
-			VoxelRegion::vertex_descriptor newVD = coordToVertexDesc(inputParticle.voxelRegion->resolution, inputParticle.voxelRegion->regionMin, newCoord);
-			auto index = inputParticle.voxelRegion->index_of(newVD);
+			VoxelRegion::vertex_descriptor newVD = coordToVertexDesc(outputParticle.voxelRegion->resolution, outputParticle.voxelRegion->regionMin, newCoord);
+			auto index = outputParticle.voxelRegion->index_of(newVD);
 			outputParticle.state->vertexState[index] = inputParticle.state->vertexState[i];
 		}
 	}

@@ -30,9 +30,9 @@ cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeC
 {
 	auto roi = cameraModel.rectifiedRoi();
 
-	using LabelT = uint8_t;
+	using LabelT = uint16_t;
 	using DepthT = float;
-	cv::Mat labels = cv::Mat::zeros(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_8U);
+	cv::Mat labels = cv::Mat::zeros(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_16U);
 	cv::Mat depthBuf(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_32F, std::numeric_limits<DepthT>::max());
 
 	std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>> labelToOcTreeLookup = particle.voxelRegion->vertexLabelToOctrees(particle.state->vertexState, particle.state->uniqueObjectLabels);
@@ -64,7 +64,7 @@ cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeC
 					if (dist < zBuf)
 					{
 						zBuf = dist;
-						labels.at<LabelT>(v, u) = pair.first.id;
+						labels.at<LabelT>(v, u) = pair.first.id + 1; //// voxel label == -1: free sapce; seg label == 0: free space;
 //						std::cerr << "label value: " << labels.at<LabelT>(v, u) << std::endl;
 					}
 				}

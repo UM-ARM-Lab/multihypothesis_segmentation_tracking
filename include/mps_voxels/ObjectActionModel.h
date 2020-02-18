@@ -64,6 +64,8 @@ public:
 
 	void sampleAction(SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox);
 
+	void sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& firstFrameSeg, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox);
+
 	void weightedSampleSIFT(int n = 1);
 };
 

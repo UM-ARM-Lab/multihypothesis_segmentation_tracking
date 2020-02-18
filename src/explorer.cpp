@@ -23,7 +23,7 @@
 #include "mps_voxels/logging/log_sensor_history.h"
 #include "mps_voxels/logging/log_segmentation_info.h"
 #include "mps_voxels/logging/log_cv_roi.h"
-#include "mps_voxels/Particle.h"
+#include "mps_voxels/ParticleFilter.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
@@ -189,6 +189,7 @@ public:
 	std::unique_ptr<DenseTracker> denseTracker;
 	std::unique_ptr<TargetDetector> targetDetector;
 	std::unique_ptr<TrajectoryClient> trajectoryClient;
+	std::unique_ptr<ParticleFilter> particleFilter;
 	std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperLPub;
 	std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperRPub;
 	ros::Publisher octreePub;
@@ -514,54 +515,14 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		/////////////////////////////////////////////
 		//// sample object motions (new)
 		/////////////////////////////////////////////
-		cv::Mat temp_seg = scene->segInfo->objectness_segmentation->image;
-		std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(temp_seg, scene->roi);
-
-		std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>(10);
-		for (auto& pair : labelToBBoxLookup)
+		for (int i=0; i<particleFilter->numParticles; ++i)
 		{
-			oam->sampleAction(historian->buffer, *scene->segInfo, sparseTracker, denseTracker, pair.first, pair.second);
-
-			cv::RNG rng;
-			ObjectIndex objIx = scene->labelToIndexLookup[pair.first];
-			auto& obj = scene->objects[objIx];
-
-			std_msgs::ColorRGBA colorRGBA;
-			colorRGBA.a = 1.0f;
-			colorRGBA.r = rand()/(float)RAND_MAX;
-			colorRGBA.g = rand()/(float)RAND_MAX;
-			colorRGBA.b = rand()/(float)RAND_MAX;
-			visualization_msgs::MarkerArray mOctree = visualizeOctree(obj->occupancy.get(), scene->worldFrame, &colorRGBA);
-			for (visualization_msgs::Marker& m : mOctree.markers)
-			{
-				m.ns = "originalOcTree";
-			}
-
-			std::cerr << "Original octree shown!" << std::endl;
-			octreePub.publish(mOctree);
-			sleep(2);
-
-			for (auto& rbt : oam->actionSamples)
-			{
-				std::cerr << "Linear: " << rbt.linear.x() << " " << rbt.linear.y() << " " << rbt.linear.z();
-				std::cerr << "\t Angular: " << rbt.angular.x() << " " << rbt.angular.y() << " " << rbt.angular.z() << std::endl;
-
-				std::shared_ptr<octomap::OcTree> newOcTree = moveOcTree(obj->occupancy.get(), rbt);
-
-				colorRGBA.r = rand()/(float)RAND_MAX;
-				colorRGBA.g = rand()/(float)RAND_MAX;
-				colorRGBA.b = rand()/(float)RAND_MAX;
-				auto m = visualizeOctree(newOcTree.get(), scene->worldFrame, &colorRGBA);
-				for (visualization_msgs::Marker& marker : m.markers)
-				{
-					marker.ns = "newOcTree";
-				}
-				std::cerr << "Generated new octree" << std::endl;
-
-				octreePub.publish(m);
-				sleep(5);
-			}
-
+			particleFilter->particles[i] = particleFilter->applyActionModel(particleFilter->particles[i], scene->cameraModel, scene->worldTcamera,
+			                                 historian->buffer, sparseTracker, denseTracker,1);
+			auto pfnewmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(particleFilter->particles[i].state->vertexState, scene->worldFrame, "newState" + std::to_string(i));
+			octreePub.publish(pfnewmarker);
+			std::cerr << "Predicted state particle shown!" << std::endl;
+			sleep(5);
 		}
 	}
 	return true;
@@ -860,79 +821,17 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	/////////////////////////////////////////////
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	Particle particle;
-	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(scene->objects.begin()->second->occupancy.get(),
-	                                                     scene->minExtent.head<3>().cast<double>(),
-	                                                     scene->maxExtent.head<3>().cast<double>());
-	particle.voxelRegion = std::make_shared<VoxelRegion>( dims,
-	                                                      scene->objects.begin()->second->occupancy->getResolution(),
-	                                                      scene->minExtent.head<3>().cast<double>(),
-	                                                      scene->maxExtent.head<3>().cast<double>());
-	particle.state = std::make_shared<OccupancyData>();
-	particle.state->vertexState = objectsToVoxelLabel(scene->objects,
-	                                                  scene->minExtent.head<3>().cast<double>(),
-	                                                  scene->maxExtent.head<3>().cast<double>());
-	particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
-	//// Visualize state
-//	auto markers = particle.voxelRegion->visualizeVertexLabelsDirectly(particle.state->vertexState, scene->worldFrame);
-//	octreePub.publish(markers);
-//	std::cerr << "State particle shown!" << std::endl;
-//	sleep(5);
-
-	/////////////////////////////////////////////
-	//// Test ray casting
-	/////////////////////////////////////////////
-
-	//// split vertex label into octrees
-//	std::set<int> uniqueObjectLabels = mps::getUniqueObjectLabels(particle.state->vertexState);
-//	std::map<int, std::shared_ptr<octomap::OcTree>> labelToOcTreeLookup = particle.voxelRegion->vertexLabelToOctrees(particle.state->vertexState, uniqueObjectLabels);
-//	for (auto& pair : labelToOcTreeLookup)
-//	{
-//		if (!pair.second) { break; }
-//		std_msgs::ColorRGBA octreeColor;
-//		octreeColor.a = 1.0f;
-//		octreeColor.r = 1.0f;
-//		octreeColor.g = 0.2f;
-//		octreeColor.b = 0.5f;
-//
-//		visualization_msgs::MarkerArray ma = visualizeOctree(pair.second.get(), scene->worldFrame, &octreeColor);
-//		for (visualization_msgs::Marker& m : ma.markers)
-//		{
-//			m.ns = "objOcTree";
-//			m.pose.orientation.w = 1;
-//		}
-//		allMarkers["objOcTree"] = ma;
-//		octreePub.publish(allMarkers.flatten());
-//		std::cerr << "octree " << pair.first << " shown!" << std::endl;
-//		sleep(5);
-//	}
-
-	cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
-	std::cerr << "Segmentation based on particle generated!" << std::endl;
-
-//	cv::RNG rng;
-//	for (const auto& obj : scene->objects)
-//	{
-//		if (!ros::ok()) { return; }
-//
-//		mps::VoxelRegion seg(mps::roiToGrid(obj.second->occupancy.get(), obj.second->minExtent.cast<double>(), obj.second->maxExtent.cast<double>()));
-//		std::cerr << "Edges in voxel grid: " << seg.num_edges() << std::endl;
-//		std::cerr << "Vertices in voxel grid: " << seg.num_vertices() << std::endl;
-//
-//		//// Sample particles, iter = # of samples
-//		for (int iter = 0; iter < 0; ++iter)
-//		{
-//			double weight;
-//			mps::VoxelRegion::EdgeState edges;
-//			std::tie(weight, edges) = mps::octreeToGridParticle(obj.second->occupancy.get(), obj.second->minExtent.cast<double>(), obj.second->maxExtent.cast<double>(), rng);
-//
-//			// Visualize the edges
-//			auto markers = seg.visualizeEdgeStateDirectly(edges, obj.second->occupancy->getResolution(), obj.second->minExtent.cast<double>(), scene->worldFrame);
-//
-//			octreePub.publish(markers);
-//			sleep(1);
-//		}
-//	}
+	//// scene->minExtent and scene->maxExtent are changing from frame to frame
+	for (int i=0; i<particleFilter->numParticles; ++i)
+	{
+		particleFilter->particles[i].state->vertexState = particleFilter->voxelRegion->objectsToSubRegionVoxelLabel(scene->objects, scene->minExtent.head<3>().cast<double>());
+		particleFilter->particles[i].state->uniqueObjectLabels = getUniqueObjectLabels(particleFilter->particles[i].state->vertexState);
+		//// Visualize state
+		auto pfmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(particleFilter->particles[i].state->vertexState, scene->worldFrame, "State" + std::to_string(i));
+		octreePub.publish(pfmarker);
+		std::cerr << "State particle shown!" << std::endl;
+		sleep(5);
+	}
 
 	PROFILE_RECORD("Complete Scene");
 
@@ -1465,6 +1364,15 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	denseTracker = std::make_unique<SiamTracker>();
 	historian = std::make_unique<SensorHistorian>();
 	historian->stopCapture();
+	const double resolution = 0.010;
+	Eigen::Vector4f ROImaxExtent(0.4f, 0.6f, 0.5f, 1);
+	Eigen::Vector4f ROIminExtent(-0.4f, -0.6f, -0.020f, 1);
+	mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution,
+	                                                            ROIminExtent.head<3>().cast<double>(),
+	                                                            ROImaxExtent.head<3>().cast<double>());
+	particleFilter = std::make_unique<ParticleFilter>(dims, resolution,
+	                                                  ROIminExtent.head<3>().cast<double>(),
+	                                                  ROImaxExtent.head<3>().cast<double>(), 1);
 
 	bool gotParam = false;
 
