@@ -67,7 +67,7 @@ public:
 	size_t getEdgeIndex(vertex_descriptor a, vertex_descriptor b);
 
 	// From edge graph to vertex labels
-	VertexLabels components(EdgeState& edges);
+	VertexLabels components(EdgeState& edges) const;
 
 	using edges_size_type = Grid::edges_size_type;
 	using edge_descriptor = Grid::edge_descriptor;
@@ -138,10 +138,17 @@ public:
 
 	edges_size_type index_of(edge_descriptor edge) const;
 
+	inline
+	Eigen::Vector3d coordinate_of(vertex_descriptor vd) const {
+		return regionMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>()) + (Eigen::Vector3d::Ones() * resolution * 0.5);
+	}
+
 	std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>> vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<ObjectIndex>& uniqueObjectLabels);
 
+	[[deprecated]]
 	visualization_msgs::MarkerArray visualizeVertexLabelsDirectly(VertexLabels& vlabels,
 	                                                              const std::string& globalFrame);
+	[[deprecated]]
 	visualization_msgs::MarkerArray visualizeEdgeStateDirectly(EdgeState& edges,
 	                                                           const std::string& globalFrame);
 };

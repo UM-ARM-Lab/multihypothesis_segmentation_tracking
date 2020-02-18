@@ -153,8 +153,6 @@ public:
 	ros::Publisher displayPub;
 	ros::Publisher pcPub;
 	ros::Subscriber indexofinterestSub;
-	std::unique_ptr<image_transport::Publisher> segmentationPub;
-	std::unique_ptr<image_transport::Publisher> targetPub;
 
 	std::unique_ptr<image_transport::SubscriberFilter> rgb_sub;
 	std::unique_ptr<image_transport::SubscriberFilter> depth_sub;
@@ -613,13 +611,15 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	std::vector<Particle> particles;
 	for (size_t p = 0; p < nParticles; ++p)
 	{
-		auto sample = treeSampler.sample(rng, SAMPLE_TYPE::RANDOM);
+		const SAMPLE_TYPE sampleType = (0 == p) ? SAMPLE_TYPE::MAXIMUM : SAMPLE_TYPE::RANDOM;
+
+		auto sample = treeSampler.sample(rng, sampleType);
 		Particle particle;
 		particle.particle.id = p;
 		particle.state = std::make_shared<OccupancyData>();
 		particle.state->segInfo = std::make_shared<SegmentationInfo>(sample.second);
 		particle.weight = sample.first;
-		particle.voxelRegion = voxelRegion;
+		particle.state->voxelRegion = voxelRegion;
 		bool execSegmentation = processor->performSegmentation(*scene, particle.state->segInfo, *particle.state);
 		if (!execSegmentation)
 		{
@@ -645,7 +645,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 		particles.push_back(particle);
 
-
+		// Save our best guess
+		if (p == 0) { scene->bestGuess = particle.state; }
 	}
 
 

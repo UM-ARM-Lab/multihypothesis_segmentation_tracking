@@ -57,7 +57,7 @@ size_t VoxelRegion::getEdgeIndex(VoxelRegion::vertex_descriptor a, VoxelRegion::
 	int dist = 0;
 	for (size_t d = 0; d < dimensions(); ++d)
 	{
-		dist += abs(static_cast<long>(a[d]) - static_cast<long>(b[d]));
+		dist += std::abs(static_cast<long>(a[d]) - static_cast<long>(b[d]));
 	}
 	if (dist != 1) { throw std::logic_error("Grid vertices for edge lookup are not adjacent."); }
 
@@ -65,7 +65,7 @@ size_t VoxelRegion::getEdgeIndex(VoxelRegion::vertex_descriptor a, VoxelRegion::
 	return index_of({a, b});
 }
 
-VoxelRegion::VertexLabels VoxelRegion::components(VoxelRegion::EdgeState& edges)
+VoxelRegion::VertexLabels VoxelRegion::components(VoxelRegion::EdgeState& edges) const
 {
 	DisjointSetForest<int> dsf(num_vertices());
 

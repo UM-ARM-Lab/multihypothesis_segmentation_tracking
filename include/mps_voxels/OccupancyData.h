@@ -55,6 +55,9 @@ class Scene;
 
 struct OccupancyData
 {
+	// Domain properties shared by this particle
+	std::shared_ptr<VoxelRegion> voxelRegion;
+
 	// This is the canonical representation of the segmentation state
 	VoxelRegion::VertexLabels vertexState;
 

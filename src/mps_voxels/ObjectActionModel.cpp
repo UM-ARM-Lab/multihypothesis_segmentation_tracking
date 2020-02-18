@@ -383,8 +383,9 @@ moveParticle(const Particle& inputParticle, const std::map<int, rigidTF>& labelT
 	}
 
 	Particle outputParticle;
-	outputParticle.voxelRegion = inputParticle.voxelRegion;
-	outputParticle.init();
+	outputParticle.state = std::make_shared<OccupancyData>();
+	outputParticle.state->voxelRegion = inputParticle.state->voxelRegion;
+	outputParticle.state->vertexState.resize(outputParticle.state->voxelRegion->num_vertices(), -1);
 
 #pragma omp parallel for
 	for (int i = 0; i < (int)inputParticle.state->vertexState.size(); ++i)
@@ -392,14 +393,14 @@ moveParticle(const Particle& inputParticle, const std::map<int, rigidTF>& labelT
 		if (inputParticle.state->vertexState[i] >= 0)
 		{
 			auto& tf = labelToDecomposedMotionLookup[inputParticle.state->vertexState[i]];
-			VoxelRegion::vertex_descriptor vd = inputParticle.voxelRegion->vertex_at(i);
-			Eigen::Vector3d originalCoord = vertexDescpToCoord(inputParticle.voxelRegion->resolution, inputParticle.voxelRegion->regionMin, vd);
+			VoxelRegion::vertex_descriptor vd = inputParticle.state->voxelRegion->vertex_at(i);
+			Eigen::Vector3d originalCoord = vertexDescpToCoord(inputParticle.state->voxelRegion->resolution, inputParticle.state->voxelRegion->regionMin, vd);
 			Eigen::Vector3d newCoord;
 			newCoord = cos(tf.theta) * originalCoord + sin(tf.theta) * tf.e.cross(originalCoord) + (1 - cos(tf.theta)) * tf.e.dot(originalCoord) * tf.e;
 			newCoord += tf.linear;
 
-			VoxelRegion::vertex_descriptor newVD = coordToVertexDesc(inputParticle.voxelRegion->resolution, inputParticle.voxelRegion->regionMin, newCoord);
-			auto index = inputParticle.voxelRegion->index_of(newVD);
+			VoxelRegion::vertex_descriptor newVD = coordToVertexDesc(inputParticle.state->voxelRegion->resolution, inputParticle.state->voxelRegion->regionMin, newCoord);
+			auto index = inputParticle.state->voxelRegion->index_of(newVD);
 			outputParticle.state->vertexState[index] = inputParticle.state->vertexState[i];
 		}
 	}

@@ -292,6 +292,8 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/planning/State.cpp
   src/${PROJECT_NAME}/planning/Action.cpp
   src/${PROJECT_NAME}/planning/MotionPlanner.cpp
+  src/${PROJECT_NAME}/visualization/visualize_voxel_region.cpp
+  src/${PROJECT_NAME}/visualization/visualize_occupancy.cpp
   )
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}

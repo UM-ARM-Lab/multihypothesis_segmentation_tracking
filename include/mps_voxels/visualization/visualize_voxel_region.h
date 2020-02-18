@@ -27,46 +27,28 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MPS_PARTICLE_H
-#define MPS_PARTICLE_H
+#ifndef SRC_VISUALIZE_VOXEL_REGION_H
+#define SRC_VISUALIZE_VOXEL_REGION_H
 
-#include "mps_voxels/Indexes.h"
 #include "mps_voxels/VoxelRegion.h"
-#include "mps_voxels/moveit_pose_type.h"
 
-#include <opencv2/core.hpp>
+#include <visualization_msgs/MarkerArray.h>
 
-namespace image_geometry
-{
-class PinholeCameraModel;
-}
+#include <random>
 
 namespace mps
 {
 
-struct OccupancyData;
+visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
+                                          const VoxelRegion::VertexLabels& data,
+                                          const std_msgs::Header& header,
+                                          std::default_random_engine& re);
 
-std::set<ObjectIndex> getUniqueObjectLabels(const VoxelRegion::VertexLabels& input);
-
-struct Particle
-{
-	using ParticleData = OccupancyData;
-
-	// Indexing properties of this particular particle
-	TimeIndex time;
-	SubproblemIndex problem;
-	ObjectIndex object;
-	ParticleIndex particle;
-
-	// The actual state data and its cached computations
-	std::shared_ptr<ParticleData> state;
-
-	// Our belief weight of this particle
-	double weight = 0;
-};
-
-cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const int& step = 1);
+visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
+                                          const VoxelRegion::EdgeState& data,
+                                          const std_msgs::Header& header,
+                                          std::default_random_engine& re);
 
 }
 
-#endif //MPS_PARTICLE_H
+#endif // SRC_VISUALIZE_VOXEL_REGION_H
