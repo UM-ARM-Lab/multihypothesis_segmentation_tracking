@@ -9,6 +9,8 @@
 #include "mps_voxels/SensorHistorian.h"
 #include "mps_voxels/util/assert.h"
 
+#include <algorithm>
+
 namespace mps
 {
 
@@ -212,7 +214,7 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 //	return labelToMaskLookup;
 //}
 
-std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels, const cv::Rect& roi)
+std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels, const cv::Rect& roi, const int& dilation)
 {
 	MPS_ASSERT(roi.width == labels.cols);
 	MPS_ASSERT(roi.height == labels.rows);
@@ -226,10 +228,10 @@ std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels, const cv::
 		cv::Rect box = cv::boundingRect(labels == label);
 
 		if (2 * box.height * box.width > roi.height * roi.width) { continue; } // get rid of table segment
-		bbox.xmin = box.x + roi.x;
-		bbox.xmax = box.x + box.width + roi.x;
-		bbox.ymin = box.y + roi.y;
-		bbox.ymax = box.y + box.height + roi.y;
+		bbox.xmin = std::max(0, box.x + roi.x - dilation);
+		bbox.xmax = std::min(roi.x + roi.width, box.x + box.width + roi.x + dilation);
+		bbox.ymin = std::max(0, box.y + roi.y - dilation);
+		bbox.ymax = std::min(roi.y + roi.height, box.y + box.height + roi.y + dilation);
 
 		labelToBBoxLookup.insert({label, bbox});
 	}
