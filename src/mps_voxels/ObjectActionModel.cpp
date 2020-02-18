@@ -17,15 +17,15 @@
 namespace mps
 {
 
-objectActionModel::objectActionModel(int n) : numSamples(n), jlinkageActionClient("cluster_flow", true)
+ObjectActionModel::ObjectActionModel(int n) : numSamples(n), jlinkageActionClient("cluster_flow", true)
 {
 
 }
 
 Eigen::Vector3d
-objectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& depth1,
-                     const cv::Mat& mask2, const cv::Mat& depth2,
-                     const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera)
+ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& depth1,
+                                        const cv::Mat& mask2, const cv::Mat& depth2,
+                                        const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera)
 {
 	assert(mask1.rows == mask2.rows);
 	assert(mask1.cols == mask2.cols);
@@ -80,9 +80,9 @@ objectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& dep
 }
 
 Eigen::Vector3d
-objectActionModel::sampleActionFromMask(const std::vector<std::vector<bool>>& mask1, const cv::Mat& depth1,
-                     const std::vector<std::vector<bool>>& mask2, const cv::Mat& depth2,
-                     const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera)
+ObjectActionModel::sampleActionFromMask(const std::vector<std::vector<bool>>& mask1, const cv::Mat& depth1,
+                                        const std::vector<std::vector<bool>>& mask2, const cv::Mat& depth2,
+                                        const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera)
 {
 	assert((int)mask1.size() == depth1.rows);
 	assert((int)mask1[0].size() == depth1.cols);
@@ -139,7 +139,7 @@ objectActionModel::sampleActionFromMask(const std::vector<std::vector<bool>>& ma
 	return objectAction;
 }
 
-rigidTF objectActionModel::icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera)
+RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera)
 {
 	//// Construct PointCloud Segments
 	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer.rgb.at(steps[0])->image, buffer.depth.at(steps[0])->image,
@@ -163,7 +163,7 @@ rigidTF objectActionModel::icpManifoldSampler(const std::vector<ros::Time>& step
 	Eigen::Matrix<double, 4, 4> Mworld = worldTcamera.matrix() * Mcamera.cast<double>() * worldTcamera.inverse().matrix();
 //	std::cout << Mworld << std::endl;
 
-	rigidTF twist;
+	RigidTF twist;
 	twist.linear = {Mworld(0, 3), Mworld(1, 3), Mworld(2, 3)};
 	double theta = acos((Mworld(0, 0) + Mworld(1, 1) + Mworld(2, 2) - 1) / 2.0);
 	if (theta == 0) twist.angular = {0, 0, 0};
@@ -179,7 +179,7 @@ rigidTF objectActionModel::icpManifoldSampler(const std::vector<ros::Time>& step
 	return twist;
 }
 
-bool objectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const moveit::Pose& worldTcamera)
+bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const moveit::Pose& worldTcamera)
 {
 	ROS_INFO("Waiting for Jlinkage server to start.");
 	// wait for the action server to start
@@ -237,7 +237,7 @@ bool objectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 				std::cerr << "\t Angular: " << res->motions[i].angular.x << " " << res->motions[i].angular.y << " " << res->motions[i].angular.z << std::endl;
 				Eigen::Vector3d linear(res->motions[i].linear.x, res->motions[i].linear.y, res->motions[i].linear.z);
 				Eigen::Vector3d angular(res->motions[i].angular.x, res->motions[i].angular.y, res->motions[i].angular.z);
-				rigidTF rbt;
+				RigidTF rbt;
 				rbt.linear = linear;
 				rbt.angular = angular;
 				rbt.numInliers = count;
@@ -248,7 +248,7 @@ bool objectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 	return isClusterExist;
 }
 
-void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
+void ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
 {
 	actionSamples.clear();
 	/////////////////////////////////////////////
@@ -310,7 +310,7 @@ void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, Segmentati
 		weightedSampleSIFT((int)(numSamples * 0.6));
 		for (int i = 0; i < numSamples - (int)(numSamples * 0.6); ++i)
 		{
-			rigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
+			RigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
 			actionSamples.push_back(rbt);
 		}
 	}
@@ -319,13 +319,13 @@ void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, Segmentati
 		std::cerr << "USE SiamMask Manifold" << std::endl;
 		for (int i = 0; i < numSamples; ++i)
 		{
-			rigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
+			RigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
 			actionSamples.push_back(rbt);
 		}
 	}
 }
 
-void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& firstFrameSeg, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
+void ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& firstFrameSeg, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
 {
 	actionSamples.clear();
 	/////////////////////////////////////////////
@@ -390,7 +390,7 @@ void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 		weightedSampleSIFT((int)round(numSamples * 0.6));
 		for (int i = 0; i < numSamples - (int)round(numSamples * 0.6) + 1; ++i) // TODO: delete this +1
 		{
-			rigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
+			RigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
 			actionSamples.push_back(rbt);
 		}
 	}
@@ -399,13 +399,13 @@ void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 		std::cerr << "USE SiamMask Manifold" << std::endl;
 		for (int i = 0; i < numSamples; ++i)
 		{
-			rigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
+			RigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
 			actionSamples.push_back(rbt);
 		}
 	}
 }
 
-void objectActionModel::weightedSampleSIFT(int n)
+void ObjectActionModel::weightedSampleSIFT(int n)
 {
 	std::default_random_engine generator;
 	std::vector<int> weightBar;
@@ -426,7 +426,7 @@ void objectActionModel::weightedSampleSIFT(int n)
 }
 
 std::shared_ptr<octomap::OcTree>
-moveOcTree(const octomap::OcTree* octree, const rigidTF& action)
+moveOcTree(const octomap::OcTree* octree, const RigidTF& action)
 {
 	double theta = action.angular.norm();
 //	std::cerr << "rotation theta = " << theta << std::endl;
@@ -450,12 +450,12 @@ moveOcTree(const octomap::OcTree* octree, const rigidTF& action)
 }
 
 Particle
-moveParticle(const Particle& inputParticle, const std::map<int, rigidTF>& labelToMotionLookup)
+moveParticle(const Particle& inputParticle, const std::map<int, RigidTF>& labelToMotionLookup)
 {
-	std::map<int, decomposedRigidTF> labelToDecomposedMotionLookup;
+	std::map<int, DecomposedRigidTF> labelToDecomposedMotionLookup;
 	for (auto& pair : labelToMotionLookup)
 	{
-		decomposedRigidTF drtf;
+		DecomposedRigidTF drtf;
 		drtf.linear = pair.second.linear;
 		drtf.theta = pair.second.angular.norm();
 		if (drtf.theta == 0) { drtf.e = {0, 0, 0}; }

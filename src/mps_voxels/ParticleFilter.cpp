@@ -32,8 +32,8 @@ Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const i
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, roi);
 	std::cerr << "number of bounding boxes in segParticle: " << labelToBBoxLookup.size() << std::endl;
 
-	std::unique_ptr<objectActionModel> oam = std::make_unique<objectActionModel>(1);
-	std::map<int, rigidTF> labelToMotionLookup;
+	std::unique_ptr<ObjectActionModel> oam = std::make_unique<ObjectActionModel>(1);
+	std::map<int, RigidTF> labelToMotionLookup;
 	for (auto& pair : labelToBBoxLookup)
 	{
 		oam->sampleAction(buffer_out, segParticle, sparseTracker, denseTracker, pair.first, pair.second);
