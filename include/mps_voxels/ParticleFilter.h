@@ -18,14 +18,13 @@ class ParticleFilter
 public:
 	ParticleFilter(const VoxelRegion::vertex_descriptor& dims, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n=10);
 
-	VoxelRegion voxRegion;
+	std::shared_ptr<VoxelRegion> voxelRegion;
 
 	int numParticles;
 	std::vector<Particle> particles;
 
 	Particle applyActionModel(const Particle& inputParticle, const image_geometry::PinholeCameraModel& cameraModel,
-	                          const Eigen::Isometry3d& worldTcamera,
-	                          SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out,
+	                          const moveit::Pose& worldTcamera, SensorHistoryBuffer& buffer_out,
 	                          std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker,
 	                          const int& segRes = 1);
 };

@@ -31,6 +31,7 @@
 #define SRC_VOXELREGION_H
 
 #include "mps_voxels/Indexes.h"
+#include "mps_voxels/Object.h"
 //#include "mps_voxels/octree_utils.h"
 
 #include <boost/array.hpp>
@@ -147,10 +148,13 @@ public:
 
 	[[deprecated]]
 	visualization_msgs::MarkerArray visualizeVertexLabelsDirectly(VertexLabels& vlabels,
-	                                                              const std::string& globalFrame);
+	                                                              const std::string& globalFrame, const std::string& ns = "state");
 	[[deprecated]]
 	visualization_msgs::MarkerArray visualizeEdgeStateDirectly(EdgeState& edges,
 	                                                           const std::string& globalFrame);
+
+	VertexLabels objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects, // object in subRegion
+	                                                            const Eigen::Vector3d& subRegionMinExtent);
 };
 
 template <typename Point>
@@ -167,6 +171,8 @@ double snapCoord(const double& resolution, const double& x)
 }
 
 mps::VoxelRegion::vertex_descriptor roiToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax);
+
+mps::VoxelRegion::vertex_descriptor roiToVoxelRegion(const double& resolution, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax);
 
 mps::VoxelRegion::vertex_descriptor coordToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& query);
 
