@@ -15,7 +15,7 @@
 #define MPS_HALT() goto exit
 
 #if MPS_ENABLE_ASSERTS
-	#define MPS_ASSERT(cond) do { if (!(cond)) { throw std::logic_error("MPS_ASSERT Failed!"); } } while(false)
+	#define MPS_ASSERT(cond) do { if (!(cond)) { throw std::logic_error(__FILE__ + std::string(":") + std::to_string(__LINE__) + std::string("    MPS_ASSERT Failed:\n") + std::string(#cond)); } } while(false)
 #else
 	#define MPS_ASSERT(cond) MPS_UNUSED(cond)
 #endif

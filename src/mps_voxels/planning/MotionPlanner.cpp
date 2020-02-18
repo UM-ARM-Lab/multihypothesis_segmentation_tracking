@@ -400,12 +400,14 @@ MotionPlanner::computePlanningScene(bool useCollisionObjects)
 	collision_detection::WorldPtr world;
 	if (useCollisionObjects)
 	{
+		assert(env);
 		world = computeCollisionWorld(*env);
 	}
 	else
 	{
 		world = std::make_shared<collision_detection::World>();
 	}
+	env->collisionWorld = world; // TODO: This whole planning scene/world thing needs to be rethought
 	planningScene = std::make_shared<planning_scene::PlanningScene>(env->parentScene.lock()->scenario->manipulators.front()->pModel, world);
 	return planningScene;
 }

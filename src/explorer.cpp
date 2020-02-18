@@ -27,6 +27,7 @@
 #include "mps_voxels/logging/log_segmentation_info.h"
 #include "mps_voxels/logging/log_cv_roi.h"
 #include "mps_voxels/Particle.h"
+#include "mps_voxels/visualization/visualize_occupancy.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
@@ -167,7 +168,7 @@ public:
 	std::unique_ptr<robot_model_loader::RobotModelLoader> mpLoader;
 	robot_model::RobotModelPtr pModel;
 	std::shared_ptr<Scenario> scenario;
-	std::unique_ptr<Scene> scene;
+	std::shared_ptr<Scene> scene;
 	std::unique_ptr<SceneProcessor> processor;
 	std::unique_ptr<MotionPlanner> planner;
 	std::map<std::string, std::shared_ptr<MotionModel>> selfModels;
@@ -540,7 +541,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	allMarkers.arrays.clear();
 
-	scene = std::make_unique<Scene>();
+	scene = std::make_shared<Scene>();
 	scene->scenario = scenario;
 	scene->selfModels = selfModels;
 
@@ -590,6 +591,14 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	bool getSegmentation = processor->callSegmentation(*scene);
 	if (!getSegmentation)
 	{
+		std::cerr << "Segmentation generation failed." << std::endl;
+		return;
+	}
+
+	bool getOcclusion = processor->computeOcclusions(*scene);
+	if (!getOcclusion)
+	{
+		std::cerr << "Occlusion generation failed." << std::endl;
 		return;
 	}
 
@@ -638,10 +647,30 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		                                                  scene->maxExtent.head<3>().cast<double>());
 		particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
 
-		cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
-		std::cerr << "Segmentation based on particle generated!" << std::endl;
-		IMSHOW("particle", segParticle);
-		WAIT_KEY(0);
+		particle.state->parentScene = this->scene;
+
+		if (0 == p)
+		{
+			bool clearedVolume = processor->removeAccountedForOcclusion(scene->occludedPts, scene->occlusionTree, *particle.state);
+			if (!clearedVolume)
+			{
+				std::cerr << "Occlusion deduction failed." << std::endl;
+				return;
+			}
+		}
+
+		if (scene->visualize["particles"])
+		{
+			cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
+			std::cerr << "Segmentation based on particle generated!" << std::endl;
+			IMSHOW("particle", segParticle);
+			WAIT_KEY(0);
+
+			{
+				this->allMarkers["particle"] = mps::visualize(*particle.state, cam_msg->header, scenario->rng);
+				this->octreePub.publish(this->allMarkers.flatten());
+			}
+		}
 
 		particles.push_back(particle);
 
@@ -1037,6 +1066,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	scene->bestGuess->obstructions.clear();
 //	scene->computeCollisionWorld();
+	planner->env = scene->bestGuess.get();
 	planner->computePlanningScene();
 	auto rs = getCurrentRobotState();
 
