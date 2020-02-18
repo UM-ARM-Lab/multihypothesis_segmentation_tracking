@@ -1402,6 +1402,16 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	historian = std::make_unique<SensorHistorian>();
 	historian->stopCapture();
 
+	const double resolution = 0.010;
+	Eigen::Vector4f ROImaxExtent(0.4f, 0.6f, 0.5f, 1);
+	Eigen::Vector4f ROIminExtent(-0.4f, -0.6f, -0.020f, 1);
+	mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution,
+	                                                            ROIminExtent.head<3>().cast<double>(),
+	                                                            ROImaxExtent.head<3>().cast<double>());
+	particleFilter = std::make_unique<ParticleFilter>(dims, resolution,
+	                                                  ROIminExtent.head<3>().cast<double>(),
+	                                                  ROImaxExtent.head<3>().cast<double>(), 1);
+
 	bool gotParam = false;
 
 	// Get target color
