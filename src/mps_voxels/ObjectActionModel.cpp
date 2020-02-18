@@ -248,15 +248,15 @@ bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 	return isClusterExist;
 }
 
-void ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
+bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
 {
 	cv::Mat startMask = cv::Mat::zeros(buffer_out.rgb.begin()->second->image.size(), CV_8UC1);
 	cv::Mat subwindow(startMask, seg_out.roi);
 	subwindow = label == seg_out.objectness_segmentation->image;
-	sampleAction(buffer_out, startMask, sparseTracker, denseTracker, label, bbox);
+	return sampleAction(buffer_out, startMask, sparseTracker, denseTracker, label, bbox);
 }
 
-void ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& firstFrameSeg, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
+bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& firstFrameSeg, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
 {
 	actionSamples.clear();
 	/////////////////////////////////////////////
@@ -287,7 +287,12 @@ void ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	std::cout << "-------------------------------------------------------------------------------------" << std::endl;
 	//// SiamMask tracking
 	std::map<ros::Time, cv::Mat> masks;
-	denseTracker->track(steps, buffer_out, bbox, masks);
+	bool denseTrackSuccess = denseTracker->track(steps, buffer_out, bbox, masks);
+	if (!denseTrackSuccess)
+	{
+		ROS_ERROR_STREAM("Dense Track Failed!!!");
+		return false;
+	}
 
 	//// Fill in the first frame mask
 	cv::Mat startMask = label == firstFrameSeg;
@@ -297,7 +302,7 @@ void ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	if (masks.find(steps[0]) == masks.end() || masks.find(steps[steps.size()-1]) == masks.end())
 	{
 		ROS_ERROR_STREAM("Failed to estimate motion because of insufficient masks! Return!");
-		return;
+		return false;
 	}
 	Eigen::Vector3d roughMotion = sampleActionFromMask(masks[steps[0]], buffer_out.depth[steps[0]]->image,
 	                                                        masks[steps[steps.size()-1]], buffer_out.depth[steps[steps.size()-1]]->image,
@@ -329,6 +334,7 @@ void ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 			actionSamples.push_back(rbt);
 		}
 	}
+	return true;
 }
 
 void ObjectActionModel::weightedSampleSIFT(int n)

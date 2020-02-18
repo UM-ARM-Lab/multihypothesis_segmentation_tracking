@@ -23,7 +23,7 @@ SiamTracker::SiamTracker()
 
 }
 
-void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks)
+bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks)
 {
 	cv::Rect box = cv::boundingRect(initMask);
 
@@ -33,10 +33,10 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	bbox.ymin = box.y;
 	bbox.ymax = box.y + box.height;
 
-	track(steps, buffer, bbox, masks);
+	return track(steps, buffer, bbox, masks);
 }
 
-void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks)
+bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks)
 {
 
 	ROS_INFO("Waiting for SiamMask server to start.");
@@ -51,7 +51,7 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	if (buffer.rgb.empty() || buffer.depth.empty())
 	{
 		ROS_WARN_STREAM("Tracking failed: Capture buffer empty.");
-		return;
+		return false;
 	}
 	int numframes = static_cast<int>(steps.size());
 	std::cerr << "Number of time steps: " << numframes << std::endl;
@@ -81,7 +81,7 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	else
 	{
 		ROS_ERROR("Action did not finish before the time out.");
-		return;
+		return false;
 	}
 
 	// each raw tracking result takes around 300Mb at 0.5fps, too large!!!
@@ -104,63 +104,7 @@ void SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 		cv::Mat mask = cv_ptr->image > 0; // uchar
 		masks.insert(masks.end(), {steps[i+1], mask});
 	}
+	return true;
 }
-
-/*
-void SiamTracker::siamtrack(LabelT label, const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox, const SensorHistoryBuffer& buffer)
-{
-	actionlib::SimpleActionClient<mps_msgs::TrackBBoxAction> ac("TrackBBox", true);
-
-	ROS_INFO("Waiting for action server to start.");
-	// wait for the action server to start
-	ac.waitForServer(); //will wait for infinite time
-
-	ROS_INFO("Action server started, sending goal.");
-	// send a goal to the action
-	mps_msgs::TrackBBoxGoal goal;
-	goal.bbox = bbox;
-
-	if (buffer.rgb.empty() || buffer.depth.empty())
-	{
-		ROS_WARN_STREAM("Tracking failed: Capture buffer empty.");
-		return;
-	}
-	int numframes = static_cast<int>(steps.size());
-//	sensor_msgs::Image video[numframes];
-	for (int i = 0; i < numframes && ros::ok(); ++i)
-	{
-		cv::Mat im = buffer.rgb.at(steps[i])->image;
-		cv_bridge::CvImage out_msg;
-//		out_msg.header   = im.header; // Same timestamp and tf frame as input image
-		out_msg.encoding = sensor_msgs::image_encodings::RGB8; // Or whatever
-		out_msg.image = im; // Your cv::Mat
-
-		goal.video.push_back(*out_msg.toImageMsg());
-	}
-
-	ac.sendGoal(goal);
-
-	//wait for the action to return
-	bool finished_before_timeout = ac.waitForResult(ros::Duration(30.0));
-
-	if (finished_before_timeout)
-	{
-		actionlib::SimpleClientGoalState state = ac.getState();
-		ROS_INFO("Action finished: %s", state.toString().c_str());
-	}
-	else
-		ROS_INFO("Action did not finish before the time out.");
-
-	std::vector<cv::Mat> ims;
-	for (auto iter = ac.getResult()->mask.begin(); iter != ac.getResult()->mask.end(); iter++)
-	{
-//		std::cerr << iter->encoding << std::endl;
-		cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvCopy(*iter, iter->encoding);
-		cv::Mat im = cv_ptr->image;
-		ims.push_back(im);
-	}
-
-	labelToTrackingLookup.insert({label, ims});
-}*/
 
 }
