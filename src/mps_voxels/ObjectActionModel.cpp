@@ -250,79 +250,10 @@ bool objectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 
 void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
 {
-	actionSamples.clear();
-	/////////////////////////////////////////////
-	//// Construct tracking time steps
-	/////////////////////////////////////////////
-	std::vector<ros::Time> steps; // SiamMask tracks all these time steps except the first frame;
-	for (auto iter = buffer_out.rgb.begin(); iter != buffer_out.rgb.end(); std::advance(iter, 5))
-	{
-		steps.push_back(iter->first);
-	}
-	std::vector<ros::Time> timeStartEnd;
-	timeStartEnd.push_back(steps[0]);
-	timeStartEnd.push_back(steps[steps.size()-1]);
-
-	/////////////////////////////////////////////
-	//// Look up worldTcamera
-	/////////////////////////////////////////////
-	const std::string tableFrame = "table_surface";
-	tf::StampedTransform worldTcameraTF;
-	geometry_msgs::TransformStamped wTc = buffer_out.tfs->lookupTransform(tableFrame, buffer_out.cameraModel.tfFrame(), ros::Time(0));
-	tf::transformStampedMsgToTF(wTc, worldTcameraTF);
-	moveit::Pose worldTcamera;
-	tf::transformTFToEigen(worldTcameraTF, worldTcamera);
-
-	/////////////////////////////////////////////
-	//// Tracking
-	/////////////////////////////////////////////
-	std::cout << "-------------------------------------------------------------------------------------" << std::endl;
-	//// SiamMask tracking
-	std::map<ros::Time, cv::Mat> masks;
-	denseTracker->track(steps, buffer_out, bbox, masks);
-
-	//// Fill in the first frame mask
 	cv::Mat startMask = cv::Mat::zeros(buffer_out.rgb.begin()->second->image.size(), CV_8UC1);
 	cv::Mat subwindow(startMask, seg_out.roi);
 	subwindow = label == seg_out.objectness_segmentation->image;
-	masks.insert(masks.begin(), {steps.front(), startMask});
-
-	//// Estimate motion using SiamMask
-	if (masks.find(steps[0]) == masks.end() || masks.find(steps[steps.size()-1]) == masks.end())
-	{
-		ROS_ERROR_STREAM("Failed to estimate motion because of insufficient masks! Return!");
-		return;
-	}
-	Eigen::Vector3d roughMotion = sampleActionFromMask(masks[steps[0]], buffer_out.depth[steps[0]]->image,
-	                                                        masks[steps[steps.size()-1]], buffer_out.depth[steps[steps.size()-1]]->image,
-	                                                        buffer_out.cameraModel, worldTcamera);
-	std::cerr << "Rough Motion from SiamMask: " << roughMotion.x() << " " << roughMotion.y() << " " << roughMotion.z() << std::endl;
-
-	//// SIFT
-	sparseTracker->track(timeStartEnd, buffer_out, masks, "/home/kunhuang/Videos/" + std::to_string((int)label) + "_");
-
-	/////////////////////////////////////////////
-	//// send request to jlinkage server & sample object motions
-	/////////////////////////////////////////////
-	if (clusterRigidBodyTransformation(sparseTracker->flows3, worldTcamera))
-	{
-		std::cerr << "USE sift" << std::endl;
-		weightedSampleSIFT((int)(numSamples * 0.6));
-		for (int i = 0; i < numSamples - (int)(numSamples * 0.6); ++i)
-		{
-			rigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
-			actionSamples.push_back(rbt);
-		}
-	}
-	else
-	{
-		std::cerr << "USE SiamMask Manifold" << std::endl;
-		for (int i = 0; i < numSamples; ++i)
-		{
-			rigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
-			actionSamples.push_back(rbt);
-		}
-	}
+	sampleAction(buffer_out, startMask, sparseTracker, denseTracker, label, bbox);
 }
 
 void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& firstFrameSeg, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
@@ -388,7 +319,7 @@ void objectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	{
 		std::cerr << "USE sift" << std::endl;
 		weightedSampleSIFT((int)round(numSamples * 0.6));
-		for (int i = 0; i < numSamples - (int)round(numSamples * 0.6) + 1; ++i) // TODO: delete this +1
+		for (int i = 0; i < numSamples - (int)round(numSamples * 0.6); ++i)
 		{
 			rigidTF rbt = icpManifoldSampler(steps, buffer_out, masks, worldTcamera);
 			actionSamples.push_back(rbt);
