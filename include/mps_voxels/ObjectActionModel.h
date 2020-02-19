@@ -42,7 +42,8 @@ class ObjectActionModel
 public:
 	explicit ObjectActionModel(int n=1);
 
-	std::vector<RigidTF> possibleRigidTFs; // clustered by Jlinkage
+	std::vector<RigidTF> siftRigidTFs; // clustered by Jlinkage
+	RigidTF icpRigidTF;
 
 	int numSamples;
 	std::vector<RigidTF> actionSamples;
@@ -50,10 +51,6 @@ public:
 	Eigen::Vector3d
 	sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& depth1,
 	                     const cv::Mat& mask2, const cv::Mat& depth2,
-	                     const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera);
-	Eigen::Vector3d
-	sampleActionFromMask(const std::vector<std::vector<bool>>& mask1, const cv::Mat& depth1,
-	                     const std::vector<std::vector<bool>>& mask2, const cv::Mat& depth2,
 	                     const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera);
 
 	RigidTF icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera);
@@ -67,6 +64,8 @@ public:
 	bool sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& firstFrameSeg, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox);
 
 	void weightedSampleSIFT(int n = 1);
+
+	bool isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::Ptr& initCloudSegment, const pcl::PointCloud<PointT>::Ptr& lastCloudSegment, const moveit::Pose& worldTcamera, const double& scoreThreshold);
 };
 
 

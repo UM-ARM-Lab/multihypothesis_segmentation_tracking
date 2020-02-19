@@ -30,7 +30,7 @@ Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const i
 //	cv::imwrite("/home/kunhuang/Pictures/segParticle.jpg", colorByLabel(segParticle));
 
 	cv::Rect roi = {0, 0, (int)cameraModel.cameraInfo().width, (int)cameraModel.cameraInfo().height};
-	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, roi);
+	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, roi, 20);
 	std::cerr << "number of bounding boxes in segParticle: " << labelToBBoxLookup.size() << std::endl;
 
 	std::unique_ptr<ObjectActionModel> oam = std::make_unique<ObjectActionModel>(1);
@@ -45,6 +45,7 @@ Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const i
 		else
 		{
 			ROS_ERROR_STREAM("Failed to sample action for label " << pair.first -1 << " !!!");
+			//TODO: generate reasonable disturbance
 			RigidTF randomSteadyTF;
 			randomSteadyTF.linear = {0,0,0};
 			randomSteadyTF.angular = {0,0,0};

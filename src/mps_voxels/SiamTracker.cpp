@@ -76,11 +76,11 @@ bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	if (finished_before_timeout)
 	{
 		actionlib::SimpleClientGoalState state = actionClient.getState();
-		ROS_INFO("Action finished: %s", state.toString().c_str());
+		ROS_INFO("SiamMask action finished: %s", state.toString().c_str());
 	}
 	else
 	{
-		ROS_ERROR("Action did not finish before the time out.");
+		ROS_ERROR("SiamMask action did not finish before the time out.");
 		return false;
 	}
 
