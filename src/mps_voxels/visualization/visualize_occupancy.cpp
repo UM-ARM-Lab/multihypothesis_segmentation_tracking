@@ -29,6 +29,7 @@
 
 #include "mps_voxels/visualization/visualize_occupancy.h"
 #include "mps_voxels/visualization/visualize_voxel_region.h"
+#include "mps_voxels/visualization/visualize_object.h"
 #include "mps_voxels/util/containers.hpp"
 
 namespace mps
@@ -38,6 +39,10 @@ visualization_msgs::MarkerArray visualize(const OccupancyData& data, const std_m
 {
 	visualization_msgs::MarkerArray ma = visualize(*data.voxelRegion, data.vertexState, header, re);
 	ma.markers += visualize(*data.voxelRegion, data.edgeState, header, re).markers;
+	for (const auto& pair : data.objects)
+	{
+		ma.markers += visualize(*pair.second, header, re).markers;
+	}
 
 	return ma;
 }

@@ -76,11 +76,11 @@ bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 				}
 			}
 		}
-		else
-		{
-			std::cerr << "Did not load jmg '" << jmg->getName() << "'" << std::endl;
-			std::cerr << "\t is " << (jmg->isEndEffector()?"":"not ") << "end-effector." << std::endl;
-		}
+//		else
+//		{
+//			std::cerr << "Did not load jmg '" << jmg->getName() << "'" << std::endl;
+//			std::cerr << "\t is " << (jmg->isEndEffector()?"":"not ") << "end-effector." << std::endl;
+//		}
 	}
 
 	return true;
@@ -682,7 +682,7 @@ bool SceneProcessor::buildObjects(const Scene& s, OccupancyData& occupancy)
 		auto approx = approximateShape(subtree.get());
 		if (approx)
 		{
-			auto res = occupancy.objects.insert(std::make_pair(seg.first, std::make_unique<Object>(seg.first, subtree)));
+			auto res = occupancy.objects.emplace(seg.first, std::make_unique<Object>(seg.first, subtree));
 			res.first->second->segment = seg.second;
 			res.first->second->approximation = approx;
 			res.first->second->points = getPoints(subtree.get());

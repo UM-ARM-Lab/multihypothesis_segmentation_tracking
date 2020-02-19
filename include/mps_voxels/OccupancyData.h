@@ -55,7 +55,9 @@ class Scene;
 
 struct OccupancyData
 {
-	// TODO: Constructor to initialize valid region, empty state
+	// Constructor to initialize valid region, empty state
+	explicit
+	OccupancyData(std::shared_ptr<VoxelRegion> region);
 
 	// Domain properties shared by this particle
 	std::shared_ptr<VoxelRegion> voxelRegion;

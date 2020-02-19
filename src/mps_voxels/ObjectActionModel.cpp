@@ -390,9 +390,7 @@ moveParticle(const Particle& inputParticle, const std::map<int, RigidTF>& labelT
 	}
 
 	Particle outputParticle;
-	outputParticle.state = std::make_shared<OccupancyData>();
-	outputParticle.state->voxelRegion = inputParticle.state->voxelRegion;
-	outputParticle.state->vertexState.resize(outputParticle.state->voxelRegion->num_vertices(), -1);
+	outputParticle.state = std::make_shared<OccupancyData>(inputParticle.state->voxelRegion);
 
 #pragma omp parallel for
 	for (int i = 0; i < (int)inputParticle.state->vertexState.size(); ++i)

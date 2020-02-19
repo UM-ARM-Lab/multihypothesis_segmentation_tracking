@@ -151,7 +151,7 @@ public:
 	std::unique_ptr<ParticleFilter> particleFilter;
 	std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperLPub;
 	std::unique_ptr<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>> gripperRPub;
-	ros::Publisher octreePub;
+	ros::Publisher visualPub;
 	ros::Publisher displayPub;
 	ros::Publisher pcPub;
 	ros::Subscriber indexofinterestSub;
@@ -481,7 +481,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			particleFilter->particles[i] = particleFilter->applyActionModel(particleFilter->particles[i], scene->cameraModel, scene->worldTcamera,
 			                                 historian->buffer, sparseTracker, denseTracker,1);
 			auto pfnewmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(particleFilter->particles[i].state->vertexState, scene->worldFrame, "newState" + std::to_string(i));
-			octreePub.publish(pfnewmarker);
+			visualPub.publish(pfnewmarker);
 			std::cerr << "Predicted state particle shown!" << std::endl;
 				sleep(5);
 		}
@@ -541,9 +541,10 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 
 	// Show robot collision
+	if (scenario->visualize["collision"])
 	{
 		this->allMarkers["collision"] = generateRobotCollisionSpheres(globalFrame);
-		this->octreePub.publish(this->allMarkers.flatten());
+		this->visualPub.publish(this->allMarkers.flatten());
 	}
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
@@ -587,10 +588,9 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		auto sample = treeSampler.sample(rng, sampleType);
 		Particle particle;
 		particle.particle.id = p;
-		particle.state = std::make_shared<OccupancyData>();
+		particle.state = std::make_shared<OccupancyData>(voxelRegion);
 		particle.state->segInfo = std::make_shared<SegmentationInfo>(sample.second);
 		particle.weight = sample.first;
-		particle.state->voxelRegion = voxelRegion;
 		bool execSegmentation = processor->performSegmentation(*scene, particle.state->segInfo, *particle.state);
 		if (!execSegmentation)
 		{
@@ -621,16 +621,29 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			}
 		}
 
-		if (scene->visualize["particles"])
+		if (scenario->visualize["particles"])
 		{
-			cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
-			std::cerr << "Segmentation based on particle generated!" << std::endl;
-			IMSHOW("particle", segParticle);
+//			cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
+//			std::cerr << "Segmentation based on particle generated!" << std::endl;
+//			IMSHOW("particle", segParticle);
+//			WAIT_KEY(0);
+			IMSHOW("segmentation", particle.state->segInfo->objectness_segmentation->image);
 			WAIT_KEY(0);
 
+			// Clear visualization
 			{
-				this->allMarkers["particle"] = mps::visualize(*particle.state, cam_msg->header, scenario->rng);
-				this->octreePub.publish(this->allMarkers.flatten());
+				visualization_msgs::MarkerArray ma;
+				ma.markers.resize(1);
+				ma.markers.front().action = visualization_msgs::Marker::DELETEALL;
+				visualPub.publish(ma);
+			}
+
+			{
+				std_msgs::Header header;
+				header.frame_id = globalFrame;
+				header.stamp = cam_msg->header.stamp;
+				this->allMarkers["particle"] = mps::visualize(*particle.state, header, scenario->rng);
+				this->visualPub.publish(this->allMarkers.flatten());
 			}
 		}
 
@@ -714,7 +727,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		visualization_msgs::MarkerArray ma;
 		ma.markers.resize(1);
 		ma.markers.front().action = visualization_msgs::Marker::DELETEALL;
-		octreePub.publish(ma);
+		visualPub.publish(ma);
 	}
 
 	{
@@ -724,7 +737,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			m.ns = "map";
 		}
 		allMarkers["map"] = ma;
-		octreePub.publish(allMarkers.flatten());
+		visualPub.publish(allMarkers.flatten());
 	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
@@ -734,38 +747,37 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-//	{
-//
-//		scene->cloud->header.frame_id = scene->cameraFrame;
-//		pcl_conversions::toPCL(ros::Time::now(), scene->cloud->header.stamp);
-//		pcPub.publish(*scene->cloud);
-//		std::cerr << "cloud." << std::endl;
-//		sleep(3);
-//
-//		scene->cropped_cloud->header.frame_id = scene->cameraFrame;
-//		pcl_conversions::toPCL(ros::Time::now(), scene->cropped_cloud->header.stamp);
-//		pcPub.publish(*scene->cropped_cloud);
-//		std::cerr << "cropped_cloud." << std::endl;
-//		sleep(3);
-//
-//		scene->pile_cloud->header.frame_id = scene->cameraFrame;
-//		pcl_conversions::toPCL(ros::Time::now(), scene->pile_cloud->header.stamp);
-//		pcPub.publish(*scene->pile_cloud);
-//		std::cerr << "pile_cloud." << std::endl;
-//		sleep(3);
-//
-//		for (auto& seg : scene->segments)
-//		{
-//
-//			seg.second->header.frame_id = scene->cameraFrame;
-//			pcl_conversions::toPCL(ros::Time::now(), seg.second->header.stamp);
-//			pcPub.publish(*seg.second);
-//			std::cerr << seg.first.id << std::endl;
-//			sleep(1);
-//		}
-//	}
+	if (scenario->visualize["pointclouds"])
+	{
 
-// TODO: Visualize OccupancyData
+		scene->cloud->header.frame_id = scene->cameraFrame;
+		pcl_conversions::toPCL(ros::Time::now(), scene->cloud->header.stamp);
+		pcPub.publish(*scene->cloud);
+		std::cerr << "cloud." << std::endl;
+		sleep(3);
+
+		scene->cropped_cloud->header.frame_id = scene->cameraFrame;
+		pcl_conversions::toPCL(ros::Time::now(), scene->cropped_cloud->header.stamp);
+		pcPub.publish(*scene->cropped_cloud);
+		std::cerr << "cropped_cloud." << std::endl;
+		sleep(3);
+
+		scene->pile_cloud->header.frame_id = scene->cameraFrame;
+		pcl_conversions::toPCL(ros::Time::now(), scene->pile_cloud->header.stamp);
+		pcPub.publish(*scene->pile_cloud);
+		std::cerr << "pile_cloud." << std::endl;
+		sleep(3);
+
+		for (auto& seg : scene->bestGuess->segments)
+		{
+			seg.second->header.frame_id = scene->cameraFrame;
+			pcl_conversions::toPCL(ros::Time::now(), seg.second->header.stamp);
+			pcPub.publish(*seg.second);
+			std::cerr << seg.first.id << std::endl;
+			sleep(1);
+		}
+	}
+
 /*
 	// Remove objects from "map" tree visualization
 	for (const auto& obj : scene->bestGuess->objects)
@@ -824,7 +836,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		ms.markers.push_back(m);
 
 		allMarkers["bounds"] = ms;
-		octreePub.publish(allMarkers.flatten());
+		visualPub.publish(allMarkers.flatten());
 		WAIT_KEY(200);
 
 	}
@@ -842,7 +854,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		particleFilter->particles[i].state->uniqueObjectLabels = getUniqueObjectLabels(particleFilter->particles[i].state->vertexState);
 	//// Visualize state
 		auto pfmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(particleFilter->particles[i].state->vertexState, scene->worldFrame, "State" + std::to_string(i));
-		octreePub.publish(pfmarker);
+		visualPub.publish(pfmarker);
 		std::cerr << "State particle shown!" << std::endl;
 		sleep(5);
 	}
@@ -863,7 +875,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		m.scale.x *= 1.2; m.scale.y *= 1.2; m.scale.z *= 1.2;
 //		m.ns = "worst";// + std::to_string(m.id);
 //	}
-//	octreePub.publish(objToMoveVis);
+//	visualPub.publish(objToMoveVis);
 //	WAIT_KEY(10);
 
 	{//visualize the shadow
@@ -881,7 +893,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //			m.color.r
         }
 		allMarkers["hidden"] = ma;
-		octreePub.publish(allMarkers.flatten());
+		visualPub.publish(allMarkers.flatten());
 	}
     std::cerr << "Published " << scene->occludedPts.size() << " points." << std::endl;
 
@@ -952,7 +964,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
             count++;
             ma.markers.push_back(shadow_mk);
         }
-        octreePub.publish(ma);
+        visualPub.publish(ma);
     }
 
 
@@ -1113,7 +1125,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //			setAlpha(a.second, alpha);
 //		}
 //		allMarkers[m.ns] = ma;
-//		octreePub.publish(allMarkers.flatten());
+//		visualPub.publish(allMarkers.flatten());
 //		sleep(1);
 //
 //		// Display sample ray
@@ -1131,12 +1143,12 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		ma.markers.front() = m;
 //
 //		allMarkers[m.ns] = ma;
-//		octreePub.publish(allMarkers.flatten());
+//		visualPub.publish(allMarkers.flatten());
 //		sleep(1);
 //
 //		// Display sample object
 //		setAlpha(allMarkers["completed_"+std::to_string(std::abs(sample.id.id))], 1.0);
-//		octreePub.publish(allMarkers.flatten());
+//		visualPub.publish(allMarkers.flatten());
 //		sleep(1);
 ////		ma.markers.push_back(m);
 //
@@ -1254,7 +1266,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 						m.ns = frameID;
 					}
 					allMarkers[frameID] = ma;
-					octreePub.publish(allMarkers.flatten());
+					visualPub.publish(allMarkers.flatten());
 					ros::Duration(0.5).sleep();
 				}
 			}
@@ -1389,6 +1401,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	setIfMissing(pnh, "track_color", "green");
 	setIfMissing(pnh, "use_memory", true);
 	setIfMissing(pnh, "use_completion", "optional");
+	setIfMissing(pnh, "visualize", std::vector<std::string>{"particles"});
 
 #ifdef USE_CUDA_SIFT
 	sparseTracker = std::make_unique<CudaTracker>();
@@ -1463,7 +1476,18 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	nh.getParam("/experiment/id", experiment_id);
 	nh.getParam("/experiment/directory", experiment_dir);
 
-	octreePub = nh.advertise<visualization_msgs::MarkerArray>("visualization", 1, true);
+	std::vector<std::string> visualizeChannels;
+	pnh.param("visualize", visualizeChannels, std::vector<std::string>());
+	if (!visualizeChannels.empty())
+	{
+		std::cerr << "Visualizing channels:" << std::endl;
+		for (const auto& m : visualizeChannels)
+		{
+			std::cerr << "\t" << m << std::endl;
+		}
+	}
+
+	visualPub = nh.advertise<visualization_msgs::MarkerArray>("visualization", 1, true);
 	gripperLPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/left_arm/gripper_command", 1, false);
 	gripperRPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/right_arm/gripper_command", 1, false);
 	displayPub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, false);
@@ -1509,6 +1533,11 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	scenario->mapServer = mapServer;
 	scenario->completionClient = completionClient;
 	scenario->segmentationClient = segmentationClient;
+
+	for (const auto& m : visualizeChannels)
+	{
+		this->scenario->visualize.emplace(m, true);
+	}
 
 	processor = std::make_unique<SceneProcessor>(scenario, use_memory, useShapeCompletion);
 

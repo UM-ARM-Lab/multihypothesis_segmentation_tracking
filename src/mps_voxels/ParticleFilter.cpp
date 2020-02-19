@@ -14,9 +14,7 @@ ParticleFilter::ParticleFilter(const VoxelRegion::vertex_descriptor& dims, const
 	particles.resize(n);
 	for (int i=0; i<n; ++i)
 	{
-		particles[i].state = std::make_shared<Particle::ParticleData>();
-		particles[i].state->voxelRegion = voxelRegion;
-		particles[i].state->vertexState.resize(voxelRegion->num_vertices(), -1);
+		particles[i].state = std::make_shared<Particle::ParticleData>(voxelRegion);
 	}
 }
 
