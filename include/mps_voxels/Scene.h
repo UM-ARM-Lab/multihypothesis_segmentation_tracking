@@ -65,6 +65,8 @@ public:
 
 	std::default_random_engine rng;
 
+	std::map<std::string, bool> visualize;
+
 	bool loadManipulators(robot_model::RobotModelPtr& pModel);
 };
 
@@ -74,8 +76,6 @@ public:
 	using Pose = moveit::Pose;
 
 	// Per-instant properties
-
-	std::map<std::string, bool> visualize;
 
 	std::shared_ptr<Scenario> scenario;
 	std::map<std::string, std::shared_ptr<MotionModel>> selfModels;

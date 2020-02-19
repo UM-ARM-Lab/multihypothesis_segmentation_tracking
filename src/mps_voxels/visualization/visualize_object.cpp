@@ -26,51 +26,51 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#include "mps_voxels/visualization/visualize_object.h"
+#include "mps_voxels/octree_utils.h"
+#include "mps_voxels/util/containers.hpp"
 
-#include "mps_voxels/OccupancyData.h"
-#include "mps_voxels/moveit_pose_type.h"
-#include "mps_voxels/Scene.h"
+#include <geometric_shapes/shape_operations.h>
 
 namespace mps
 {
 
-OccupancyData::OccupancyData(std::shared_ptr<VoxelRegion> region)
-	: voxelRegion(std::move(region)),
-	  vertexState(voxelRegion->num_vertices(), -1),
-	  edgeState(voxelRegion->num_edges(), false)
+visualization_msgs::MarkerArray visualize(const Object& obj, const std_msgs::Header& header, std::default_random_engine& re)
 {
+	const auto& subtree = obj.occupancy;
 
-}
+	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
 
-collision_detection::WorldPtr
-computeCollisionWorld(const OccupancyData& occupancy)
-{
-	auto world = std::make_shared<collision_detection::World>();
+	std_msgs::ColorRGBA color;
+	color.r = uni(re);
+	color.g = uni(re);
+	color.b = uni(re);
+	color.a = 1.0;
 
-	moveit::Pose robotTworld = occupancy.parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
-
-	for (const auto& obstacle : occupancy.parentScene.lock()->scenario->staticObstacles)
+	visualization_msgs::MarkerArray ma = visualizeOctree(subtree.get(), header.frame_id, &color);
+	const std::string name = "completed_"+std::to_string(std::abs(obj.index.id));
+	for (auto& m : ma.markers)
 	{
-		world->addToObject(OccupancyData::CLUTTER_NAME, obstacle.first, robotTworld * obstacle.second);
+		m.ns = name;
+		m.header.stamp = header.stamp;
 	}
 
-	// Use aliasing shared_ptr constructor
-//	world->addToObject(CLUTTER_NAME,
-//	                   std::make_shared<shapes::OcTree>(std::shared_ptr<octomap::OcTree>(std::shared_ptr<octomap::OcTree>{}, sceneOctree)),
-//	                   robotTworld);
+	// Visualize approximate shape
+	visualization_msgs::Marker m;
+	auto& approx = obj.approximation;
+	shapes::constructMarkerFromShape(approx.get(), m, true);
+	m.id = std::abs(obj.index.id);
+	m.ns = "bounds";
+	m.header = header;
+	m.pose.orientation.w = 1;
+	m.color = color; m.color.a = 0.6;
+	m.frame_locked = true;
+	visualization_msgs::MarkerArray ms;
+	ms.markers.push_back(m);
 
-	for (const auto& obj : occupancy.objects)
-	{
-		const std::shared_ptr<octomap::OcTree>& segment = obj.second->occupancy;
-		world->addToObject(std::to_string(obj.first.id), std::make_shared<shapes::OcTree>(segment), robotTworld);
-	}
+	ma.markers += ms.markers;
 
-//	for (auto& approxSegment : approximateSegments)
-//	{
-//		world->addToObject(CLUTTER_NAME, approxSegment, robotTworld);
-//	}
-
-	return world;
+	return ma;
 }
 
 }

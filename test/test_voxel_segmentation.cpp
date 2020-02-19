@@ -211,7 +211,7 @@ TEST(segmentation, octree)
 //			m.ns = "map";
 //		}
 //		allMarkers["map"] = ma;
-//		octreePub.publish(allMarkers.flatten());
+//		visualPub.publish(allMarkers.flatten());
 //	}
 
 }
