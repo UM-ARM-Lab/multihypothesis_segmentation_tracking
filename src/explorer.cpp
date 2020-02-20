@@ -479,14 +479,14 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		for (int i=0; i<particleFilter->numParticles; ++i)
 		{
 			particleFilter->particles[i] = particleFilter->applyActionModel(particleFilter->particles[i], scene->cameraModel, scene->worldTcamera,
-			                                 historian->buffer, sparseTracker, denseTracker,1);
+			                                                                historian->buffer, sparseTracker, denseTracker,10);
 
 			std_msgs::Header header; header.frame_id = scene->worldFrame; header.stamp = ros::Time::now();
 			auto pfMarkers = mps::visualize(*particleFilter->particles[i].state, header, rng);
 //			auto pfnewmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(particleFilter->particles[i].state->vertexState, scene->worldFrame, "newState" + std::to_string(i));
 			visualPub.publish(pfMarkers);
 			std::cerr << "Predicted state particle shown!" << std::endl;
-				sleep(5);
+			sleep(5);
 		}
 	}
 	return true;
@@ -829,9 +829,10 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	{
 		particleFilter->particles[i].state->vertexState = particleFilter->voxelRegion->objectsToSubRegionVoxelLabel(scene->bestGuess->objects, scene->minExtent.head<3>().cast<double>());
 		particleFilter->particles[i].state->uniqueObjectLabels = getUniqueObjectLabels(particleFilter->particles[i].state->vertexState);
-	//// Visualize state
-		auto pfmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(particleFilter->particles[i].state->vertexState, scene->worldFrame, "State" + std::to_string(i));
-		visualPub.publish(pfmarker);
+		// Visualize state
+		std_msgs::Header header; header.frame_id = scene->worldFrame; header.stamp = ros::Time::now();
+		auto pfMarkers = mps::visualize(*particleFilter->particles[i].state, header, rng);
+		visualPub.publish(pfMarkers);
 		std::cerr << "State particle shown!" << std::endl;
 		sleep(5);
 	}

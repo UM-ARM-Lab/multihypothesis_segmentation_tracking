@@ -146,13 +146,6 @@ public:
 
 	std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>> vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<ObjectIndex>& uniqueObjectLabels);
 
-	[[deprecated]]
-	visualization_msgs::MarkerArray visualizeVertexLabelsDirectly(VertexLabels& vlabels,
-	                                                              const std::string& globalFrame, const std::string& ns = "state");
-	[[deprecated]]
-	visualization_msgs::MarkerArray visualizeEdgeStateDirectly(EdgeState& edges,
-	                                                           const std::string& globalFrame);
-
 	VertexLabels objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects, // object in subRegion
 	                                                            const Eigen::Vector3d& subRegionMinExtent);
 };
