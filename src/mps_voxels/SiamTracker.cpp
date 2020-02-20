@@ -54,9 +54,9 @@ bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 		return false;
 	}
 	int numframes = static_cast<int>(steps.size());
-	std::cerr << "Number of time steps: " << numframes << std::endl;
+//	std::cerr << "Number of time steps: " << numframes << std::endl;
 //	sensor_msgs::Image video[numframes];
-	for (int i = 0; i < numframes && ros::ok(); i++) // TODO: do NOT change i-step here; otherwise, masks don't match with vector<Time> steps
+	for (int i = 0; i < numframes && ros::ok(); i++) //// do NOT change i-step here; otherwise, masks don't match with vector<Time> steps
 	{
 		cv::Mat im = buffer.rgb.at(steps[i])->image;
 		cv_bridge::CvImage out_msg;

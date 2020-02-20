@@ -65,7 +65,9 @@ public:
 
 	void weightedSampleSIFT(int n = 1);
 
-	bool isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::Ptr& initCloudSegment, const pcl::PointCloud<PointT>::Ptr& lastCloudSegment, const moveit::Pose& worldTcamera, const double& scoreThreshold);
+	bool isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::Ptr& initCloudSegment, const pcl::PointCloud<PointT>::Ptr& lastCloudSegment,
+	                             const moveit::Pose& worldTcamera, const double& scoreThreshold,
+	                             const bool& useGuess = false, const Eigen::Matrix4f& guessCamera = Eigen::Matrix4f::Identity());
 };
 
 

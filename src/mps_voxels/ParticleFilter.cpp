@@ -28,7 +28,7 @@ Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const i
 //	cv::imwrite("/home/kunhuang/Pictures/segParticle.jpg", colorByLabel(segParticle));
 
 	cv::Rect roi = {0, 0, (int)cameraModel.cameraInfo().width, (int)cameraModel.cameraInfo().height};
-	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, roi, 20);
+	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, roi, 10);
 	std::cerr << "number of bounding boxes in segParticle: " << labelToBBoxLookup.size() << std::endl;
 
 	std::unique_ptr<ObjectActionModel> oam = std::make_unique<ObjectActionModel>(1);

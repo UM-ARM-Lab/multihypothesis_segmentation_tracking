@@ -78,6 +78,13 @@ public:
 	Eigen::Vector3d regionMin;
 	Eigen::Vector3d regionMax;
 
+	inline
+	bool isInRegion(Eigen::Vector3d query) const
+	{
+		return query.x() >= regionMin.x() && query.y() >= regionMin.y() && query.z() >= regionMin.z()
+		&& query.x() <= regionMax.x() && query.y() <= regionMax.y() && query.z() <= regionMax.z();
+	}
+
 	const vertex_descriptor m_dimension_lengths;
 	vertices_size_type m_num_vertices;
 

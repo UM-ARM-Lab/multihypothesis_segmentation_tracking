@@ -209,7 +209,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	}
 	std::vector<ros::Time> timeStartEnd;
 	timeStartEnd.push_back(steps[0]);
-	timeStartEnd.push_back(steps[steps.size()-1]);
+	timeStartEnd.push_back(steps.back());
 
 	/////////////////////////////////////////////
 	//// Look up worldTcamera
@@ -224,7 +224,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	/////////////////////////////////////////////
 	//// Tracking
 	/////////////////////////////////////////////
-	std::cout << "-------------------------------------------------------------------------------------" << std::endl;
+	std::cerr << "-------------------------------------------------------------------------------------" << std::endl;
 	//// SiamMask tracking: construct masks
 	std::map<ros::Time, cv::Mat> masks;
 	bool denseTrackSuccess = denseTracker->track(steps, buffer_out, bbox, masks);
@@ -233,7 +233,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 		ROS_ERROR_STREAM("Dense Track Failed!!!");
 		return false;
 	}
-	if (masks.find(steps[steps.size()-1]) == masks.end())
+	if (masks.find(steps.back()) == masks.end())
 	{
 		ROS_ERROR_STREAM("Failed to estimate motion because of insufficient masks! Return!");
 		return false;
@@ -243,27 +243,35 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	masks.insert(masks.begin(), {steps.front(), startMask});
 
 	/////////////////////////////////////////////
+	//// Estimate motion using SiamMask
+	/////////////////////////////////////////////
+	Eigen::Vector3d roughMotion = sampleActionFromMask(masks[steps[0]], buffer_out.depth[steps[0]]->image,
+	                                                   masks[steps.back()], buffer_out.depth[steps.back()]->image,
+	                                                   buffer_out.cameraModel, worldTcamera);
+	std::cerr << "Rough Motion from SiamMask: " << roughMotion.x() << " " << roughMotion.y() << " " << roughMotion.z() << std::endl;
+	Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
+	guess(0, 3) = roughMotion.x();
+	guess(1, 3) = roughMotion.y();
+	guess(2, 3) = roughMotion.z();
+	Eigen::Matrix4f guessCamera = worldTcamera.inverse().matrix().cast<float>() * guess * worldTcamera.matrix().cast<float>();
+
+	/////////////////////////////////////////////
 	//// ICP check & store
 	/////////////////////////////////////////////
 	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer_out.rgb.at(steps[0])->image, buffer_out.depth.at(steps[0])->image,
 	                                                                buffer_out.cameraModel, masks.at(steps[0]));
 	assert(!initCloudSegment->empty());
-	pcl::PointCloud<PointT>::Ptr lastCloudSegment = make_PC_segment(buffer_out.rgb.at(steps[ steps.size()-1 ])->image,
-	                                                                buffer_out.depth.at(steps[ steps.size()-1 ])->image,
+	pcl::PointCloud<PointT>::Ptr lastCloudSegment = make_PC_segment(buffer_out.rgb.at(steps.back())->image,
+	                                                                buffer_out.depth.at(steps.back())->image,
 	                                                                buffer_out.cameraModel,
-	                                                                masks.at(steps[ steps.size()-1 ]));
+	                                                                masks.at(steps.back()));
 	assert(!lastCloudSegment->empty());
-	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.001)) // TODO: decide the value of threshold
+	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002, true, guessCamera)) // TODO: decide the value of threshold
 	{
 		//// Generate reasonable disturbance in ParticleFilter together with failed situations
-		return false;
+		std::cerr << "Although ICP tells us SiamMask isn't reasonable, we still use it for now." << std::endl;
+//		return false;
 	}
-
-	//// Estimate motion using SiamMask
-	Eigen::Vector3d roughMotion = sampleActionFromMask(masks[steps[0]], buffer_out.depth[steps[0]]->image,
-	                                                   masks[steps[steps.size()-1]], buffer_out.depth[steps[steps.size()-1]]->image,
-	                                                   buffer_out.cameraModel, worldTcamera);
-	std::cerr << "Rough Motion from SiamMask: " << roughMotion.x() << " " << roughMotion.y() << " " << roughMotion.z() << std::endl;
 
 	//// SIFT
 	sparseTracker->track(timeStartEnd, buffer_out, masks, "/home/kunhuang/Videos/" + std::to_string((int)label) + "_");
@@ -274,8 +282,8 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	if (clusterRigidBodyTransformation(sparseTracker->flows3, worldTcamera))
 	{
 		std::cerr << "USE sift" << std::endl;
-		weightedSampleSIFT((int)round(numSamples * 0.6));
-		for (int i = 0; i < numSamples - (int)round(numSamples * 0.6); ++i)
+		weightedSampleSIFT((int)round(numSamples * 0.4));
+		for (int i = 0; i < numSamples - (int)round(numSamples * 0.4); ++i)
 		{
 			actionSamples.push_back(icpRigidTF);
 		}
@@ -287,6 +295,12 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 		{
 			actionSamples.push_back(icpRigidTF);
 		}
+	}
+	for (auto& as : actionSamples)
+	{
+		std::cerr << "Action sample:";
+		std::cerr << "\t Linear: " << as.linear.x() << " " << as.linear.y() << " " << as.linear.z();
+		std::cerr << "\t Angular: " << as.angular.x() << " " << as.angular.y() << " " << as.angular.z() << std::endl;
 	}
 	return true;
 }
@@ -311,23 +325,30 @@ void ObjectActionModel::weightedSampleSIFT(int n)
 	}
 }
 
-bool ObjectActionModel::isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::Ptr& initCloudSegment, const pcl::PointCloud<PointT>::Ptr& lastCloudSegment, const moveit::Pose& worldTcamera, const double& scoreThreshold)
+bool ObjectActionModel::isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::Ptr& initCloudSegment, const pcl::PointCloud<PointT>::Ptr& lastCloudSegment,
+                             const moveit::Pose& worldTcamera, const double& scoreThreshold,
+                             const bool& useGuess, const Eigen::Matrix4f& guessCamera)
 {
 	assert(!initCloudSegment->empty());
 	assert(!lastCloudSegment->empty());
 
+	bool isValid = true;
 	//// ICP
 	pcl::IterativeClosestPoint<PointT, PointT> icp;
+	icp.setMaximumIterations(50);
+//	icp.setTransformationEpsilon(1e-9);
+	icp.setEuclideanFitnessEpsilon(0.1);
 	icp.setInputSource(initCloudSegment);
 	icp.setInputTarget(lastCloudSegment);
 	pcl::PointCloud<PointT> Final;
-	icp.align(Final);
+	if (useGuess) { icp.align(Final, guessCamera); }
+	else { icp.align(Final); }
 	double score = icp.getFitnessScore();
 	std::cerr << "ICP is Converged: " << icp.hasConverged() << "; Score = " << score << std::endl;
 	if (score > scoreThreshold)
 	{
 		ROS_ERROR_STREAM("SiamMask result doesn't make sense according to ICP.");
-		return false;
+		isValid = false;
 	}
 
 	Eigen::Matrix<float, 4, 4> Mcamera = icp.getFinalTransformation();
@@ -348,7 +369,7 @@ bool ObjectActionModel::isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::P
 	std::cerr << "\t Angular: " << twist.angular.x() << " " << twist.angular.y() << " " << twist.angular.z() << std::endl;
 
 	icpRigidTF = twist;
-	return true;
+	return isValid;
 }
 
 std::shared_ptr<octomap::OcTree>
@@ -403,6 +424,7 @@ moveParticle(const Particle& inputParticle, const std::map<int, RigidTF>& labelT
 			Eigen::Vector3d newCoord;
 			newCoord = cos(tf.theta) * originalCoord + sin(tf.theta) * tf.e.cross(originalCoord) + (1 - cos(tf.theta)) * tf.e.dot(originalCoord) * tf.e;
 			newCoord += tf.linear;
+			if (!outputParticle.state->voxelRegion->isInRegion(newCoord)) continue;
 
 			VoxelRegion::vertex_descriptor newVD = coordToVertexDesc(outputParticle.state->voxelRegion->resolution, outputParticle.state->voxelRegion->regionMin, newCoord);
 			auto index = outputParticle.state->voxelRegion->index_of(newVD);
