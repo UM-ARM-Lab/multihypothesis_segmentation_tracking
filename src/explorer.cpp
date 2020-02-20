@@ -459,14 +459,14 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			std::string worldname = "experiment_world_02_07";
 			{
 				std::cerr << "start logging historian->buffer" << std::endl;
-				DataLog logger("/home/kunhuang/mps_log/explorer_buffer_" + worldname + ".bag");
+				DataLog logger(experiment_dir + "/explorer_buffer_" + worldname + ".bag");
 				logger.activeChannels.insert("buffer");
 				logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
 				std::cerr << "Successfully logged." << std::endl;
 			}
 			{
 				std::cerr << "start logging scene->segInfo" << std::endl;
-				DataLog logger("/home/kunhuang/mps_log/explorer_segInfo_" + worldname + ".bag");
+				DataLog logger(experiment_dir + "/explorer_segInfo_" + worldname + ".bag");
 				logger.activeChannels.insert("segInfo");
 				logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
 				std::cerr << "Successfully logged." << std::endl;
@@ -480,8 +480,11 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		{
 			particleFilter->particles[i] = particleFilter->applyActionModel(particleFilter->particles[i], scene->cameraModel, scene->worldTcamera,
 			                                 historian->buffer, sparseTracker, denseTracker,1);
-			auto pfnewmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(particleFilter->particles[i].state->vertexState, scene->worldFrame, "newState" + std::to_string(i));
-			visualPub.publish(pfnewmarker);
+
+			std_msgs::Header header; header.frame_id = scene->worldFrame; header.stamp = ros::Time::now();
+			auto pfMarkers = mps::visualize(*particleFilter->particles[i].state, header, rng);
+//			auto pfnewmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(particleFilter->particles[i].state->vertexState, scene->worldFrame, "newState" + std::to_string(i));
+			visualPub.publish(pfMarkers);
 			std::cerr << "Predicted state particle shown!" << std::endl;
 				sleep(5);
 		}

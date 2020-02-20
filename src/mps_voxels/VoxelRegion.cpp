@@ -310,10 +310,16 @@ VoxelRegion::vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<Ob
 			vertex_descriptor query = vertex_at(i);
 			Eigen::Vector3d pos = regionMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(query.data()).cast<double>()) + offset;
 
-			labelToOcTreeLookup[ObjectIndex(vlabels[i])]->updateNode(pos.x(), pos.y(), pos.z(), true);
-			labelToOcTreeLookup[ObjectIndex(vlabels[i])]->setNodeValue(pos.x(), pos.y(), pos.z(), 1.0);
+			labelToOcTreeLookup[ObjectIndex(vlabels[i])]->updateNode(pos.x(), pos.y(), pos.z(), true, true);
+//			labelToOcTreeLookup[ObjectIndex(vlabels[i])]->setNodeValue(pos.x(), pos.y(), pos.z(), 1.0);
 		}
 	}
+
+	for (auto& pair : labelToOcTreeLookup)
+	{
+		pair.second->updateInnerOccupancy();
+	}
+
 	return labelToOcTreeLookup;
 }
 

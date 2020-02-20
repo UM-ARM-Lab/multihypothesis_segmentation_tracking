@@ -36,7 +36,7 @@ cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeC
 	cv::Mat depthBuf(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_32F, std::numeric_limits<DepthT>::max());
 
 	std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>> labelToOcTreeLookup = particle.state->voxelRegion->vertexLabelToOctrees(particle.state->vertexState, particle.state->uniqueObjectLabels);
-	std::cerr << "labelToOcTreeLookup contains " << labelToOcTreeLookup.size() << " elements." << std::endl;
+//	std::cerr << "labelToOcTreeLookup contains " << labelToOcTreeLookup.size() << " elements." << std::endl;
 
 	const Eigen::Vector3d r0_world = worldTcamera.translation();
 	const octomap::point3d cameraPose(r0_world.x(), r0_world.y(), r0_world.z());
