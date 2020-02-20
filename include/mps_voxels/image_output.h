@@ -53,7 +53,7 @@
 #define IMSHOW(n, t) _unused((n)); _unused((t))
 #define NAMEDWINDOW(n, t) _unused((n)); _unused((t))
 #elif IMAGE_VIEW_MODE == IMAGES_ROS
-#define WAIT_KEY(x) _unused((x))
+#define WAIT_KEY(x) _unused((x)); sleep(3)
 #define IMSHOW(n, t) ::mps::ImageOutputSingleton::sendImage((n), (t))
 #define NAMED_WINDOW(n, t) ::mps::ImageOutputSingleton::initChannel((n)); _unused((t))
 #else

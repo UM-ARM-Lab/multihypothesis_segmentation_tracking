@@ -581,15 +581,30 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	SegmentationTreeSampler treeSampler(scene->segInfo);
 	const size_t nParticles = 5;
 	std::vector<Particle> particles;
+	std::map<ParticleIndex, tree::TreeCut> cuts;
 	for (size_t p = 0; p < nParticles; ++p)
 	{
 		const SAMPLE_TYPE sampleType = (0 == p) ? SAMPLE_TYPE::MAXIMUM : SAMPLE_TYPE::RANDOM;
 
-		auto sample = treeSampler.sample(rng, sampleType);
 		Particle particle;
 		particle.particle.id = p;
+
+		auto sample = treeSampler.sample(rng, sampleType);
+
+		const auto cutIter = cuts.find(particle.particle);
+		if (cuts.end() == cutIter)
+		{
+			cuts.emplace(particle.particle, sample.second.cut);
+		}
+		else
+		{
+			std::cerr << "Rejected duplicate sample." << std::endl;
+			sample = treeSampler.sample(rng, sampleType);
+			cuts.emplace(particle.particle, sample.second.cut);
+		}
+
 		particle.state = std::make_shared<OccupancyData>(voxelRegion);
-		particle.state->segInfo = std::make_shared<SegmentationInfo>(sample.second);
+		particle.state->segInfo = std::make_shared<SegmentationInfo>(sample.second.segmentation);
 		particle.weight = sample.first;
 		bool execSegmentation = processor->performSegmentation(*scene, particle.state->segInfo, *particle.state);
 		if (!execSegmentation)
@@ -627,8 +642,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //			std::cerr << "Segmentation based on particle generated!" << std::endl;
 //			IMSHOW("particle", segParticle);
 //			WAIT_KEY(0);
-			IMSHOW("segmentation", particle.state->segInfo->objectness_segmentation->image);
-			WAIT_KEY(0);
 
 			// Clear visualization
 			{
@@ -637,6 +650,11 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				ma.markers.front().action = visualization_msgs::Marker::DELETEALL;
 				visualPub.publish(ma);
 			}
+
+			IMSHOW("segmentation", colorByLabel(particle.state->segInfo->objectness_segmentation->image));
+
+			IMSHOW("orig_segmentation", colorByLabel(scene->segInfo->objectness_segmentation->image));
+			WAIT_KEY(0);
 
 			{
 				std_msgs::Header header;
@@ -796,50 +814,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 	}
 
-	for (const auto& obj : scene->bestGuess->objects)
-	{
-		MPS_ASSERT(scene->segments.find(obj.first) != scene->segments.end());
-
-		ObjectLogger::logObject(obj.second.get(), experiment_dir, std::to_string(std::abs(obj.first.id)));
-
-		if (!ros::ok()) { return; }
-		const auto& subtree = obj.second->occupancy;
-
-		std_msgs::ColorRGBA colorRGBA;
-		colorRGBA.a = 1.0f;
-		colorRGBA.r = rand()/(float)RAND_MAX;
-		colorRGBA.g = rand()/(float)RAND_MAX;
-		colorRGBA.b = rand()/(float)RAND_MAX;
-		visualization_msgs::MarkerArray ma = visualizeOctree(subtree.get(), globalFrame, &colorRGBA);
-		const std::string name = "completed_"+std::to_string(std::abs(obj.first.id));
-		for (auto& m : ma.markers)
-		{
-//			m.colors.clear();
-//			m.color = colorRGBA;
-			m.ns = name;
-			m.header.stamp = cam_msg->header.stamp;
-		}
-		allMarkers["completed_"+std::to_string(std::abs(obj.first.id))].markers += ma.markers;
-
-		// Visualize approximate shape
-		visualization_msgs::Marker m;
-		auto& approx = obj.second->approximation;
-		shapes::constructMarkerFromShape(approx.get(), m, true);
-		m.id = std::abs(obj.first.id);
-		m.ns = "bounds";
-		m.header.frame_id = globalFrame;
-		m.header.stamp = cam_msg->header.stamp;
-		m.pose.orientation.w = 1;
-		m.color = colorRGBA; m.color.a = 0.6;
-		m.frame_locked = true;
-		visualization_msgs::MarkerArray ms;
-		ms.markers.push_back(m);
-
-		allMarkers["bounds"] = ms;
-		visualPub.publish(allMarkers.flatten());
-		WAIT_KEY(200);
-
-	}
  */
 
 	/////////////////////////////////////////////
@@ -1642,6 +1616,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	NAMED_WINDOW("target_mask", cv::WINDOW_GUI_NORMAL);
 	NAMED_WINDOW("rgb", cv::WINDOW_GUI_NORMAL);
 	NAMED_WINDOW("segmentation", cv::WINDOW_GUI_NORMAL);
+	NAMED_WINDOW("orig_segmentation", cv::WINDOW_GUI_NORMAL);
 
 	SensorHistorian::SubscriptionOptions options(topic_prefix);
 

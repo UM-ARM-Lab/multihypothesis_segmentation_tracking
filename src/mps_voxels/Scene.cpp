@@ -596,11 +596,11 @@ bool SceneProcessor::performSegmentation(const Scene& s, const std::shared_ptr<S
 		return false;
 	}
 
-	for (const auto label : unique(s.segInfo->objectness_segmentation->image))
+	for (const auto label : unique(segHypo->objectness_segmentation->image))
 	{
 		if (occupancy.labelToIndexLookup.left.find(label) == occupancy.labelToIndexLookup.left.end())
 		{
-			s.segInfo->objectness_segmentation->image.setTo(0, label == s.segInfo->objectness_segmentation->image);
+			segHypo->objectness_segmentation->image.setTo(0, label == segHypo->objectness_segmentation->image);
 		}
 	}
 

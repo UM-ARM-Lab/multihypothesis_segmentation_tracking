@@ -36,12 +36,15 @@
 #include "mps_voxels/MCMCTreeCut_impl.hpp"
 #include "mps_voxels/relabel_tree_image.hpp"
 
+// Still needed for cv_bridge currently
+#include <boost/make_shared.hpp>
+
 namespace mps
 {
 
 
 SegmentationTreeSampler::SegmentationTreeSampler(std::shared_ptr<const SegmentationInfo> original_, const Options& opts) // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
-	: Belief<SegmentationInfo>(),
+	: Belief<SegmentationCut>(),
 	  originalInfo(std::move(original_))
 {
 	um = std::make_unique<Ultrametric>(originalInfo->ucm2, originalInfo->labels2);
@@ -56,15 +59,17 @@ SegmentationTreeSampler::SegmentationTreeSampler(std::shared_ptr<const Segmentat
 	mcmc->nTrials = opts.autoCorrelationSteps;
 }
 
-std::pair<double, SegmentationInfo>
+std::pair<double, SegmentationCut>
 SegmentationTreeSampler::sample(RNG& rng, const SAMPLE_TYPE type)
 {
 	auto res = mcmc->sample(rng, type);
 
+	const auto& os = originalInfo->objectness_segmentation;
 	SegmentationInfo newSeg = *originalInfo; // Mostly shallow copy
-	newSeg.objectness_segmentation->image =
-		cv::Mat(originalInfo->objectness_segmentation->image.size(),
-			originalInfo->objectness_segmentation->image.type());
+	newSeg.objectness_segmentation = boost::make_shared<cv_bridge::CvImage>(
+		os->header, os->encoding,
+		cv::Mat(os->image.size(),
+		        os->image.type()));
 
 	std::map<int, int> index_to_label;
 	for (const auto& pair : um->label_to_index)
@@ -73,10 +78,10 @@ SegmentationTreeSampler::sample(RNG& rng, const SAMPLE_TYPE type)
 	}
 
 	newSeg.objectness_segmentation->image =
-		relabelCut(vt, cutStar, index_to_label, newSeg.objectness_segmentation->image);
+		relabelCut(vt, res.second, index_to_label, newSeg.labels);
 
 
-	return {res.first, newSeg};
+	return {res.first, {newSeg, res.second}};
 }
 
 SegmentationTreeSampler::~SegmentationTreeSampler() = default;

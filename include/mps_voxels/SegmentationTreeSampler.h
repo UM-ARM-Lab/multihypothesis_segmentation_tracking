@@ -48,7 +48,13 @@ template <typename T>
 class MCMCTreeCut;
 }
 
-class SegmentationTreeSampler : public Belief<SegmentationInfo>
+struct SegmentationCut
+{
+	SegmentationInfo segmentation;
+	tree::TreeCut cut;
+};
+
+class SegmentationTreeSampler : public Belief<SegmentationCut>
 {
 public:
 	std::shared_ptr<const SegmentationInfo> originalInfo;
@@ -63,7 +69,7 @@ public:
 	struct Options
 	{
 		explicit Options() {} // NOLINT(hicpp-use-equals-default,modernize-use-equals-default) (Clang/GCC Bug)
-		double sigmaGain = 0.5; ///< Scaling factor for sampling sigma
+		double sigmaGain = 0.25; ///< Scaling factor for sampling sigma
 		int autoCorrelationSteps = 20; ///< Mixing number to reduce MCMC autocorrelation
 	};
 
@@ -73,7 +79,7 @@ public:
 	SegmentationTreeSampler(std::shared_ptr<const SegmentationInfo> originalInfo, const Options& opts = Options());
 	~SegmentationTreeSampler();
 
-	std::pair<double, SegmentationInfo> sample(RNG& rng, const SAMPLE_TYPE type) override;
+	std::pair<double, SegmentationCut> sample(RNG& rng, const SAMPLE_TYPE type) override;
 };
 
 }
