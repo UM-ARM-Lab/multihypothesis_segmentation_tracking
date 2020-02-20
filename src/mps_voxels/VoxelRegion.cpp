@@ -44,6 +44,7 @@ VoxelRegion::VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res,
 	: resolution(res), regionMin(std::move(rmin)), regionMax(std::move(rmax)), m_dimension_lengths(dims)
 {
 	precalculate();
+	regionMinSnapped = {snapCoord(resolution, rmin.x()), snapCoord(resolution, rmin.y()), snapCoord(resolution, rmin.z())};
 }
 
 size_t VoxelRegion::getEdgeIndex(VoxelRegion::vertex_descriptor a, VoxelRegion::vertex_descriptor b)
@@ -301,14 +302,12 @@ VoxelRegion::vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<Ob
 		labelToOcTreeLookup.emplace(label, std::make_shared<octomap::OcTree>(resolution));
 	}
 
-	Eigen::Vector3d offset(resolution * 0.5, resolution * 0.5, resolution * 0.5);
-
 	for (int i = 0; i < (int)vlabels.size(); ++i)
 	{
 		if (vlabels[i] >= 0)
 		{
 			vertex_descriptor query = vertex_at(i);
-			Eigen::Vector3d pos = regionMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(query.data()).cast<double>()) + offset;
+			Eigen::Vector3d pos = coordinate_of(query);
 
 			labelToOcTreeLookup[ObjectIndex(vlabels[i])]->updateNode(pos.x(), pos.y(), pos.z(), true);
 			labelToOcTreeLookup[ObjectIndex(vlabels[i])]->setNodeValue(pos.x(), pos.y(), pos.z(), 1.0);
@@ -323,14 +322,13 @@ VoxelRegion::visualizeVertexLabelsDirectly(VertexLabels& vlabels,
 {
 	visualization_msgs::MarkerArray vertexLabelVis;
 	vertexLabelVis.markers.resize(1);
-	Eigen::Vector3d offset(resolution * 0.5, resolution * 0.5, resolution * 0.5);
 
 	std::map<int, Eigen::Vector3d> colormap;
 	for (size_t i = 0; i < vlabels.size(); i++)
 	{
 		if (vlabels[i] < 0) { continue; }
 		const vertex_descriptor vd = vertex_at(i);
-		Eigen::Vector3d coord = regionMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>()) + offset;
+		Eigen::Vector3d coord = coordinate_of(vd);
 
 		geometry_msgs::Point cubeCenter;
 		cubeCenter.x = coord[0];
@@ -425,7 +423,7 @@ coordToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const 
 	mps::VoxelRegion::vertex_descriptor dims;
 	for (int i = 0; i < 3; ++i)
 	{
-		dims[i] = (queryCoord[i]-minCoord[i])/octree->getResolution();
+		dims[i] = round((queryCoord[i]-minCoord[i])/octree->getResolution());
 	}
 
 	return dims;
@@ -439,7 +437,7 @@ mps::VoxelRegion::vertex_descriptor coordToVertexDesc(const double& resolution, 
 	mps::VoxelRegion::vertex_descriptor dims;
 	for (int i = 0; i < 3; ++i)
 	{
-		dims[i] = (queryCoord[i]-minCoord[i])/resolution;
+		dims[i] = round((queryCoord[i]-minCoord[i])/resolution);
 	}
 	return dims;
 }
@@ -447,14 +445,14 @@ mps::VoxelRegion::vertex_descriptor coordToVertexDesc(const double& resolution, 
 Eigen::Vector3d gridToCoord(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin,
                             const mps::VoxelRegion::vertex_descriptor& query)
 {
-	Eigen::Vector3d offset(octree->getResolution() * 0.5, octree->getResolution() * 0.5, octree->getResolution() * 0.5);
-	return roiMin + octree->getResolution() * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(query.data()).cast<double>()) + offset;
+	auto minCoord = snap(roiMin, octree);
+	return minCoord + octree->getResolution() * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(query.data()).cast<double>());
 }
 
 Eigen::Vector3d vertexDescpToCoord(const double& resolution, const Eigen::Vector3d& roiMin, const mps::VoxelRegion::vertex_descriptor& query)
 {
-	Eigen::Vector3d offset(resolution * 0.5, resolution * 0.5, resolution * 0.5);
-	return roiMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(query.data()).cast<double>()) + offset;
+	Eigen::Vector3d minCoord = {snapCoord(resolution, roiMin.x()), snapCoord(resolution, roiMin.y()), snapCoord(resolution, roiMin.z())};
+	return minCoord + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(query.data()).cast<double>());
 }
 
 bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin,
