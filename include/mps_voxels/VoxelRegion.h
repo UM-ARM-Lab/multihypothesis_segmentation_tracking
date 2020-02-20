@@ -77,6 +77,14 @@ public:
 	double resolution;
 	Eigen::Vector3d regionMin;
 	Eigen::Vector3d regionMax;
+	Eigen::Vector3d regionMinSnapped;
+
+	inline
+	bool isInRegion(Eigen::Vector3d query) const
+	{
+		return query.x() >= regionMin.x() && query.y() >= regionMin.y() && query.z() >= regionMin.z()
+		&& query.x() <= regionMax.x() && query.y() <= regionMax.y() && query.z() <= regionMax.z();
+	}
 
 	const vertex_descriptor m_dimension_lengths;
 	vertices_size_type m_num_vertices;
@@ -141,7 +149,7 @@ public:
 
 	inline
 	Eigen::Vector3d coordinate_of(vertex_descriptor vd) const {
-		return regionMin + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>()) + (Eigen::Vector3d::Ones() * resolution * 0.5);
+		return regionMinSnapped + resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>());
 	}
 
 	std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>> vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<ObjectIndex>& uniqueObjectLabels);

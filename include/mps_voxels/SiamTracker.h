@@ -18,10 +18,10 @@ class DenseTracker
 {
 public:
 	virtual
-	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks) = 0;
+	bool track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks) = 0;
 
 	virtual
-	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks) = 0;
+	bool track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks) = 0;
 
 };
 
@@ -32,9 +32,9 @@ public:
 
 	actionlib::SimpleActionClient<mps_msgs::TrackBBoxAction> actionClient;
 
-	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks) override;
+	bool track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks) override;
 
-	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks) override;
+	bool track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks) override;
 
 	using LabelT = uint16_t;
 

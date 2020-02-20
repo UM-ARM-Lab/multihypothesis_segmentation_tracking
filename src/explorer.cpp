@@ -1401,7 +1401,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	                                                            ROImaxExtent.head<3>().cast<double>());
 	particleFilter = std::make_unique<ParticleFilter>(dims, resolution,
 	                                                  ROIminExtent.head<3>().cast<double>(),
-	                                                  ROImaxExtent.head<3>().cast<double>(), 1);
+	                                                  ROImaxExtent.head<3>().cast<double>(), 5);
 
 	bool gotParam = false;
 

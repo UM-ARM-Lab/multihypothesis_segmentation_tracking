@@ -50,7 +50,7 @@ cv::Mat& Tracker::getMask(const SensorHistoryBuffer& buffer)
 	const std::string tableFrame = "table_surface";
 
 	if (!buffer.tfs
-	    || !buffer.tfs->canTransform(buffer.cameraModel.tfFrame(), tableFrame, ros::Time(0), ros::Duration(1.0)))
+	    || !buffer.tfs->canTransform(buffer.cameraModel.tfFrame(), tableFrame, ros::Time(0)))
 	{
 		ROS_WARN_STREAM("Tracking failed: Failed to look up transform between '" << buffer.cameraModel.tfFrame() << "' and '"
 		                                                                         << tableFrame << "'.");
