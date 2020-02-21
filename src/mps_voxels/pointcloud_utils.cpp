@@ -30,9 +30,10 @@ namespace mps
 
 pcl::PointCloud<PointT>::Ptr filterInCameraFrame(
 	pcl::PointCloud<PointT>::Ptr& cloud,
-	const double zMin,
-	const double zMax,
-	const int k)
+	const float zMin,
+	const float zMax,
+	const int k,
+	const float stdDev)
 {
 	pcl::PointCloud<PointT>::Ptr cloud_trimmed (new pcl::PointCloud<PointT>);
 
@@ -43,16 +44,11 @@ pcl::PointCloud<PointT>::Ptr filterInCameraFrame(
 	//pass.setFilterLimitsNegative (true);
 	pass.filter (*cloud_trimmed);
 
-	pcl::PointCloud<PointT>::Ptr cloud_filtered (new pcl::PointCloud<PointT>);
-
-	// Create the filtering object
-	pcl::StatisticalOutlierRemoval<PointT> sor;
-	sor.setInputCloud (cloud_trimmed);
-	sor.setMeanK (k);
-	sor.setStddevMulThresh (1.0);
-	sor.filter (*cloud_filtered);
-
-	return cloud_filtered;
+	if (k > 0)
+	{
+		return filterOutliers(cloud_trimmed, k, stdDev);
+	}
+	return cloud_trimmed;
 }
 
 pcl::PointCloud<PointT>::Ptr cropInCameraFrame(
@@ -136,7 +132,7 @@ pcl::PointCloud<PointT>::Ptr filterPlane(
 pcl::PointCloud<PointT>::Ptr filterSmallClusters(
 	pcl::PointCloud<PointT>::Ptr& cloud,
 	const int clusterThreshold,
-	const int clusterDistance)
+	const float clusterDistance)
 {
 	// TODO: Doesn't work...
 	pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);

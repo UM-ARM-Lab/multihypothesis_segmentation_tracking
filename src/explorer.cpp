@@ -358,7 +358,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 
 	std::unique_ptr<CaptureGuard> captureGuard; ///< RAII-style stopCapture() for various exit paths
 
-//	if (compositeAction->primaryAction >= 0)
+	if (compositeAction->primaryAction >= 0)
 	{
 		captureGuard = std::make_unique<CaptureGuard>(historian.get());
 		auto cache = std::dynamic_pointer_cast<CachingRGBDSegmenter>(scenario->segmentationClient);
@@ -518,6 +518,14 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	scene->minExtent = minExtent;//.head<3>().cast<double>();
 	scene->maxExtent = maxExtent;//.head<3>().cast<double>();
 
+	{
+		// TODO: Clean up all these extents.
+		visualization_msgs::MarkerArray ma;
+		ma.markers.push_back(sparseTracker->track_options.roi.getMarker());
+//		ma.markers.back().ns = "roi";
+		allMarkers["roi"] = ma;
+	}
+
 	mostAmbNode = -1;
 
 	PROFILE_START("Preprocess Scene");
@@ -535,6 +543,27 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 
 	PROFILE_RECORD("Preprocess Scene");
+
+	if (scenario->visualize["pointclouds"])
+	{
+		scene->cloud->header.frame_id = scene->cameraFrame;
+		pcl_conversions::toPCL(ros::Time::now(), scene->cloud->header.stamp);
+		pcPub.publish(*scene->cloud);
+		std::cerr << "cloud." << std::endl;
+		sleep(3);
+
+		scene->cropped_cloud->header.frame_id = scene->cameraFrame;
+		pcl_conversions::toPCL(ros::Time::now(), scene->cropped_cloud->header.stamp);
+		pcPub.publish(*scene->cropped_cloud);
+		std::cerr << "cropped_cloud." << std::endl;
+		sleep(3);
+
+		scene->pile_cloud->header.frame_id = scene->cameraFrame;
+		pcl_conversions::toPCL(ros::Time::now(), scene->pile_cloud->header.stamp);
+		pcPub.publish(*scene->pile_cloud);
+		std::cerr << "pile_cloud." << std::endl;
+		sleep(3);
+	}
 
 	// Get Octree
 	octomap::OcTree* octree = mapServer->getOctree();
@@ -630,12 +659,12 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 		if (0 == p)
 		{
-			bool clearedVolume = processor->removeAccountedForOcclusion(scene->occludedPts, scene->occlusionTree, *particle.state);
-			if (!clearedVolume)
-			{
-				std::cerr << "Occlusion deduction failed." << std::endl;
-				return;
-			}
+//			bool clearedVolume = processor->removeAccountedForOcclusion(scene->occludedPts, scene->occlusionTree, *particle.state);
+//			if (!clearedVolume)
+//			{
+//				std::cerr << "Occlusion deduction failed." << std::endl;
+//				return;
+//			}
 		}
 
 		if (scenario->visualize["particles"])
@@ -650,13 +679,23 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				visualization_msgs::MarkerArray ma;
 				ma.markers.resize(1);
 				ma.markers.front().action = visualization_msgs::Marker::DELETEALL;
-				visualPub.publish(ma);
+//				visualPub.publish(ma);
 			}
 
 			IMSHOW("segmentation", colorByLabel(particle.state->segInfo->objectness_segmentation->image));
 
 			IMSHOW("orig_segmentation", colorByLabel(scene->segInfo->objectness_segmentation->image));
 			WAIT_KEY(0);
+
+			{
+				visualization_msgs::MarkerArray ma = visualizeOctree(octree, globalFrame);
+				for (visualization_msgs::Marker& m : ma.markers)
+				{
+					m.ns = "";
+				}
+				allMarkers["map"] = ma;
+				visualPub.publish(allMarkers.flatten());
+			}
 
 			{
 				std_msgs::Header header;
@@ -766,37 +805,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-
-	if (scenario->visualize["pointclouds"])
-	{
-
-		scene->cloud->header.frame_id = scene->cameraFrame;
-		pcl_conversions::toPCL(ros::Time::now(), scene->cloud->header.stamp);
-		pcPub.publish(*scene->cloud);
-		std::cerr << "cloud." << std::endl;
-		sleep(3);
-
-		scene->cropped_cloud->header.frame_id = scene->cameraFrame;
-		pcl_conversions::toPCL(ros::Time::now(), scene->cropped_cloud->header.stamp);
-		pcPub.publish(*scene->cropped_cloud);
-		std::cerr << "cropped_cloud." << std::endl;
-		sleep(3);
-
-		scene->pile_cloud->header.frame_id = scene->cameraFrame;
-		pcl_conversions::toPCL(ros::Time::now(), scene->pile_cloud->header.stamp);
-		pcPub.publish(*scene->pile_cloud);
-		std::cerr << "pile_cloud." << std::endl;
-		sleep(3);
-
-		for (auto& seg : scene->bestGuess->segments)
-		{
-			seg.second->header.frame_id = scene->cameraFrame;
-			pcl_conversions::toPCL(ros::Time::now(), seg.second->header.stamp);
-			pcPub.publish(*seg.second);
-			std::cerr << seg.first.id << std::endl;
-			sleep(1);
-		}
-	}
 
 /*
 	// Remove objects from "map" tree visualization
@@ -1480,8 +1488,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	gripperLPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/left_arm/gripper_command", 1, false);
 	gripperRPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/right_arm/gripper_command", 1, false);
 	displayPub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, false);
-	auto vizPub = nh.advertise<visualization_msgs::MarkerArray>("roi", 10, true);
-	pcPub = nh.advertise<pcl::PointCloud<PointT>>("segment_clouds", 1, true);
+	pcPub = pnh.advertise<pcl::PointCloud<PointT>>("segment_clouds", 1, true);
 	mapServer = std::make_shared<LocalOctreeServer>(pnh);
 	ros::Duration(1.0).sleep();
 	completionClient = std::make_shared<VoxelCompleter>(nh);
@@ -1634,10 +1641,6 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	NAMED_WINDOW("orig_segmentation", cv::WINDOW_GUI_NORMAL);
 
 	SensorHistorian::SubscriptionOptions options(topic_prefix);
-
-	visualization_msgs::MarkerArray ma;
-	ma.markers.push_back(sparseTracker->track_options.roi.getMarker());
-	vizPub.publish(ma);
 
 	image_transport::ImageTransport it(nh);
 

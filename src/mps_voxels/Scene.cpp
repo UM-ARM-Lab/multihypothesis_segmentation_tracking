@@ -212,7 +212,8 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	s.cropped_cloud = filterInCameraFrame(s.cropped_cloud);
+	if (!ros::Time::isSimTime()) // TODO: Distinguish sim time from bag time
+		s.cropped_cloud = filterInCameraFrame(s.cropped_cloud);
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	scenario->mapServer->insertCloud(s.cropped_cloud, s.worldTcamera);

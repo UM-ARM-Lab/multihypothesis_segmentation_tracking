@@ -246,6 +246,8 @@ void VoxelCompleter::completeShape(
 	std::vector<octomap::OcTree*> treesToUpdate{subtree};
 	if (updateMainTree) { treesToUpdate.push_back(octree); }
 
+	const float OCCUPANCY_THRESHOLD = std::nextafter(0.0f, std::numeric_limits<float>::max());
+
 	for (int i = 0; i < resolution; ++i)
 	{
 		float x = min.x()+(max.x()-min.x())*(i/static_cast<float>(resolution-1));
@@ -257,7 +259,7 @@ void VoxelCompleter::completeShape(
 				float z = min.z()+(max.z()-min.z())*(k/static_cast<float>(resolution-1));
 
 				int idx = i*resolution*resolution + j*resolution + k;
-				bool predictedFilled = res.hypothesis.data[idx] > 0;
+				bool predictedFilled = res.hypothesis.data[idx] >= OCCUPANCY_THRESHOLD;
 
 				if (predictedFilled)
 				{
