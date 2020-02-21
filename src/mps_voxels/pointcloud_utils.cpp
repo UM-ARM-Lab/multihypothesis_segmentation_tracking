@@ -19,6 +19,8 @@
 #include <pcl/ModelCoefficients.h>
 #include <pcl/kdtree/kdtree.h>
 
+// TODO: Consider #include <pcl/filters/shadowpoints.h>
+
 #include <pcl/search/impl/search.hpp> // needed for kd-tree?
 
 #include <ros/console.h>

@@ -9,6 +9,8 @@
 #include "mps_voxels/SensorHistorian.h"
 #include "mps_voxels/util/assert.h"
 
+#include <pcl/filters/voxel_grid.h>
+
 #include <algorithm>
 
 namespace mps
@@ -255,13 +257,25 @@ pcl::PointCloud<PointT>::Ptr make_PC_segment(const cv::Mat& rgb, const cv::Mat& 
 			auto color = rgb.at<cv::Vec3b>(v, u);
 			auto dVal = depth.at<uint16_t>(v, u);
 
+			// TODO: Apply depth-based cropping
+
 			float depthVal = mps::SensorHistorian::DepthTraits::toMeters(dVal);
 			PointT pt(color[2], color[1], color[0]);
 			pt.getVector3fMap() = toPoint3D<Eigen::Vector3f>(u, v, depthVal, cameraModel);
 			segment_cloud->push_back(pt);
 		}
 	}
-	return segment_cloud;
+
+	// TODO: Use Scenario ROI
+
+	pcl::PointCloud<PointT>::Ptr downsampled_cloud(new pcl::PointCloud<PointT>());
+	pcl::VoxelGrid<PointT> voxelFilter;
+	voxelFilter.setInputCloud(segment_cloud);
+	float resolution = 0.02;
+	voxelFilter.setLeafSize(resolution, resolution, resolution);
+	voxelFilter.filter(*downsampled_cloud);
+
+	return downsampled_cloud;
 }
 
 }
