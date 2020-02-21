@@ -372,6 +372,15 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		const auto& action = compositeAction->actions[a];
 
 
+		if ((compositeAction->primaryAction >= 0) && (a == 1 || compositeAction->primaryAction == static_cast<int>(a) || a == compositeAction->actions.size()-1))
+		{
+			historian->startCapture();
+		}
+		else
+		{
+			historian->stopCapture();
+		}
+
 		auto armAction = std::dynamic_pointer_cast<JointTrajectoryAction>(action);
 		if (armAction)
 		{
@@ -841,7 +850,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		auto pfMarkers = mps::visualize(*particleFilter->particles[i].state, header, rng);
 		visualPub.publish(pfMarkers);
 		std::cerr << "State particle shown!" << std::endl;
-		sleep(5);
+		sleep(2);
 
 ////	labelToMotionLookup is not complete
 //		std::map<int, RigidTF> labelToMotionLookup;

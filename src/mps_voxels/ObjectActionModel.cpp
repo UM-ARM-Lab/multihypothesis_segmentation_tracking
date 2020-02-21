@@ -153,12 +153,18 @@ ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& st
 		                                                                masks.at(steps[t + 1]));
 		assert(!secondCloudSegment->empty());
 
+//		icp.setMaximumIterations(50);
+//		icp.setTransformationEpsilon(1e-9);
+		icp.setUseReciprocalCorrespondences(true);
+		icp.setEuclideanFitnessEpsilon(0.0001);
 		icp.setInputSource(firstCloudSegment);
 		icp.setInputTarget(secondCloudSegment);
 		pcl::PointCloud<PointT> Final;
 		icp.align(Final);
-		std::cerr << "is Converged: " << icp.hasConverged() << "; Score = " << icp.getFitnessScore() << std::endl;
+		double score = icp.getFitnessScore();
+		std::cerr << "is Converged: " << icp.hasConverged() << "; Score = " << score << std::endl;
 
+		//// Visualization of ICP
 		const auto& iter = scenario->visualize.find("icp");
 		if (iter != scenario->visualize.end() && iter->second)
 		{
@@ -180,11 +186,27 @@ ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& st
 			pcPub3.publish(Final);
 		}
 
-		Eigen::Matrix4f Mcamera = icp.getFinalTransformation();
-		Eigen::Matrix4d Mworld = worldTcamera.matrix() * Mcamera.cast<double>() * worldTcamera.inverse().matrix();
-
-		timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t + 1]), Mworld);
-		icpRigidTF.tf = Mworld * icpRigidTF.tf;
+		if (score > 0.001) //// invalid
+		{
+			std::cerr << "This is an invalid ICP, use previous TF." << std::endl;
+			if (t == 0)
+			{
+				timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t + 1]), Eigen::Matrix4d::Identity());
+			}
+			else
+			{
+				Eigen::Matrix4d prevMworld = timeToMotionLookup.at(std::make_pair(steps[t-1], steps[t]));
+				timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t + 1]), prevMworld);
+				icpRigidTF.tf = prevMworld * icpRigidTF.tf;
+			}
+		}
+		else
+		{
+			Eigen::Matrix4f Mcamera = icp.getFinalTransformation();
+			Eigen::Matrix4d Mworld = worldTcamera.matrix() * Mcamera.cast<double>() * worldTcamera.inverse().matrix();
+			timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t + 1]), Mworld);
+			icpRigidTF.tf = Mworld * icpRigidTF.tf;
+		}
 	}
 	std::cerr << "icp total TF:\n";
 	std::cerr << icpRigidTF.tf << std::endl;
@@ -275,7 +297,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	//// Construct tracking time steps
 	/////////////////////////////////////////////
 	std::vector<ros::Time> steps; // SiamMask tracks all these time steps except the first frame;
-	for (auto iter = buffer_out.rgb.begin(); iter != buffer_out.rgb.end(); std::advance(iter, 5))
+	for (auto iter = buffer_out.rgb.begin(); iter != buffer_out.rgb.end(); std::advance(iter, 3)) //// decide downsample rate
 	{
 		steps.push_back(iter->first);
 	}

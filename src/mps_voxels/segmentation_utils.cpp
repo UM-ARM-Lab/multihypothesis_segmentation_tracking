@@ -271,7 +271,7 @@ pcl::PointCloud<PointT>::Ptr make_PC_segment(const cv::Mat& rgb, const cv::Mat& 
 	pcl::PointCloud<PointT>::Ptr downsampled_cloud(new pcl::PointCloud<PointT>());
 	pcl::VoxelGrid<PointT> voxelFilter;
 	voxelFilter.setInputCloud(segment_cloud);
-	float resolution = 0.02;
+	float resolution = 0.01;
 	voxelFilter.setLeafSize(resolution, resolution, resolution);
 	voxelFilter.filter(*downsampled_cloud);
 
