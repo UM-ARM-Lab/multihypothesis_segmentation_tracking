@@ -12,9 +12,10 @@ namespace mps
 
 pcl::PointCloud<PointT>::Ptr filterInCameraFrame(
 	pcl::PointCloud<PointT>::Ptr& cloud,
-	const double zMin = 0.1,
-	const double zMax = 8.0,
-	const int k = 15);
+	const float zMin = 0.1,
+	const float zMax = 8.0,
+	const int k = 15,
+	const float stdDev = 1.0);
 
 pcl::PointCloud<PointT>::Ptr cropInCameraFrame(
 	pcl::PointCloud<PointT>::Ptr& cloud,
@@ -35,7 +36,7 @@ pcl::PointCloud<PointT>::Ptr filterPlane(
 pcl::PointCloud<PointT>::Ptr filterSmallClusters(
 	pcl::PointCloud<PointT>::Ptr& cloud,
 	const int clusterThreshold = 100,
-	const int clusterDistance = 0.01);
+	const float clusterDistance = 0.01);
 
 std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	pcl::PointCloud<PointT>::Ptr& cloud);

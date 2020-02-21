@@ -35,6 +35,15 @@
 namespace mps
 {
 
+//template <typename T, typename V>
+//void setMembers(visualization_msgs::MarkerArray& ma, T member, const V value)
+//{
+//	for (auto& m : ma.markers)
+//	{
+//		m.*member = value;
+//	}
+//}
+
 struct MarkerSet
 {
 	std::map<std::string, visualization_msgs::MarkerArray> arrays;
@@ -42,8 +51,12 @@ struct MarkerSet
 	visualization_msgs::MarkerArray flatten() const
 	{
 		visualization_msgs::MarkerArray ma;
-		for (const auto& a : arrays)
+		for (auto a : arrays)
 		{
+			for (auto& m : a.second.markers)
+			{
+				m.ns = a.first + "/" + m.ns;
+			}
 			ma.markers += a.second.markers;
 		}
 		return ma;
