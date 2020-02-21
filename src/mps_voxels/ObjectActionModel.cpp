@@ -245,15 +245,15 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	/////////////////////////////////////////////
 	//// Estimate motion using SiamMask
 	/////////////////////////////////////////////
-	Eigen::Vector3d roughMotion = sampleActionFromMask(masks[steps[0]], buffer_out.depth[steps[0]]->image,
-	                                                   masks[steps.back()], buffer_out.depth[steps.back()]->image,
-	                                                   buffer_out.cameraModel, worldTcamera);
-	std::cerr << "Rough Motion from SiamMask: " << roughMotion.x() << " " << roughMotion.y() << " " << roughMotion.z() << std::endl;
+	Eigen::Vector3d roughMotion_w = sampleActionFromMask(masks[steps[0]], buffer_out.depth[steps[0]]->image,
+	                                                     masks[steps.back()], buffer_out.depth[steps.back()]->image,
+	                                                     buffer_out.cameraModel, worldTcamera);
+	std::cerr << "Rough Motion from SiamMask: " << roughMotion_w.x() << " " << roughMotion_w.y() << " " << roughMotion_w.z() << std::endl;
 	Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
-	guess(0, 3) = roughMotion.x();
-	guess(1, 3) = roughMotion.y();
-	guess(2, 3) = roughMotion.z();
-	Eigen::Matrix4f guessCamera = worldTcamera.inverse().matrix().cast<float>() * guess * worldTcamera.matrix().cast<float>();
+	guess(0, 3) = roughMotion_w.x();
+	guess(1, 3) = roughMotion_w.y();
+	guess(2, 3) = roughMotion_w.z();
+	Eigen::Matrix4f roughMotion_c = worldTcamera.inverse().matrix().cast<float>() * guess * worldTcamera.matrix().cast<float>();
 
 	/////////////////////////////////////////////
 	//// ICP check & store
@@ -266,7 +266,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	                                                                buffer_out.cameraModel,
 	                                                                masks.at(steps.back()));
 	assert(!lastCloudSegment->empty());
-	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002, true, guessCamera)) // TODO: decide the value of threshold
+	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002, true, roughMotion_c)) // TODO: decide the value of threshold
 	{
 		//// Generate reasonable disturbance in ParticleFilter together with failed situations
 		std::cerr << "Although ICP tells us SiamMask isn't reasonable, we still use it for now." << std::endl;
@@ -402,6 +402,12 @@ moveParticle(const Particle& inputParticle, const std::map<int, RigidTF>& labelT
 	std::map<int, DecomposedRigidTF> labelToDecomposedMotionLookup;
 	for (auto& pair : labelToMotionLookup)
 	{
+//		Eigen::AngleAxisd aa(7, Eigen::Vector3d::UnitZ());
+//		aa.matrix();
+//		Eigen::Matrix3d R(aa);
+//		Eigen::Isometry3d T;
+//		T.linear() = aa.matrix();
+//		Eigen::Quaterniond q(aa);
 		DecomposedRigidTF drtf;
 		drtf.linear = pair.second.linear;
 		drtf.theta = pair.second.angular.norm();

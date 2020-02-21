@@ -38,7 +38,7 @@ Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const i
 		bool sampleActionSuccess = oam->sampleAction(buffer_out, segParticle, sparseTracker, denseTracker, pair.first, pair.second);
 		if (sampleActionSuccess)
 		{
-			labelToMotionLookup.insert({pair.first - 1, oam->actionSamples[0]});
+			labelToMotionLookup.emplace(pair.first - 1, oam->actionSamples[0]);
 		}
 		else
 		{
@@ -47,7 +47,7 @@ Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const i
 			RigidTF randomSteadyTF;
 			randomSteadyTF.linear = {0,0,0};
 			randomSteadyTF.angular = {0,0,0};
-			labelToMotionLookup.insert({pair.first - 1, randomSteadyTF});
+			labelToMotionLookup.emplace(pair.first - 1, randomSteadyTF);
 		}
 	}
 
