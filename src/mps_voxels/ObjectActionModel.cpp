@@ -6,18 +6,30 @@
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/pointcloud_utils.h"
 #include "mps_voxels/project_point.hpp"
+#include "mps_voxels/Scene.h"
 
 #include <tf_conversions/tf_eigen.h>
 #include <random>
 
+#include "mps_voxels/PointT.h"
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
+#include <pcl/point_cloud.h>
 #include <pcl/registration/icp.h>
+
+// For visualization
+#include <pcl_conversions/pcl_conversions.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <pcl_ros/point_cloud.h>
+#include <ros/ros.h>
 
 namespace mps
 {
 
-ObjectActionModel::ObjectActionModel(int n) : numSamples(n), jlinkageActionClient("cluster_flow", true)
+ObjectActionModel::ObjectActionModel(std::shared_ptr<const Scenario> scenario_, int n)
+	: scenario(std::move(scenario_)),
+	  numSamples(n),
+	  jlinkageActionClient("cluster_flow", true)
 {
 
 }
@@ -123,8 +135,7 @@ ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& st
 	pcl::PointCloud<PointT>::Ptr firstCloudSegment;
 	pcl::PointCloud<PointT>::Ptr secondCloudSegment;
 
-	int icpStep = 1;
-	for (int t = 0; t < (int)steps.size()-icpStep; t+=icpStep)
+	for (int t = 0; t < (int)steps.size()-1; ++t)
 	{
 		if (t == 0)
 		{
@@ -136,10 +147,10 @@ ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& st
 		{
 			firstCloudSegment = secondCloudSegment;
 		}
-		secondCloudSegment = make_PC_segment(buffer.rgb.at(steps[t + icpStep])->image,
-		                                                                buffer.depth.at(steps[t + icpStep])->image,
+		secondCloudSegment = make_PC_segment(buffer.rgb.at(steps[t + 1])->image,
+		                                                                buffer.depth.at(steps[t + 1])->image,
 		                                                                buffer.cameraModel,
-		                                                                masks.at(steps[t + icpStep]));
+		                                                                masks.at(steps[t + 1]));
 		assert(!secondCloudSegment->empty());
 
 		icp.setInputSource(firstCloudSegment);
@@ -148,10 +159,31 @@ ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& st
 		icp.align(Final);
 		std::cerr << "is Converged: " << icp.hasConverged() << "; Score = " << icp.getFitnessScore() << std::endl;
 
+		const auto& iter = scenario->visualize.find("icp");
+		if (iter != scenario->visualize.end() && iter->second)
+		{
+			static ros::NodeHandle pnh("~");
+			static ros::Publisher pcPub1 = pnh.advertise<pcl::PointCloud<PointT>>("icp_source", 1, true);
+			static ros::Publisher pcPub2 = pnh.advertise<pcl::PointCloud<PointT>>("icp_target", 1, true);
+			static ros::Publisher pcPub3 = pnh.advertise<pcl::PointCloud<PointT>>("icp_registered", 1, true);
+
+			firstCloudSegment->header.frame_id = buffer.cameraModel.tfFrame();
+			pcl_conversions::toPCL(ros::Time::now(), firstCloudSegment->header.stamp);
+			pcPub1.publish(*firstCloudSegment);
+
+			secondCloudSegment->header.frame_id = buffer.cameraModel.tfFrame();
+			pcl_conversions::toPCL(ros::Time::now(), secondCloudSegment->header.stamp);
+			pcPub2.publish(*secondCloudSegment);
+
+			Final.header.frame_id = buffer.cameraModel.tfFrame();
+			pcl_conversions::toPCL(ros::Time::now(), Final.header.stamp);
+			pcPub3.publish(Final);
+		}
+
 		Eigen::Matrix4f Mcamera = icp.getFinalTransformation();
 		Eigen::Matrix4d Mworld = worldTcamera.matrix() * Mcamera.cast<double>() * worldTcamera.inverse().matrix();
 
-		timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t+icpStep]), Mworld);
+		timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t + 1]), Mworld);
 		icpRigidTF.tf = Mworld * icpRigidTF.tf;
 	}
 	std::cerr << "icp total TF:\n";
@@ -296,20 +328,21 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	/////////////////////////////////////////////
 	//// ICP check & store
 	/////////////////////////////////////////////
-	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer_out.rgb.at(steps[0])->image, buffer_out.depth.at(steps[0])->image,
-	                                                                buffer_out.cameraModel, masks.at(steps[0]));
-	assert(!initCloudSegment->empty());
-	pcl::PointCloud<PointT>::Ptr lastCloudSegment = make_PC_segment(buffer_out.rgb.at(steps.back())->image,
-	                                                                buffer_out.depth.at(steps.back())->image,
-	                                                                buffer_out.cameraModel,
-	                                                                masks.at(steps.back()));
-	assert(!lastCloudSegment->empty());
-	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002, true, roughMotion_c)) // TODO: decide the value of threshold
-	{
-		//// Generate reasonable disturbance in ParticleFilter together with failed situations
-		std::cerr << "Although ICP tells us SiamMask isn't reasonable, we still use it for now." << std::endl;
-//		return false;
-	}
+	std::map<std::pair<ros::Time, ros::Time>, Eigen::Matrix4d> timeToMotionLookup = icpManifoldSequencialSampler(steps, buffer_out, masks, worldTcamera);
+
+//	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer_out.rgb.at(steps[0])->image, buffer_out.depth.at(steps[0])->image,
+//	                                                                buffer_out.cameraModel, masks.at(steps[0]));
+//	assert(!initCloudSegment->empty());
+//	pcl::PointCloud<PointT>::Ptr lastCloudSegment = make_PC_segment(buffer_out.rgb.at(steps.back())->image,
+//	                                                                buffer_out.depth.at(steps.back())->image,
+//	                                                                buffer_out.cameraModel,
+//	                                                                masks.at(steps.back()));
+//	assert(!lastCloudSegment->empty());
+//	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002, true, roughMotion_c)) // TODO: decide the value of threshold
+//	{
+//		//// Generate reasonable disturbance in ParticleFilter together with failed situations
+//		std::cerr << "Although ICP tells us SiamMask isn't reasonable, we still use it for now." << std::endl;
+//	}
 
 	//// SIFT
 	sparseTracker->track(timeStartEnd, buffer_out, masks, "/home/kunhuang/Videos/" + std::to_string((int)label) + "_");
@@ -445,7 +478,7 @@ moveParticle(const Particle& inputParticle, const std::map<int, RigidTF>& labelT
 			auto& tf = labelToMotionLookup.at(inputParticle.state->vertexState[i]).tf;
 			VoxelRegion::vertex_descriptor vd = inputParticle.state->voxelRegion->vertex_at(i);
 			Eigen::Vector3d originalCoord = vertexDescpToCoord(inputParticle.state->voxelRegion->resolution, inputParticle.state->voxelRegion->regionMin, vd);
-			Eigen::Vector4d oCoord = {originalCoord.x(), originalCoord.y(), originalCoord.z(), 0};
+			Eigen::Vector4d oCoord = {originalCoord.x(), originalCoord.y(), originalCoord.z(), 1.0};
 			Eigen::Vector4d nCoord = tf * oCoord;
 			Eigen::Vector3d newCoord = {nCoord.x(), nCoord.y(), nCoord.z()};
 

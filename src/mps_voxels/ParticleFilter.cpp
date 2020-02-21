@@ -3,12 +3,13 @@
 //
 
 #include "mps_voxels/ParticleFilter.h"
+#include "mps_voxels/Scene.h"
 
 namespace mps
 {
 
-ParticleFilter::ParticleFilter(const VoxelRegion::vertex_descriptor& dims, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n)
-	: numParticles(n)
+ParticleFilter::ParticleFilter(std::shared_ptr<const Scenario> scenario_, const VoxelRegion::vertex_descriptor& dims, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n)
+	: scenario(std::move(scenario_)), numParticles(n)
 {
 	voxelRegion = std::make_shared<VoxelRegion>(dims, res, rmin, rmax);;
 	particles.resize(n);
@@ -31,7 +32,7 @@ Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const i
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, roi, 5);
 	std::cerr << "number of bounding boxes in segParticle: " << labelToBBoxLookup.size() << std::endl;
 
-	std::unique_ptr<ObjectActionModel> oam = std::make_unique<ObjectActionModel>(1);
+	std::unique_ptr<ObjectActionModel> oam = std::make_unique<ObjectActionModel>(scenario, 1);
 	std::map<int, RigidTF> labelToMotionLookup;
 	for (auto& pair : labelToBBoxLookup)
 	{

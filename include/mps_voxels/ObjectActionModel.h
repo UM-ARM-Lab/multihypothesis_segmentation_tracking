@@ -43,10 +43,14 @@ struct DecomposedRigidTF
 	double theta;
 };
 
+class Scenario;
+
 class ObjectActionModel
 {
 public:
-	explicit ObjectActionModel(int n=1);
+	explicit ObjectActionModel(std::shared_ptr<const Scenario> scenario_, int n=1);
+
+	std::shared_ptr<const Scenario> scenario;
 
 	std::vector<RigidTF> siftRigidTFs; // clustered by Jlinkage
 	RigidTF icpRigidTF;

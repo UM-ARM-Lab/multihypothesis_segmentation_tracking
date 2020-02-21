@@ -1398,7 +1398,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	setIfMissing(pnh, "track_color", "green");
 	setIfMissing(pnh, "use_memory", true);
 	setIfMissing(pnh, "use_completion", "optional");
-	setIfMissing(pnh, "visualize", std::vector<std::string>{"particles"});
+	setIfMissing(pnh, "visualize", std::vector<std::string>{"particles", "icp"});
 
 #ifdef USE_CUDA_SIFT
 	sparseTracker = std::make_unique<CudaTracker>();
@@ -1411,16 +1411,6 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	denseTracker = std::make_unique<SiamTracker>();
 	historian = std::make_unique<SensorHistorian>();
 	historian->stopCapture();
-
-	const double resolution = 0.010;
-	Eigen::Vector4f ROImaxExtent(0.4f, 0.6f, 0.5f, 1);
-	Eigen::Vector4f ROIminExtent(-0.4f, -0.6f, -0.020f, 1);
-	mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution,
-	                                                            ROIminExtent.head<3>().cast<double>(),
-	                                                            ROImaxExtent.head<3>().cast<double>());
-	particleFilter = std::make_unique<ParticleFilter>(dims, resolution,
-	                                                  ROIminExtent.head<3>().cast<double>(),
-	                                                  ROImaxExtent.head<3>().cast<double>(), 5);
 
 	bool gotParam = false;
 
@@ -1534,6 +1524,16 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	{
 		this->scenario->visualize.emplace(m, true);
 	}
+
+	const double resolution = 0.010;
+	Eigen::Vector4f ROImaxExtent(0.4f, 0.6f, 0.5f, 1);
+	Eigen::Vector4f ROIminExtent(-0.4f, -0.6f, -0.020f, 1);
+	mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution,
+	                                                            ROIminExtent.head<3>().cast<double>(),
+	                                                            ROImaxExtent.head<3>().cast<double>());
+	particleFilter = std::make_unique<ParticleFilter>(scenario, dims, resolution,
+	                                                  ROIminExtent.head<3>().cast<double>(),
+	                                                  ROImaxExtent.head<3>().cast<double>(), 5);
 
 	processor = std::make_unique<SceneProcessor>(scenario, use_memory, useShapeCompletion);
 

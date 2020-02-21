@@ -13,10 +13,14 @@
 namespace mps
 {
 
+class Scenario;
+
 class ParticleFilter
 {
 public:
-	ParticleFilter(const VoxelRegion::vertex_descriptor& dims, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n=10);
+	ParticleFilter(std::shared_ptr<const Scenario> scenario_, const VoxelRegion::vertex_descriptor& dims, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n=10);
+
+	std::shared_ptr<const Scenario> scenario;
 
 	std::shared_ptr<VoxelRegion> voxelRegion;
 
