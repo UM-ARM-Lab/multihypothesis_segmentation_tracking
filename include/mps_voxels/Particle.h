@@ -67,6 +67,8 @@ struct Particle
 
 cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const int& step = 1);
 
+void refineParticleFreeSpace(Particle& particle);
+
 }
 
 #endif //MPS_PARTICLE_H

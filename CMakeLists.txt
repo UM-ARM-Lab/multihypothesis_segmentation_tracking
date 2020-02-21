@@ -364,13 +364,13 @@ target_link_libraries(${PROJECT_NAME}_explorer
   ${catkin_LIBRARIES}
 )
 
-cuda_add_executable(${PROJECT_NAME}_test_segmentation_sampling src/test_segmentation_sampling.cpp)
-set_target_properties(${PROJECT_NAME}_test_segmentation_sampling PROPERTIES OUTPUT_NAME test_segmentation_sampling PREFIX "")
-add_dependencies(${PROJECT_NAME}_test_segmentation_sampling ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_test_segmentation_sampling
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-)
+#cuda_add_executable(${PROJECT_NAME}_test_segmentation_sampling src/test_segmentation_sampling.cpp)
+#set_target_properties(${PROJECT_NAME}_test_segmentation_sampling PROPERTIES OUTPUT_NAME test_segmentation_sampling PREFIX "")
+#add_dependencies(${PROJECT_NAME}_test_segmentation_sampling ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#target_link_libraries(${PROJECT_NAME}_test_segmentation_sampling
+#  ${PROJECT_NAME}
+#  ${catkin_LIBRARIES}
+#)
 
 #add_executable(${PROJECT_NAME}_test_object_action_model src/test_object_action_model.cpp)
 #set_target_properties(${PROJECT_NAME}_test_object_action_model PROPERTIES OUTPUT_NAME test_object_action_model PREFIX "")
@@ -388,13 +388,13 @@ target_link_libraries(${PROJECT_NAME}_test_segmentation_sampling
 #  ${catkin_LIBRARIES}
 #)
 
-add_executable(${PROJECT_NAME}_test_particle_filter src/test_particle_filter.cpp)
-set_target_properties(${PROJECT_NAME}_test_particle_filter PROPERTIES OUTPUT_NAME test_particle_filter PREFIX "")
-add_dependencies(${PROJECT_NAME}_test_particle_filter ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_test_particle_filter
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-)
+#add_executable(${PROJECT_NAME}_test_particle_filter src/test_particle_filter.cpp)
+#set_target_properties(${PROJECT_NAME}_test_particle_filter PROPERTIES OUTPUT_NAME test_particle_filter PREFIX "")
+#add_dependencies(${PROJECT_NAME}_test_particle_filter ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#target_link_libraries(${PROJECT_NAME}_test_particle_filter
+#  ${PROJECT_NAME}
+#  ${catkin_LIBRARIES}
+#)
 
 # Notify any IDE that headers are part of project
 file(GLOB_RECURSE IncludeFiles "include/*")

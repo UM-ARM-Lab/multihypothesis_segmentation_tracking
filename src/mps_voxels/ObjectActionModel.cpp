@@ -103,20 +103,61 @@ RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& step
 	Eigen::Matrix<double, 4, 4> Mworld = worldTcamera.matrix() * Mcamera.cast<double>() * worldTcamera.inverse().matrix();
 //	std::cout << Mworld << std::endl;
 
-	RigidTF twist;
-	twist.linear = {Mworld(0, 3), Mworld(1, 3), Mworld(2, 3)};
-	double theta = acos((Mworld(0, 0) + Mworld(1, 1) + Mworld(2, 2) - 1) / 2.0);
-	if (theta == 0) twist.angular = {0, 0, 0};
-	else
+	RigidTF rtf;
+	rtf.tf = Mworld;
+	std::cerr << "ICP TF: \n";
+	std::cerr << rtf.tf << std::endl;
+	return rtf;
+}
+
+std::map<std::pair<ros::Time, ros::Time>, Eigen::Matrix4d>
+ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera)
+{
+	assert(steps.size() > 1);
+	icpRigidTF.tf = Eigen::Matrix4d::Identity();
+
+	pcl::IterativeClosestPoint<PointT, PointT> icp;
+	std::map<std::pair<ros::Time, ros::Time>, Eigen::Matrix4d> timeToMotionLookup;
+
+	//// Construct PointCloud Segments
+	pcl::PointCloud<PointT>::Ptr firstCloudSegment;
+	pcl::PointCloud<PointT>::Ptr secondCloudSegment;
+
+	int icpStep = 1;
+	for (int t = 0; t < (int)steps.size()-icpStep; t+=icpStep)
 	{
-		Eigen::Vector3d temp = {Mworld(2, 1)-Mworld(1, 2), Mworld(0, 2)-Mworld(2, 0), Mworld(1, 0)-Mworld(0,1)};
-		Eigen::Vector3d omega = 1/(2 * sin(theta)) * temp;
-		twist.angular = theta * omega;
+		if (t == 0)
+		{
+			firstCloudSegment = make_PC_segment(buffer.rgb.at(steps[t])->image, buffer.depth.at(steps[t])->image,
+			                                    buffer.cameraModel, masks.at(steps[t]));
+			assert(!firstCloudSegment->empty());
+		}
+		else
+		{
+			firstCloudSegment = secondCloudSegment;
+		}
+		secondCloudSegment = make_PC_segment(buffer.rgb.at(steps[t + icpStep])->image,
+		                                                                buffer.depth.at(steps[t + icpStep])->image,
+		                                                                buffer.cameraModel,
+		                                                                masks.at(steps[t + icpStep]));
+		assert(!secondCloudSegment->empty());
+
+		icp.setInputSource(firstCloudSegment);
+		icp.setInputTarget(secondCloudSegment);
+		pcl::PointCloud<PointT> Final;
+		icp.align(Final);
+		std::cerr << "is Converged: " << icp.hasConverged() << "; Score = " << icp.getFitnessScore() << std::endl;
+
+		Eigen::Matrix4f Mcamera = icp.getFinalTransformation();
+		Eigen::Matrix4d Mworld = worldTcamera.matrix() * Mcamera.cast<double>() * worldTcamera.inverse().matrix();
+
+		timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t+icpStep]), Mworld);
+		icpRigidTF.tf = Mworld * icpRigidTF.tf;
 	}
-	std::cerr << "ICP TF: ";
-	std::cerr << "\t Linear: " << twist.linear.x() << " " << twist.linear.y() << " " << twist.linear.z();
-	std::cerr << "\t Angular: " << twist.angular.x() << " " << twist.angular.y() << " " << twist.angular.z() << std::endl;
-	return twist;
+	std::cerr << "icp total TF:\n";
+	std::cerr << icpRigidTF.tf << std::endl;
+
+	return timeToMotionLookup;
 }
 
 bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const moveit::Pose& worldTcamera)
@@ -178,8 +219,7 @@ bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 				Eigen::Vector3d linear(res->motions[i].linear.x, res->motions[i].linear.y, res->motions[i].linear.z);
 				Eigen::Vector3d angular(res->motions[i].angular.x, res->motions[i].angular.y, res->motions[i].angular.z);
 				RigidTF rbt;
-				rbt.linear = linear;
-				rbt.angular = angular;
+				rbt.tf = convertTFformat(linear, angular);
 				rbt.numInliers = count;
 				siftRigidTFs.push_back(rbt);
 			}
@@ -250,9 +290,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	                                                     buffer_out.cameraModel, worldTcamera);
 	std::cerr << "Rough Motion from SiamMask: " << roughMotion_w.x() << " " << roughMotion_w.y() << " " << roughMotion_w.z() << std::endl;
 	Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
-	guess(0, 3) = roughMotion_w.x();
-	guess(1, 3) = roughMotion_w.y();
-	guess(2, 3) = roughMotion_w.z();
+	guess.topRightCorner<3, 1>() = roughMotion_w.cast<float>();
 	Eigen::Matrix4f roughMotion_c = worldTcamera.inverse().matrix().cast<float>() * guess * worldTcamera.matrix().cast<float>();
 
 	/////////////////////////////////////////////
@@ -298,9 +336,8 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	}
 	for (auto& as : actionSamples)
 	{
-		std::cerr << "Action sample:";
-		std::cerr << "\t Linear: " << as.linear.x() << " " << as.linear.y() << " " << as.linear.z();
-		std::cerr << "\t Angular: " << as.angular.x() << " " << as.angular.y() << " " << as.angular.z() << std::endl;
+		std::cerr << "Final action sample:\n";
+		std::cerr << as.tf << std::endl;
 	}
 	return true;
 }
@@ -335,7 +372,7 @@ bool ObjectActionModel::isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::P
 	bool isValid = true;
 	//// ICP
 	pcl::IterativeClosestPoint<PointT, PointT> icp;
-	icp.setMaximumIterations(50);
+//	icp.setMaximumIterations(50);
 //	icp.setTransformationEpsilon(1e-9);
 	icp.setEuclideanFitnessEpsilon(0.1);
 	icp.setInputSource(initCloudSegment);
@@ -354,41 +391,39 @@ bool ObjectActionModel::isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::P
 	Eigen::Matrix<float, 4, 4> Mcamera = icp.getFinalTransformation();
 	Eigen::Matrix<double, 4, 4> Mworld = worldTcamera.matrix() * Mcamera.cast<double>() * worldTcamera.inverse().matrix();
 
-	RigidTF twist;
-	twist.linear = {Mworld(0, 3), Mworld(1, 3), Mworld(2, 3)};
-	double theta = acos((Mworld(0, 0) + Mworld(1, 1) + Mworld(2, 2) - 1) / 2.0);
-	if (theta == 0) twist.angular = {0, 0, 0};
-	else
-	{
-		Eigen::Vector3d temp = {Mworld(2, 1)-Mworld(1, 2), Mworld(0, 2)-Mworld(2, 0), Mworld(1, 0)-Mworld(0,1)};
-		Eigen::Vector3d omega = 1/(2 * sin(theta)) * temp;
-		twist.angular = theta * omega;
-	}
-	std::cerr << "ICP TF: ";
-	std::cerr << "\t Linear: " << twist.linear.x() << " " << twist.linear.y() << " " << twist.linear.z();
-	std::cerr << "\t Angular: " << twist.angular.x() << " " << twist.angular.y() << " " << twist.angular.z() << std::endl;
+	std::cerr << "ICP TF: \n";
+	std::cerr << Mworld << std::endl;
 
-	icpRigidTF = twist;
+	icpRigidTF.tf = Mworld;
 	return isValid;
+}
+
+Eigen::Matrix4d convertTFformat(Eigen::Vector3d linear, Eigen::Vector3d angular)
+{
+	Eigen::Matrix4d tf = Eigen::Matrix4d::Identity();
+
+	double theta = angular.norm();
+	Eigen::Vector3d e;
+	if (theta == 0) { e = {0, 0, 0}; }
+	else { e = angular / theta; }
+
+	Eigen::AngleAxisd rot(theta, e);
+	tf.topLeftCorner<3, 3>() = rot.matrix();
+	tf.topRightCorner<3, 1>() = linear;
+
+	return tf;
 }
 
 std::shared_ptr<octomap::OcTree>
 moveOcTree(const octomap::OcTree* octree, const RigidTF& action)
 {
-	double theta = action.angular.norm();
-//	std::cerr << "rotation theta = " << theta << std::endl;
-	Eigen::Vector3d e;
-	if (theta == 0) { e = {0, 0, 0}; }
-	else { e = action.angular / theta; }
-
 	std::shared_ptr<octomap::OcTree> resOcTree = std::make_shared<octomap::OcTree>(octree->getResolution());
 	for (auto node = octree->begin_leafs(); node != octree->end_leafs(); node++)
 	{
 		auto originalCoord = node.getCoordinate();
-		Eigen::Vector3d oCoord(originalCoord.x(), originalCoord.y(), originalCoord.z());
-		Eigen::Vector3d newCoord;
-		newCoord = cos(theta) *  oCoord + sin(theta) * e.cross(oCoord) + (1 - cos(theta)) * e.dot(oCoord) * e;
-		newCoord += action.linear;
+		Eigen::Vector4d oCoord(originalCoord.x(), originalCoord.y(), originalCoord.z(), 1);
+		Eigen::Vector4d newCoord;
+		newCoord = action.tf * oCoord;
 		resOcTree->updateNode(newCoord.x(), newCoord.y(), newCoord.z(), true);
 		resOcTree->setNodeValue(newCoord.x(), newCoord.y(), newCoord.z(), node->getValue());
 	}
@@ -399,23 +434,6 @@ moveOcTree(const octomap::OcTree* octree, const RigidTF& action)
 Particle
 moveParticle(const Particle& inputParticle, const std::map<int, RigidTF>& labelToMotionLookup)
 {
-	std::map<int, DecomposedRigidTF> labelToDecomposedMotionLookup;
-	for (auto& pair : labelToMotionLookup)
-	{
-//		Eigen::AngleAxisd aa(7, Eigen::Vector3d::UnitZ());
-//		aa.matrix();
-//		Eigen::Matrix3d R(aa);
-//		Eigen::Isometry3d T;
-//		T.linear() = aa.matrix();
-//		Eigen::Quaterniond q(aa);
-		DecomposedRigidTF drtf;
-		drtf.linear = pair.second.linear;
-		drtf.theta = pair.second.angular.norm();
-		if (drtf.theta == 0) { drtf.e = {0, 0, 0}; }
-		else { drtf.e = pair.second.angular / drtf.theta; }
-		labelToDecomposedMotionLookup.insert({pair.first, drtf});
-	}
-
 	Particle outputParticle;
 	outputParticle.state = std::make_shared<OccupancyData>(inputParticle.state->voxelRegion);
 
@@ -424,12 +442,13 @@ moveParticle(const Particle& inputParticle, const std::map<int, RigidTF>& labelT
 	{
 		if (inputParticle.state->vertexState[i] >= 0)
 		{
-			auto& tf = labelToDecomposedMotionLookup[inputParticle.state->vertexState[i]];
+			auto& tf = labelToMotionLookup.at(inputParticle.state->vertexState[i]).tf;
 			VoxelRegion::vertex_descriptor vd = inputParticle.state->voxelRegion->vertex_at(i);
 			Eigen::Vector3d originalCoord = vertexDescpToCoord(inputParticle.state->voxelRegion->resolution, inputParticle.state->voxelRegion->regionMin, vd);
-			Eigen::Vector3d newCoord;
-			newCoord = cos(tf.theta) * originalCoord + sin(tf.theta) * tf.e.cross(originalCoord) + (1 - cos(tf.theta)) * tf.e.dot(originalCoord) * tf.e;
-			newCoord += tf.linear;
+			Eigen::Vector4d oCoord = {originalCoord.x(), originalCoord.y(), originalCoord.z(), 0};
+			Eigen::Vector4d nCoord = tf * oCoord;
+			Eigen::Vector3d newCoord = {nCoord.x(), nCoord.y(), nCoord.z()};
+
 			if (!outputParticle.state->voxelRegion->isInRegion(newCoord)) continue;
 
 			VoxelRegion::vertex_descriptor newVD = coordToVertexDesc(outputParticle.state->voxelRegion->resolution, outputParticle.state->voxelRegion->regionMin, newCoord);

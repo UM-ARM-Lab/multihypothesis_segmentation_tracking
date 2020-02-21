@@ -71,8 +71,12 @@ cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeC
 			}
 		}
 	}
-
 	return labels;
+}
+
+void refineParticleFreeSpace(Particle& particle)
+{
+
 }
 
 }

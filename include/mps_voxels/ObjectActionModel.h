@@ -23,12 +23,18 @@
 
 namespace mps
 {
+
 struct RigidTF
 {
-	Eigen::Vector3d linear;
-	Eigen::Vector3d angular;
+	Eigen::Matrix4d tf;
 	int numInliers = -1;
 };
+//struct RigidTF
+//{
+//	Eigen::Vector3d linear;
+//	Eigen::Vector3d angular;
+//	int numInliers = -1;
+//};
 
 struct DecomposedRigidTF
 {
@@ -55,6 +61,9 @@ public:
 
 	RigidTF icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera);
 
+	std::map<std::pair<ros::Time, ros::Time>, Eigen::Matrix4d>
+	icpManifoldSequencialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera);
+
 	actionlib::SimpleActionClient<mps_msgs::ClusterRigidMotionsAction> jlinkageActionClient;
 
 	bool clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const moveit::Pose& worldTcamera);
@@ -70,6 +79,7 @@ public:
 	                             const bool& useGuess = false, const Eigen::Matrix4f& guessCamera = Eigen::Matrix4f::Identity());
 };
 
+Eigen::Matrix4d convertTFformat(Eigen::Vector3d linear, Eigen::Vector3d angular);
 
 std::shared_ptr<octomap::OcTree>
 moveOcTree(const octomap::OcTree* octree, const RigidTF& action);

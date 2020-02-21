@@ -478,13 +478,12 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		/////////////////////////////////////////////
 		for (int i=0; i<particleFilter->numParticles; ++i)
 		{
+			if (!ros::ok()) { return false; }
 			particleFilter->particles[i] = particleFilter->applyActionModel(particleFilter->particles[i], scene->cameraModel, scene->worldTcamera,
-			                                                                historian->buffer, sparseTracker, denseTracker,10);
-
+			                                                                historian->buffer, sparseTracker, denseTracker,1);
 			std_msgs::Header header; header.frame_id = scene->worldFrame; header.stamp = ros::Time::now();
-			auto pfMarkers = mps::visualize(*particleFilter->particles[i].state, header, rng);
-//			auto pfnewmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(particleFilter->particles[i].state->vertexState, scene->worldFrame, "newState" + std::to_string(i));
-			visualPub.publish(pfMarkers);
+			auto pfnewmarker = mps::visualize(*particleFilter->particles[i].state, header, rng);
+			visualPub.publish(pfnewmarker);
 			std::cerr << "Predicted state particle shown!" << std::endl;
 			sleep(5);
 		}
@@ -582,7 +581,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	                                                  scene->maxExtent.head<3>().cast<double>());
 
 	SegmentationTreeSampler treeSampler(scene->segInfo);
-	const size_t nParticles = 5;
+	const size_t nParticles = 1;
 	std::vector<Particle> particles;
 	std::map<ParticleIndex, tree::TreeCut> cuts;
 	for (size_t p = 0; p < nParticles; ++p)
@@ -751,15 +750,15 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		visualPub.publish(ma);
 	}
 
-	{
-		visualization_msgs::MarkerArray ma = visualizeOctree(octree, globalFrame, &mapColor);
-		for (visualization_msgs::Marker& m : ma.markers)
-		{
-			m.ns = "map";
-		}
-		allMarkers["map"] = ma;
-		visualPub.publish(allMarkers.flatten());
-	}
+//	{
+//		visualization_msgs::MarkerArray ma = visualizeOctree(octree, globalFrame, &mapColor);
+//		for (visualization_msgs::Marker& m : ma.markers)
+//		{
+//			m.ns = "map";
+//		}
+//		allMarkers["map"] = ma;
+//		visualPub.publish(allMarkers.flatten());
+//	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	PROFILE_START("Complete Scene");
@@ -835,6 +834,18 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		visualPub.publish(pfMarkers);
 		std::cerr << "State particle shown!" << std::endl;
 		sleep(5);
+
+////	labelToMotionLookup is not complete
+//		std::map<int, RigidTF> labelToMotionLookup;
+//		RigidTF temptf;
+//		temptf.linear = {0, 0, 0.1};
+//		temptf.angular = {0, 0, 1.57};
+//		labelToMotionLookup.insert({0, temptf});
+//		Particle temp = moveParticle(particleFilter->particles[i], labelToMotionLookup);
+//		auto movedpfmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(temp.state->vertexState, scene->worldFrame, "moved_State" + std::to_string(i));
+//		visualPub.publish(movedpfmarker);
+//		std::cerr << "Moved State particle shown!" << std::endl;
+//		sleep(2);
 	}
 
 	PROFILE_RECORD("Complete Scene");
@@ -856,24 +867,24 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //	visualPub.publish(objToMoveVis);
 //	WAIT_KEY(10);
 
-	{//visualize the shadow
-		std_msgs::ColorRGBA shadowColor;
-		shadowColor.a = 1.0f;
-		shadowColor.r = 0.5f;
-		shadowColor.g = 0.5f;
-		shadowColor.b = 0.5f;
-		visualization_msgs::MarkerArray ma = visualizeOctree(scene->occlusionTree.get(), globalFrame, &shadowColor);
-		for (visualization_msgs::Marker& m : ma.markers)
-		{
-			m.ns = "hidden";
-//			m.colors.clear();
-//			m.color.a=1.0f;
-//			m.color.r
-        }
-		allMarkers["hidden"] = ma;
-		visualPub.publish(allMarkers.flatten());
-	}
-    std::cerr << "Published " << scene->occludedPts.size() << " points." << std::endl;
+//	{//visualize the shadow
+//		std_msgs::ColorRGBA shadowColor;
+//		shadowColor.a = 1.0f;
+//		shadowColor.r = 0.5f;
+//		shadowColor.g = 0.5f;
+//		shadowColor.b = 0.5f;
+//		visualization_msgs::MarkerArray ma = visualizeOctree(scene->occlusionTree.get(), globalFrame, &shadowColor);
+//		for (visualization_msgs::Marker& m : ma.markers)
+//		{
+//			m.ns = "hidden";
+////			m.colors.clear();
+////			m.color.a=1.0f;
+////			m.color.r
+//        }
+//		allMarkers["hidden"] = ma;
+//		visualPub.publish(allMarkers.flatten());
+//	}
+//    std::cerr << "Published " << scene->occludedPts.size() << " points." << std::endl;
 
     {
         //visualize shadows with different colors
