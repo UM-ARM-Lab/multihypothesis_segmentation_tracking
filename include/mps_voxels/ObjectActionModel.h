@@ -26,7 +26,7 @@ namespace mps
 
 struct RigidTF
 {
-	Eigen::Matrix4d tf;
+	moveit::Pose tf;
 	int numInliers = -1;
 };
 //struct RigidTF
@@ -48,6 +48,8 @@ class Scenario;
 class ObjectActionModel
 {
 public:
+	using TimePoseLookup = std::map<std::pair<ros::Time, ros::Time>, moveit::Pose, std::less<>, Eigen::aligned_allocator<moveit::Pose>>;
+
 	explicit ObjectActionModel(std::shared_ptr<const Scenario> scenario_, int n=1);
 
 	std::shared_ptr<const Scenario> scenario;
@@ -61,16 +63,16 @@ public:
 	Eigen::Vector3d
 	sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& depth1,
 	                     const cv::Mat& mask2, const cv::Mat& depth2,
-	                     const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera);
+	                     const image_geometry::PinholeCameraModel& cameraModel, const mps::Pose& worldTcamera);
 
-	RigidTF icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera);
+	RigidTF icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera);
 
-	std::map<std::pair<ros::Time, ros::Time>, Eigen::Matrix4d>
-	icpManifoldSequencialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera);
+	TimePoseLookup
+	icpManifoldSequencialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera);
 
 	actionlib::SimpleActionClient<mps_msgs::ClusterRigidMotionsAction> jlinkageActionClient;
 
-	bool clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const moveit::Pose& worldTcamera);
+	bool clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const mps::Pose& worldTcamera);
 
 	bool sampleAction(SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox);
 
@@ -79,7 +81,7 @@ public:
 	void weightedSampleSIFT(int n = 1);
 
 	bool isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::Ptr& initCloudSegment, const pcl::PointCloud<PointT>::Ptr& lastCloudSegment,
-	                             const moveit::Pose& worldTcamera, const double& scoreThreshold,
+	                             const mps::Pose& worldTcamera, const double& scoreThreshold,
 	                             const bool& useGuess = false, const Eigen::Matrix4f& guessCamera = Eigen::Matrix4f::Identity());
 };
 

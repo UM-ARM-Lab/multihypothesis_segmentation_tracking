@@ -155,7 +155,7 @@ public:
 	std::map<ObjectIndex, std::shared_ptr<octomap::OcTree>> vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<ObjectIndex>& uniqueObjectLabels);
 
 	VertexLabels objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects, // object in subRegion
-	                                                            const Eigen::Vector3d& subRegionMinExtent);
+	                                          const Eigen::Vector3d& subRegionMinExtent);
 };
 
 template <typename Point>
@@ -184,6 +184,8 @@ Eigen::Vector3d gridToCoord(const octomap::OcTree* octree, const Eigen::Vector3d
 Eigen::Vector3d vertexDescpToCoord(const double& resolution, const Eigen::Vector3d& roiMin, const mps::VoxelRegion::vertex_descriptor& query);
 
 bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelRegion::vertex_descriptor& query);
+
+std::set<ObjectIndex> getUniqueObjectLabels(const VoxelRegion::VertexLabels& input);
 
 std::pair<bool, double>
 sampleIsOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const mps::VoxelRegion::vertex_descriptor& query,

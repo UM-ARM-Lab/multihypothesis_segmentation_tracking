@@ -59,6 +59,8 @@ struct OccupancyData
 	explicit
 	OccupancyData(std::shared_ptr<VoxelRegion> region);
 
+	OccupancyData(const std::shared_ptr<Scene>& scene, std::shared_ptr<VoxelRegion> region, VoxelRegion::VertexLabels vertexState);
+
 	// Domain properties shared by this particle
 	std::shared_ptr<VoxelRegion> voxelRegion;
 

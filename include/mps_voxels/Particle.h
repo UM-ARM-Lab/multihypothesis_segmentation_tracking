@@ -46,8 +46,6 @@ namespace mps
 
 struct OccupancyData;
 
-std::set<ObjectIndex> getUniqueObjectLabels(const VoxelRegion::VertexLabels& input);
-
 struct Particle
 {
 	using ParticleData = OccupancyData;

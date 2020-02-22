@@ -677,6 +677,12 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 			particle.state->parentScene = this->scene;
 
+//			cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
+//
+//
+//			IMSHOW("segmentation", colorByLabel(segParticle));
+//			WAIT_KEY(0);
+
 			particleFilter->particles.push_back(particle);
 		}
 	}
@@ -737,7 +743,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				visualization_msgs::MarkerArray ma;
 				ma.markers.resize(1);
 				ma.markers.front().action = visualization_msgs::Marker::DELETEALL;
-//				visualPub.publish(ma);
+				visualPub.publish(ma);
 			}
 
 			IMSHOW("segmentation", colorByLabel(particle.state->segInfo->objectness_segmentation->image));
@@ -895,6 +901,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	//// scene->minExtent and scene->maxExtent are changing from frame to frame
+	/*
 	for (int i=0; i<particleFilter->numParticles; ++i)
 	{
 		particleFilter->particles[i].state->vertexState = particleFilter->voxelRegion->objectsToSubRegionVoxelLabel(scene->bestGuess->objects, scene->minExtent.head<3>().cast<double>());
@@ -918,6 +925,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		std::cerr << "Moved State particle shown!" << std::endl;
 //		sleep(2);
 	}
+	 */
 
 	PROFILE_RECORD("Complete Scene");
 

@@ -37,7 +37,7 @@ ObjectActionModel::ObjectActionModel(std::shared_ptr<const Scenario> scenario_, 
 Eigen::Vector3d
 ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& depth1,
                      const cv::Mat& mask2, const cv::Mat& depth2,
-                     const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera)
+                     const image_geometry::PinholeCameraModel& cameraModel, const mps::Pose& worldTcamera)
 {
 	assert(mask1.rows == mask2.rows);
 	assert(mask1.cols == mask2.cols);
@@ -51,6 +51,10 @@ ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& dep
 	float centerCol2 = 0;
 	float mask1size = 0;
 	float mask2size = 0;
+
+	// TODO: Use moments command:
+//	cv::Moments m1 = cv::moments(mask1,true);
+//	cv::Point2f p1(m1.m10/m1.m00, m1.m01/m1.m00);
 	for (int i = 0; i < mask1.rows; i++)
 	{
 		for (int j = 0; j < mask1.cols; j++)
@@ -68,6 +72,12 @@ ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& dep
 				mask2size += 1.0;
 			}
 		}
+	}
+
+	if (mask1size < 1 || mask2size < 1)
+	{
+		ROS_WARN_STREAM("Attempted to compute step based on 2D mask, but mask was empty.");
+		return Eigen::Vector3d::Zero();
 	}
 	centerRow1 /= mask1size;
 	centerCol1 /= mask1size;
@@ -91,7 +101,7 @@ ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& dep
 	return objectAction;
 }
 
-RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera)
+RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera)
 {
 	//// Construct PointCloud Segments
 	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer.rgb.at(steps[0])->image, buffer.depth.at(steps[0])->image,
@@ -118,18 +128,18 @@ RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& step
 	RigidTF rtf;
 	rtf.tf = Mworld;
 	std::cerr << "ICP TF: \n";
-	std::cerr << rtf.tf << std::endl;
+	std::cerr << rtf.tf.matrix() << std::endl;
 	return rtf;
 }
 
-std::map<std::pair<ros::Time, ros::Time>, Eigen::Matrix4d>
-ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera)
+ObjectActionModel::TimePoseLookup
+ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera)
 {
 	assert(steps.size() > 1);
-	icpRigidTF.tf = Eigen::Matrix4d::Identity();
+	icpRigidTF.tf = mps::Pose::Identity();
 
 	pcl::IterativeClosestPoint<PointT, PointT> icp;
-	std::map<std::pair<ros::Time, ros::Time>, Eigen::Matrix4d> timeToMotionLookup;
+	TimePoseLookup timeToMotionLookup;
 
 	//// Construct PointCloud Segments
 	pcl::PointCloud<PointT>::Ptr firstCloudSegment;
@@ -151,69 +161,78 @@ ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& st
 		                                                                buffer.depth.at(steps[t + 1])->image,
 		                                                                buffer.cameraModel,
 		                                                                masks.at(steps[t + 1]));
-		assert(!secondCloudSegment->empty());
 
-//		icp.setMaximumIterations(50);
-//		icp.setTransformationEpsilon(1e-9);
-		icp.setUseReciprocalCorrespondences(true);
-		icp.setEuclideanFitnessEpsilon(0.0001);
-		icp.setInputSource(firstCloudSegment);
-		icp.setInputTarget(secondCloudSegment);
-		pcl::PointCloud<PointT> Final;
-		icp.align(Final);
-		double score = icp.getFitnessScore();
-		std::cerr << "is Converged: " << icp.hasConverged() << "; Score = " << score << std::endl;
-
-		//// Visualization of ICP
-		if (scenario->shouldVisualize("icp"))
+		// NB: sometimes the second segment will be empty: fall through to score-based error handling
+		double error = std::numeric_limits<double>::max();
+		if (!secondCloudSegment->empty())
 		{
-			static ros::NodeHandle pnh("~");
-			static ros::Publisher pcPub1 = pnh.advertise<pcl::PointCloud<PointT>>("icp_source", 1, true);
-			static ros::Publisher pcPub2 = pnh.advertise<pcl::PointCloud<PointT>>("icp_target", 1, true);
-			static ros::Publisher pcPub3 = pnh.advertise<pcl::PointCloud<PointT>>("icp_registered", 1, true);
+//			icp.setMaximumIterations(50);
+//		    icp.setTransformationEpsilon(1e-9);
+			icp.setUseReciprocalCorrespondences(true);
+			icp.setEuclideanFitnessEpsilon(0.0001);
+			icp.setInputSource(firstCloudSegment);
+			icp.setInputTarget(secondCloudSegment);
+			pcl::PointCloud<PointT> Final;
+			icp.align(Final);
+			error = icp.getFitnessScore();
+			std::cerr << "is Converged: " << icp.hasConverged() << "; Score = " << error << std::endl;
 
-			firstCloudSegment->header.frame_id = buffer.cameraModel.tfFrame();
-			pcl_conversions::toPCL(ros::Time::now(), firstCloudSegment->header.stamp);
-			pcPub1.publish(*firstCloudSegment);
+			//// Visualization of ICP
+			if (scenario->shouldVisualize("icp"))
+			{
+				static ros::NodeHandle pnh("~");
+				static ros::Publisher pcPub1 = pnh.advertise<pcl::PointCloud<PointT>>("icp_source", 1, true);
+				static ros::Publisher pcPub2 = pnh.advertise<pcl::PointCloud<PointT>>("icp_target", 1, true);
+				static ros::Publisher pcPub3 = pnh.advertise<pcl::PointCloud<PointT>>("icp_registered", 1, true);
 
-			secondCloudSegment->header.frame_id = buffer.cameraModel.tfFrame();
-			pcl_conversions::toPCL(ros::Time::now(), secondCloudSegment->header.stamp);
-			pcPub2.publish(*secondCloudSegment);
+				firstCloudSegment->header.frame_id = buffer.cameraModel.tfFrame();
+				pcl_conversions::toPCL(ros::Time::now(), firstCloudSegment->header.stamp);
+				pcPub1.publish(*firstCloudSegment);
 
-			Final.header.frame_id = buffer.cameraModel.tfFrame();
-			pcl_conversions::toPCL(ros::Time::now(), Final.header.stamp);
-			pcPub3.publish(Final);
+				secondCloudSegment->header.frame_id = buffer.cameraModel.tfFrame();
+				pcl_conversions::toPCL(ros::Time::now(), secondCloudSegment->header.stamp);
+				pcPub2.publish(*secondCloudSegment);
+
+				Final.header.frame_id = buffer.cameraModel.tfFrame();
+				pcl_conversions::toPCL(ros::Time::now(), Final.header.stamp);
+				pcPub3.publish(Final);
+			}
 		}
 
-		if (score > 0.001) //// invalid
+
+
+		if (error > 0.001) //// invalid
 		{
 			std::cerr << "This is an invalid ICP, use previous TF." << std::endl;
 			if (t == 0)
 			{
-				timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t + 1]), Eigen::Matrix4d::Identity());
+				timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t + 1]), mps::Pose::Identity());
 			}
 			else
 			{
-				Eigen::Matrix4d prevMworld = timeToMotionLookup.at(std::make_pair(steps[t-1], steps[t]));
+				const auto& prevMworld = timeToMotionLookup.at(std::make_pair(steps[t-1], steps[t]));
 				timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t + 1]), prevMworld);
-				icpRigidTF.tf = prevMworld * icpRigidTF.tf;
+				icpRigidTF.tf = prevMworld.cast<double>() * icpRigidTF.tf;
 			}
 		}
 		else
 		{
-			Eigen::Matrix4f Mcamera = icp.getFinalTransformation();
-			Eigen::Matrix4d Mworld = worldTcamera.matrix() * Mcamera.cast<double>() * worldTcamera.inverse().matrix();
+			auto temp = icp.getFinalTransformation();
+			mps::Pose Mcamera;
+			Mcamera.linear() = temp.topLeftCorner<3, 3>().cast<double>();
+			Mcamera.translation() = temp.topRightCorner<3, 1>().cast<double>();
+			mps::Pose Mworld = worldTcamera * Mcamera * worldTcamera.inverse(Eigen::Isometry);
 			timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t + 1]), Mworld);
 			icpRigidTF.tf = Mworld * icpRigidTF.tf;
 		}
 	}
 	std::cerr << "icp total TF:\n";
-	std::cerr << icpRigidTF.tf << std::endl;
+	std::cerr << icpRigidTF.tf.matrix() << std::endl;
 
 	return timeToMotionLookup;
 }
 
-bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const moveit::Pose& worldTcamera)
+bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const mps::Pose& worldTcamera)
 {
 	ROS_INFO("Waiting for Jlinkage server to start.");
 	// wait for the action server to start
@@ -311,7 +330,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	tf::StampedTransform worldTcameraTF;
 	geometry_msgs::TransformStamped wTc = buffer_out.tfs->lookupTransform(tableFrame, buffer_out.cameraModel.tfFrame(), ros::Time(0));
 	tf::transformStampedMsgToTF(wTc, worldTcameraTF);
-	moveit::Pose worldTcamera;
+	mps::Pose worldTcamera;
 	tf::transformTFToEigen(worldTcameraTF, worldTcamera);
 
 	/////////////////////////////////////////////
@@ -349,7 +368,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	/////////////////////////////////////////////
 	//// ICP check & store
 	/////////////////////////////////////////////
-	std::map<std::pair<ros::Time, ros::Time>, Eigen::Matrix4d> timeToMotionLookup = icpManifoldSequencialSampler(steps, buffer_out, masks, worldTcamera);
+	ObjectActionModel::TimePoseLookup timeToMotionLookup = icpManifoldSequencialSampler(steps, buffer_out, masks, worldTcamera);
 
 //	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer_out.rgb.at(steps[0])->image, buffer_out.depth.at(steps[0])->image,
 //	                                                                buffer_out.cameraModel, masks.at(steps[0]));
@@ -391,7 +410,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	for (auto& as : actionSamples)
 	{
 		std::cerr << "Final action sample:\n";
-		std::cerr << as.tf << std::endl;
+		std::cerr << as.tf.matrix() << std::endl;
 	}
 	return true;
 }
@@ -417,7 +436,7 @@ void ObjectActionModel::weightedSampleSIFT(int n)
 }
 
 bool ObjectActionModel::isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::Ptr& initCloudSegment, const pcl::PointCloud<PointT>::Ptr& lastCloudSegment,
-                             const moveit::Pose& worldTcamera, const double& scoreThreshold,
+                             const mps::Pose& worldTcamera, const double& scoreThreshold,
                              const bool& useGuess, const Eigen::Matrix4f& guessCamera)
 {
 	assert(!initCloudSegment->empty());
@@ -488,28 +507,31 @@ moveOcTree(const octomap::OcTree* octree, const RigidTF& action)
 Particle
 moveParticle(const Particle& inputParticle, const std::map<int, RigidTF>& labelToMotionLookup)
 {
-	Particle outputParticle;
-	outputParticle.state = std::make_shared<OccupancyData>(inputParticle.state->voxelRegion);
+	const VoxelRegion& region = *inputParticle.state->voxelRegion;
+	assert(inputParticle.state->vertexState.size() == region.num_vertices());
+	VoxelRegion::VertexLabels outputState(region.num_vertices(), -1);
 
-#pragma omp parallel for
-	for (int i = 0; i < (int)inputParticle.state->vertexState.size(); ++i)
+//#pragma omp parallel for
+	for (size_t i = 0; i < inputParticle.state->vertexState.size(); ++i)
 	{
 		if (inputParticle.state->vertexState[i] >= 0)
 		{
-			auto& tf = labelToMotionLookup.at(inputParticle.state->vertexState[i]).tf;
-			VoxelRegion::vertex_descriptor vd = inputParticle.state->voxelRegion->vertex_at(i);
-			Eigen::Vector3d originalCoord = vertexDescpToCoord(inputParticle.state->voxelRegion->resolution, inputParticle.state->voxelRegion->regionMin, vd);
-			Eigen::Vector4d oCoord = {originalCoord.x(), originalCoord.y(), originalCoord.z(), 1.0};
-			Eigen::Vector4d nCoord = tf * oCoord;
-			Eigen::Vector3d newCoord = {nCoord.x(), nCoord.y(), nCoord.z()};
+			const auto& T = labelToMotionLookup.at(inputParticle.state->vertexState[i]).tf;
+			VoxelRegion::vertex_descriptor vd = region.vertex_at(i);
+			Eigen::Vector3d originalCoord = vertexDescpToCoord(region.resolution, region.regionMin, vd);
+			Eigen::Vector3d newCoord = T * originalCoord;
 
-			if (!outputParticle.state->voxelRegion->isInRegion(newCoord)) continue;
+			if (!region.isInRegion(newCoord)) continue;
 
-			VoxelRegion::vertex_descriptor newVD = coordToVertexDesc(outputParticle.state->voxelRegion->resolution, outputParticle.state->voxelRegion->regionMin, newCoord);
-			auto index = outputParticle.state->voxelRegion->index_of(newVD);
-			outputParticle.state->vertexState[index] = inputParticle.state->vertexState[i];
+			VoxelRegion::vertex_descriptor newVD = coordToVertexDesc(region.resolution, region.regionMin, newCoord);
+			auto index = region.index_of(newVD);
+			outputState[index] = inputParticle.state->vertexState[i];
 		}
 	}
+
+	Particle outputParticle;
+	outputParticle.state = std::make_shared<OccupancyData>(
+		inputParticle.state->parentScene.lock(), inputParticle.state->voxelRegion, outputState);
 
 	return outputParticle;
 }

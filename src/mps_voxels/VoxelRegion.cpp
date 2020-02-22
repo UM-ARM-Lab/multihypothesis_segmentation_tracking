@@ -405,6 +405,20 @@ bool isOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin,
 	return false;
 }
 
+std::set<ObjectIndex> getUniqueObjectLabels(const VoxelRegion::VertexLabels& input)
+{
+	std::set<ObjectIndex> out;
+
+#pragma omp declare reduction (merge : std::set<ObjectIndex> : omp_out.insert(omp_in.begin(), omp_in.end()))
+#pragma omp parallel for reduction(merge: out)
+	for (size_t i = 0; i < input.size(); ++i)
+	{
+		out.insert(ObjectIndex(input[i]));
+	}
+	out.erase(ObjectIndex());
+	return out;
+}
+
 std::pair<bool, double> sampleIsOccupied(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin,
                                          const mps::VoxelRegion::vertex_descriptor& query, cv::RNG& rng)
 {
@@ -525,10 +539,9 @@ VoxelRegion::objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::uniqu
 	mps::VoxelRegion::VertexLabels res(num_vertices(), -1);
 	mps::VoxelRegion::vertex_descriptor subRegionMinVD = coordToVertexDesc(resolution, regionMin, subRegionMinExtent);
 
-	int label = 0;
 	for (auto& pair : objects)
 	{
-		auto obj = pair.second.get();
+		const auto* obj = pair.second.get();
 		assert(obj);
 		mps::VoxelRegion::vertex_descriptor objDims = roiToGrid(obj->occupancy.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>());
 		mps::VoxelRegion objVS(objDims, obj->occupancy->getResolution(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>());
@@ -546,10 +559,9 @@ VoxelRegion::objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::uniqu
 				mps::VoxelRegion::vertices_size_type index = index_of(target);
 				if (index >= num_vertices()) ROS_ERROR_STREAM("objects are outside voxel region!!!");
 				else
-					res[index] = label;
+					res[index] = pair.first.id;
 			}
 		}
-		label ++;
 	}
 	return res;
 }

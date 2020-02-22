@@ -46,8 +46,22 @@ Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const i
 			ROS_ERROR_STREAM("Failed to sample action for label " << pair.first -1 << " !!!");
 			//TODO: generate reasonable disturbance
 			RigidTF randomSteadyTF;
-			randomSteadyTF.tf = Eigen::Matrix4d::Identity();
+			randomSteadyTF.tf = mps::Pose::Identity();
 			labelToMotionLookup.emplace(pair.first - 1, randomSteadyTF);
+		}
+	}
+
+	// TODO: This keeps triggering for ID==0
+	const auto uniqueLabels = getUniqueObjectLabels(inputParticle.state->vertexState);
+	for (const ObjectIndex& label : uniqueLabels)
+	{
+		if (labelToMotionLookup.find(label.id) == labelToMotionLookup.end())
+		{
+			std::cerr << "ERROR!!! No motion generated for object label '" << label << "'." << std::endl;
+//			RigidTF ident;
+//			ident.tf = mps::Pose::Identity();
+//			labelToMotionLookup.emplace(label.id, ident);
+			MPS_ASSERT(labelToMotionLookup.find(label.id) != labelToMotionLookup.end());
 		}
 	}
 

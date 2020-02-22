@@ -21,4 +21,9 @@ namespace moveit
 #endif
 }
 
+namespace mps
+{
+using Pose = moveit::Pose;
+}
+
 #endif //MPS_MOVEIT_POSE_TYPE_H
