@@ -74,9 +74,26 @@ cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeC
 	return labels;
 }
 
-void refineParticleFreeSpace(Particle& particle)
+void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOctree)
 {
+	Eigen::Vector3d roiMin = particle.state->voxelRegion->regionMin;
+	for (int i = 0; i < (int)particle.state->voxelRegion->num_vertices(); ++i)
+	{
+		if (particle.state->vertexState[i] >= 0)
+		{
+			VoxelRegion::vertex_descriptor vd = particle.state->voxelRegion->vertex_at(i);
+			Eigen::Vector3d coord = particle.state->voxelRegion->coordinate_of(vd);
+			octomap::OcTreeNode* node = sceneOctree->search(coord.x(), coord.y(), coord.z());
 
+			if (node) /// coord is inside sceneOctree; if it is not: then it's unseen
+			{
+				if (node->getOccupancy() <= sceneOctree->getOccupancyThres())
+				{
+					particle.state->vertexState[i] = -1; /// set to empty
+				}
+			}
+		}
+	}
 }
 
 }

@@ -67,7 +67,7 @@ struct Particle
 
 cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const int& step = 1);
 
-void refineParticleFreeSpace(Particle& particle);
+void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOctree);
 
 }
 
