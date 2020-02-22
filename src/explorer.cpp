@@ -670,15 +670,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			}
 
 			particle.state->vertexState = particleFilter->voxelRegion->objectsToSubRegionVoxelLabel(particle.state->objects, scene->minExtent.head<3>().cast<double>());
-
-
-//			particle.state->vertexState = objectsToVoxelLabel(particle.state->objects,
-//			                                                  scene->minExtent.head<3>().cast<double>(),
-//			                                                  scene->maxExtent.head<3>().cast<double>());
 			particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
-
 			particle.state->parentScene = this->scene;
-
 			particleFilter->particles.push_back(particle);
 		}
 	}
