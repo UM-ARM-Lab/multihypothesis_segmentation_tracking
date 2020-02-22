@@ -297,6 +297,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/visualization/visualize_object.cpp
   src/${PROJECT_NAME}/visualization/visualize_voxel_region.cpp
   src/${PROJECT_NAME}/visualization/visualize_occupancy.cpp
+  src/${PROJECT_NAME}/Experiment.cpp
   )
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
