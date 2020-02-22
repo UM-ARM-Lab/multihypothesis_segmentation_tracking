@@ -20,10 +20,10 @@ int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "test_pf");
 	ros::NodeHandle nh;
-	if (!nh.hasParam("/use_sim_time"))
-	{
-		ROS_INFO("No param named '/use_sim_time'");
-	}
+//	if (!nh.hasParam("/use_sim_time"))
+//	{
+//		ROS_INFO("No param named '/use_sim_time'");
+//	}
 //	nh.setParam("/use_sim_time", false);
 	ros::Publisher visualPub = nh.advertise<visualization_msgs::MarkerArray>("visualization", 1, true);
 	std::default_random_engine rng;
@@ -70,6 +70,40 @@ int main(int argc, char **argv)
 	visualPub.publish(pfMarkers);
 	std::cerr << "State particle shown!" << std::endl;
 	sleep(2);
+
+	/////////////////////////////////////////////
+	//// sample object motions (new)
+	/////////////////////////////////////////////
+	std::unique_ptr<Tracker> sparseTracker = std::make_unique<Tracker>();
+	sparseTracker->track_options.featureRadius = 200.0f;
+	sparseTracker->track_options.pixelRadius = 1000.0f;
+	sparseTracker->track_options.meterRadius = 1.0f;
+	std::unique_ptr<DenseTracker> denseTracker = std::make_unique<SiamTracker>();
+
+	std::shared_ptr<Scenario> scenario = std::make_shared<Scenario>();
+
+	std::unique_ptr<ParticleFilter> particleFilter = std::make_unique<ParticleFilter>(scenario, dims, resolution,
+	                                                                                  scenario->minExtent.head<3>().cast<double>(),
+	                                                                                  scenario->maxExtent.head<3>().cast<double>(), 1);
+	particleFilter->voxelRegion = particle.state->voxelRegion;
+
+	/////////////////////////////////////////////
+	//// Look up worldTcamera
+	/////////////////////////////////////////////
+	const std::string tableFrame = "table_surface";
+	tf::StampedTransform worldTcameraTF;
+	geometry_msgs::TransformStamped wTc = buffer_out.tfs->lookupTransform(tableFrame, buffer_out.cameraModel.tfFrame(), ros::Time(0));
+	tf::transformStampedMsgToTF(wTc, worldTcameraTF);
+	moveit::Pose worldTcamera;
+	tf::transformTFToEigen(worldTcameraTF, worldTcamera);
+
+	Particle outputParticle = particleFilter->applyActionModel(particle, buffer_out.cameraModel, worldTcamera,
+	                                                           buffer_out, sparseTracker, denseTracker,1);
+	auto pfnewmarker = mps::visualize(*outputParticle.state, header, rng);
+	visualPub.publish(pfnewmarker);
+	std::cerr << "Predicted state particle shown!" << std::endl;
+	sleep(5);
+
 
 	return 0;
 }
