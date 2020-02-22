@@ -178,7 +178,7 @@ ObjectSampler::ObjectSampler(const OccupancyData* env)
 		for (const auto& i : env->obstructions) { weights.push_back(i.second); }
 		std::discrete_distribution<size_t> distr(weights.begin(), weights.end());
 
-		size_t idx = distr(env->parentScene.lock()->scenario->rng);
+		size_t idx = distr(env->parentScene.lock()->scenario->rng());
 
 		auto it(env->obstructions.begin());
 		std::advance(it, idx);
@@ -193,7 +193,7 @@ ObjectSampler::ObjectSampler(const OccupancyData* env)
 	const int N = static_cast<int>(shadowPoints->size());
 	std::vector<unsigned int> indices(N);
 	std::iota(indices.begin(), indices.end(), 0);
-	std::shuffle(indices.begin(), indices.end(), env->parentScene.lock()->scenario->rng);
+	std::shuffle(indices.begin(), indices.end(), env->parentScene.lock()->scenario->rng());
 
 	cameraOrigin = octomap::point3d((float) env->parentScene.lock()->worldTcamera.translation().x(),
 	                                (float) env->parentScene.lock()->worldTcamera.translation().y(),
@@ -649,12 +649,12 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	// Shuffle manipulators (without shuffling underlying array)
 	std::vector<unsigned int> manip_indices(env->parentScene.lock()->scenario->manipulators.size());
 	std::iota(manip_indices.begin(), manip_indices.end(), 0);
-	std::shuffle(manip_indices.begin(), manip_indices.end(), env->parentScene.lock()->scenario->rng);
+	std::shuffle(manip_indices.begin(), manip_indices.end(), env->parentScene.lock()->scenario->rng());
 
 	// Shuffle push directions (without shuffling underlying array)
 	std::vector<unsigned int> push_indices(pushGripperFrames.size());
 	std::iota(push_indices.begin(), push_indices.end(), 0);
-	std::shuffle(push_indices.begin(), push_indices.end(), env->parentScene.lock()->scenario->rng);
+	std::shuffle(push_indices.begin(), push_indices.end(), env->parentScene.lock()->scenario->rng());
 
 	std::uniform_int_distribution<int> stepDistr(15, 20);
 
@@ -670,7 +670,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	{
 		const auto& pushGripperFrame = pushGripperFrames[push_idx];
 		const double stepSize = 0.015;
-		const int nSteps = stepDistr(env->parentScene.lock()->scenario->rng);
+		const int nSteps = stepDistr(env->parentScene.lock()->scenario->rng());
 		PoseSequence pushTrajectory;
 		for (int s = -15; s < nSteps; ++s)
 		{
@@ -842,7 +842,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 	// Shuffle manipulators (without shuffling underlying array)
 	std::vector<unsigned int> manip_indices(env->parentScene.lock()->scenario->manipulators.size());
 	std::iota(manip_indices.begin(), manip_indices.end(), 0);
-	std::shuffle(manip_indices.begin(), manip_indices.end(), env->parentScene.lock()->scenario->rng);
+	std::shuffle(manip_indices.begin(), manip_indices.end(), env->parentScene.lock()->scenario->rng());
 
 	while (!graspPoses.empty())
 	{
@@ -887,8 +887,8 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 				{
 					goalPose = moveit::Pose::Identity();
 					goalPose.linear() = goalPose.linear() * Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitX()).matrix();
-					goalPose.linear() = goalPose.linear() * Eigen::AngleAxisd(thetaDistr(env->parentScene.lock()->scenario->rng), Eigen::Vector3d::UnitZ()).matrix();
-					goalPose.translation() = Eigen::Vector3d(xDistr(env->parentScene.lock()->scenario->rng), yDistr(env->parentScene.lock()->scenario->rng), gripperPose.translation().z());
+					goalPose.linear() = goalPose.linear() * Eigen::AngleAxisd(thetaDistr(env->parentScene.lock()->scenario->rng()), Eigen::Vector3d::UnitZ()).matrix();
+					goalPose.translation() = Eigen::Vector3d(xDistr(env->parentScene.lock()->scenario->rng()), yDistr(env->parentScene.lock()->scenario->rng()), gripperPose.translation().z());
 					goalPose.translation() -= PALM_DISTANCE/10.0*goalPose.linear().col(2); // Go up very slightly during drag
 					sln = manipulator->IK(goalPose, robotTworld, robotState);
 
@@ -1066,7 +1066,7 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 	// Shuffle manipulators (without shuffling underlying array)
 	std::vector<unsigned int> manip_indices(env->parentScene.lock()->scenario->manipulators.size());
 	std::iota(manip_indices.begin(), manip_indices.end(), 0);
-	std::shuffle(manip_indices.begin(), manip_indices.end(), env->parentScene.lock()->scenario->rng);
+	std::shuffle(manip_indices.begin(), manip_indices.end(), env->parentScene.lock()->scenario->rng());
 
 	while (!graspPoses.empty())
 	{

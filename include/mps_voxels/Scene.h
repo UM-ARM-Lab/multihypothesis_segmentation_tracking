@@ -11,8 +11,9 @@
 #include "mps_voxels/OccupancyData.h"
 #include "mps_voxels/Manipulator.h"
 #include "mps_voxels/MotionModel.h"
-#include "segmentation_utils.h"
+#include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/util/vector_less_than.hpp"
+#include "mps_voxels/Experiment.h"
 
 #include <octomap/OcTree.h>
 
@@ -35,6 +36,7 @@ namespace mps
 class LocalOctreeServer;
 class VoxelCompleter;
 class RGBDSegmenter;
+class Experiment;
 
 enum class FEATURE_AVAILABILITY
 {
@@ -66,16 +68,17 @@ public:
 	// Maximum extents of "tabletop"
 	Eigen::Vector4f minExtent, maxExtent;
 
-	mutable
-	std::default_random_engine rng; // TODO: Should this be mutex-protected?
 
-	std::map<std::string, bool> visualize;
+	std::default_random_engine& rng() const { return experiment->rng; }
+
+//	std::map<std::string, bool> visualize;
 	inline
 	bool shouldVisualize(const std::string& channel) const
 	{
-		const auto& iter = visualize.find(channel);
-		return (iter != visualize.end() && iter->second);
+		return experiment->shouldVisualize(channel);
 	}
+
+	std::shared_ptr<const Experiment> experiment;
 
 	bool loadManipulators(robot_model::RobotModelPtr& pModel);
 };

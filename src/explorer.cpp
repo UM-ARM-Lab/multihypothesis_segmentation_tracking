@@ -25,6 +25,7 @@
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_sensor_history.h"
 #include "mps_voxels/logging/log_segmentation_info.h"
+#include "mps_voxels/logging/log_cv_roi.h"
 #include "mps_voxels/logging/log_occupancy_data.h"
 #include "mps_voxels/ParticleFilter.h"
 #include <mps_voxels/JaccardMatch.h>
@@ -178,8 +179,6 @@ public:
 	double planning_time = 60.0;
 	int planning_samples = 25;
 //	int mostAmbNode = -1;
-	std::string experiment_id;
-	std::string experiment_dir;
 	ros::ServiceClient externalVideoClient;
 	MarkerSet allMarkers;
 
@@ -469,14 +468,14 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			std::string worldname = "experiment_world_02_21";
 			{
 				std::cerr << "start logging historian->buffer" << std::endl;
-				DataLog logger("/home/kunhuang/mps_log/explorer_buffer_" + worldname + ".bag");
+				DataLog logger(scenario->experiment->experiment_dir + "/explorer_buffer_" + worldname + ".bag");
 				logger.activeChannels.insert("buffer");
 				logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
 				std::cerr << "Successfully logged." << std::endl;
 			}
 			{
 				std::cerr << "start logging scene->segInfo" << std::endl;
-				DataLog logger("/home/kunhuang/mps_log/explorer_segInfo_" + worldname + ".bag");
+				DataLog logger(scenario->experiment->experiment_dir + "/explorer_segInfo_" + worldname + ".bag");
 				logger.activeChannels.insert("segInfo");
 				logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
 				std::cerr << "Successfully logged." << std::endl;
@@ -552,7 +551,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_RECORD("Preprocess Scene");
 
-	if (scenario->visualize["pointclouds"])
+	if (scenario->shouldVisualize("pointclouds"))
 	{
 		scene->cloud->header.frame_id = scene->cameraFrame;
 		pcl_conversions::toPCL(ros::Time::now(), scene->cloud->header.stamp);
@@ -580,7 +579,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 
 	// Show robot collision
-	if (scenario->visualize["collision"])
+	if (scenario->shouldVisualize("collision"))
 	{
 		this->allMarkers["collision"] = generateRobotCollisionSpheres(globalFrame);
 		this->visualPub.publish(this->allMarkers.flatten());
@@ -718,7 +717,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		scene->bestGuess = particleFilter->particles[bestParticle].state;
 	}
 
-	if (scenario->visualize["particles"])
+	if (scenario->shouldVisualize("particles"))
 	{
 		for (const auto& particle : particleFilter->particles)
 		{
@@ -754,7 +753,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				std_msgs::Header header;
 				header.frame_id = globalFrame;
 				header.stamp = cam_msg->header.stamp;
-				this->allMarkers["particle"] = mps::visualize(*particle.state, header, scenario->rng);
+				this->allMarkers["particle"] = mps::visualize(*particle.state, header, scenario->rng());
 				this->visualPub.publish(this->allMarkers.flatten());
 			}
 		}
@@ -901,21 +900,17 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		std::cerr << "State particle shown!" << std::endl;
 		sleep(2);
 
-		/////////////////////////////////////////////
-		//// log particle
-		/////////////////////////////////////////////
-		bool ifLog = true;
-		if (ifLog && i == 0)
-		{
-			std::string worldname = "experiment_world_02_21";
-			{
-				std::cerr << "start logging particle.state" << std::endl;
-				DataLog logger("/home/kunhuang/mps_log/explorer_particle_state_" + worldname + ".bag");
-				logger.activeChannels.insert("particleState");
-				logger.log<OccupancyData>("particleState", *particleFilter->particles[i].state);
-				std::cerr << "Successfully logged." << std::endl;
-			}
-		}
+////	labelToMotionLookup is not complete
+//		std::map<int, RigidTF> labelToMotionLookup;
+//		RigidTF temptf;
+//		temptf.linear = {0, 0, 0.1};
+//		temptf.angular = {0, 0, 1.57};
+//		labelToMotionLookup.insert({0, temptf});
+//		Particle temp = moveParticle(particleFilter->particles[i], labelToMotionLookup);
+//		auto movedpfmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(temp.state->vertexState, scene->worldFrame, "moved_State" + std::to_string(i));
+//		visualPub.publish(movedpfmarker);
+//		std::cerr << "Moved State particle shown!" << std::endl;
+//		sleep(2);
 	}
 
 	PROFILE_RECORD("Complete Scene");
@@ -1270,13 +1265,13 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				PROFILE_RECORD("Execution");
 				PROFILE_START("Actions Required");
 				PROFILE_RECORD_DOUBLE("Actions Required", actionCount);
-				PROFILE_WRITE_SUMMARY_FOR_ALL(experiment_dir + "/profile.txt");
-				PROFILE_WRITE_ALL(experiment_dir + "/profile.txt");
+				PROFILE_WRITE_SUMMARY_FOR_ALL(scenario->experiment->experiment_dir + "/profile.txt");
+				PROFILE_WRITE_ALL(scenario->experiment->experiment_dir + "/profile.txt");
 
 				if (externalVideoClient.waitForExistence(ros::Duration(3)))
 				{
 					arm_video_recorder::TriggerVideoRecordingRequest req;
-					req.filename = experiment_dir + "/external.mp4";
+					req.filename = scenario->experiment->experiment_dir + "/external.mp4";
 					req.timeout_in_sec = 3600;
 					req.record = false;
 					arm_video_recorder::TriggerVideoRecordingResponse resp;
@@ -1440,6 +1435,7 @@ moveit_msgs::DisplayTrajectory SceneExplorer::visualize(const std::shared_ptr<Mo
 
 SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 {
+	auto experiment = std::make_shared<Experiment>(nh, pnh);
     sensor_queue = std::make_unique<ros::CallbackQueue>();
 	sensor_spinner = std::make_unique<ros::AsyncSpinner>(1, sensor_queue.get());
 	listener = std::make_unique<tf::TransformListener>(ros::Duration(60.0));
@@ -1518,20 +1514,6 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	gotParam = pnh.getParam("planning_samples", planning_samples); MPS_ASSERT(gotParam);
 	gotParam = pnh.getParam("planning_time", planning_time); MPS_ASSERT(gotParam);
 
-	nh.getParam("/experiment/id", experiment_id);
-	nh.getParam("/experiment/directory", experiment_dir);
-
-	std::vector<std::string> visualizeChannels;
-	pnh.param("visualize", visualizeChannels, std::vector<std::string>());
-	if (!visualizeChannels.empty())
-	{
-		std::cerr << "Visualizing channels:" << std::endl;
-		for (const auto& m : visualizeChannels)
-		{
-			std::cerr << "\t" << m << std::endl;
-		}
-	}
-
 	visualPub = nh.advertise<visualization_msgs::MarkerArray>("visualization", 1, true);
 	gripperLPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/left_arm/gripper_command", 1, false);
 	gripperRPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/right_arm/gripper_command", 1, false);
@@ -1577,11 +1559,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	scenario->mapServer = mapServer;
 	scenario->completionClient = completionClient;
 	scenario->segmentationClient = segmentationClient;
-
-	for (const auto& m : visualizeChannels)
-	{
-		this->scenario->visualize.emplace(m, true);
-	}
+	scenario->experiment = experiment;
 
 	scenario->minExtent = Eigen::Vector4f::Ones();
 	scenario->maxExtent = Eigen::Vector4f::Ones();
@@ -1695,7 +1673,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	else
 	{
 		arm_video_recorder::TriggerVideoRecordingRequest req;
-		req.filename = experiment_dir + "/external.mp4";
+		req.filename = scenario->experiment->experiment_dir + "/external.mp4";
 		req.timeout_in_sec = 3600;
 		req.record = true;
 		arm_video_recorder::TriggerVideoRecordingResponse resp;

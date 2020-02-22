@@ -45,7 +45,7 @@ bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 		{
 			jmg->getSolverInstance()->setSearchDiscretization(0.1); // 0.1 = ~5 degrees
 			const auto& ees = jmg->getAttachedEndEffectorNames();
-			std::cerr << "Loaded jmg '" << jmg->getName() << "' " << jmg->getSolverInstance()->getBaseFrame() << std::endl;
+			ROS_INFO_STREAM("Loaded jmg '" << jmg->getName() << "' " << jmg->getSolverInstance()->getBaseFrame());
 			for (const std::string& eeName : ees)
 			{
 				robot_model::JointModelGroup* ee = pModel->getEndEffector(eeName);
@@ -53,10 +53,10 @@ bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 				const robot_model::JointModel* rootJoint = ee->getCommonRoot();
 				rootJoint->getNonFixedDescendantJointModels();
 
-				std::cerr << "\t-" << eeName << "\t" << ee->getFixedJointModels().size() << std::endl;
+				ROS_INFO_STREAM("\t-" << eeName << "\t" << ee->getFixedJointModels().size());
 				for (const std::string& eeSubName : ee->getAttachedEndEffectorNames())
 				{
-					std::cerr << "\t\t-" << eeSubName << "\t" << pModel->getEndEffector(eeSubName)->getFixedJointModels().size() << std::endl;
+					ROS_INFO_STREAM("\t\t-" << eeSubName << "\t" << pModel->getEndEffector(eeSubName)->getFixedJointModels().size());
 
 					auto manip = std::make_shared<VictorManipulator>(nh, pModel, jmg, ee, pModel->getEndEffector(eeSubName)->getLinkModelNames().front());
 					this->manipulators.emplace_back(manip);
@@ -78,8 +78,8 @@ bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 		}
 //		else
 //		{
-//			std::cerr << "Did not load jmg '" << jmg->getName() << "'" << std::endl;
-//			std::cerr << "\t is " << (jmg->isEndEffector()?"":"not ") << "end-effector." << std::endl;
+//			ROS_INFO_STREAM("Did not load jmg '" << jmg->getName() << "'");
+//			ROS_INFO_STREAM("\t is " << (jmg->isEndEffector()?"":"not ") << "end-effector.");
 //		}
 	}
 
