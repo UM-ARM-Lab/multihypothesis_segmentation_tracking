@@ -205,6 +205,7 @@ octreeToGridParticle(const octomap::OcTree* octree,
 class Object;
 
 /// From object octrees to a particle representing the whole state
+[[deprecated]]
 mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects,
                                                          const Eigen::Vector3d& roiMinExtent,
                                                          const Eigen::Vector3d& roiMaxExtent);

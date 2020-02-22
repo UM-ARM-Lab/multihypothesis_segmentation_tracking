@@ -210,7 +210,7 @@ ObjectSampler::ObjectSampler(const OccupancyData* env)
 		MPS_ASSERT(hit);
 		collision = env->parentScene.lock()->sceneOctree->keyToCoord(env->parentScene.lock()->sceneOctree->coordToKey(collision)); // regularize
 
-		if (env->parentScene.lock()->scenario->visualize["object_sampling"])
+		if (env->parentScene.lock()->scenario->shouldVisualize("object_sampling"))
 		{
 			// Display occluded point and push frame
 			Eigen::Vector3d pt(samplePoint.x(), samplePoint.y(), samplePoint.z());
@@ -331,7 +331,7 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 		if (jointTraj)
 		{
 //			auto* arm = env->parentScene.lock()->manipulators.front()->pModel->getJointModelGroup(jointTraj->jointGroupName);
-			const auto& manipulator = env->parentScene.lock()->scenario->jointToManipulator[jointTraj->cmd.joint_names.front()];
+			const auto& manipulator = env->parentScene.lock()->scenario->jointToManipulator.at(jointTraj->cmd.joint_names.front());
 			collision_detection::AllowedCollisionMatrix acm = gripperEnvironmentACM(manipulator);
 
 			if (motion->state->poses.size() !=  env->objects.size()) { throw std::runtime_error("Whoopsie."); }
@@ -627,7 +627,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	                                  *Eigen::AngleAxisd(-M_PI/2.0, Eigen::Vector3d::UnitZ())).matrix();
 
 	// Display occluded point and push frame
-	if (env->parentScene.lock()->scenario->visualize["push_sampling"])
+	if (env->parentScene.lock()->scenario->shouldVisualize("push_sampling"))
 	{
 		tf::Transform t = tf::Transform::getIdentity();
 		tf::poseEigenToTF(pushFrame, t);
@@ -857,7 +857,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 			continue;
 		}
 
-		if (env->parentScene.lock()->scenario->visualize["slide_sampling"])
+		if (env->parentScene.lock()->scenario->shouldVisualize("slide_sampling"))
 		{
 			tf::Transform t = tf::Transform::getIdentity();
 			tf::poseEigenToTF(gripperPose, t);
@@ -892,7 +892,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 					goalPose.translation() -= PALM_DISTANCE/10.0*goalPose.linear().col(2); // Go up very slightly during drag
 					sln = manipulator->IK(goalPose, robotTworld, robotState);
 
-					if (env->parentScene.lock()->scenario->visualize["slide_sampling"])
+					if (env->parentScene.lock()->scenario->shouldVisualize("slide_sampling"))
 					{
 						tf::Transform temp; tf::poseEigenToTF(goalPose, temp);
 						env->parentScene.lock()->scenario->broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), env->parentScene.lock()->worldFrame, "putative_goal"));
@@ -1081,7 +1081,7 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 			continue;
 		}
 
-		if (env->parentScene.lock()->scenario->visualize["pick_sampling"])
+		if (env->parentScene.lock()->scenario->shouldVisualize("pick_sampling"))
 		{
 			tf::Transform t = tf::Transform::getIdentity();
 			tf::poseEigenToTF(gripperPose, t);

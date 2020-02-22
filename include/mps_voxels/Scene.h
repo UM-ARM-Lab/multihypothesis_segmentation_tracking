@@ -63,9 +63,19 @@ public:
 
 	std::vector<std::pair<std::shared_ptr<shapes::Shape>, Pose>> staticObstacles;
 
-	std::default_random_engine rng;
+	// Maximum extents of "tabletop"
+	Eigen::Vector4f minExtent, maxExtent;
+
+	mutable
+	std::default_random_engine rng; // TODO: Should this be mutex-protected?
 
 	std::map<std::string, bool> visualize;
+	inline
+	bool shouldVisualize(const std::string& channel) const
+	{
+		const auto& iter = visualize.find(channel);
+		return (iter != visualize.end() && iter->second);
+	}
 
 	bool loadManipulators(robot_model::RobotModelPtr& pModel);
 };
@@ -77,7 +87,7 @@ public:
 
 	// Per-instant properties
 
-	std::shared_ptr<Scenario> scenario;
+	std::shared_ptr<const Scenario> scenario;
 	std::map<std::string, std::shared_ptr<MotionModel>> selfModels;
 
 	cv_bridge::CvImagePtr cv_rgb_ptr;
@@ -88,6 +98,8 @@ public:
 	Pose worldTcamera; // transformation from camera to world
 	std::string worldFrame;
 	std::string cameraFrame;
+
+	// Maximum extent of active region of interest on tabletop
 	Eigen::Vector4f minExtent, maxExtent;
 
 	pcl::PointCloud<PointT>::Ptr cloud;

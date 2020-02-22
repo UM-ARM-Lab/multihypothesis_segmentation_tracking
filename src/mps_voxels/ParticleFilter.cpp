@@ -12,11 +12,11 @@ ParticleFilter::ParticleFilter(std::shared_ptr<const Scenario> scenario_, const 
 	: scenario(std::move(scenario_)), numParticles(n)
 {
 	voxelRegion = std::make_shared<VoxelRegion>(dims, res, rmin, rmax);;
-	particles.resize(n);
-	for (int i=0; i<n; ++i)
-	{
-		particles[i].state = std::make_shared<Particle::ParticleData>(voxelRegion);
-	}
+//	particles.resize(n);
+//	for (int i=0; i<n; ++i)
+//	{
+//		particles[i].state = std::make_shared<Particle::ParticleData>(voxelRegion);
+//	}
 }
 
 Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const image_geometry::PinholeCameraModel& cameraModel,

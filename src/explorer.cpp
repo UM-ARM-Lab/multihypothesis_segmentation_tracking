@@ -27,6 +27,7 @@
 #include "mps_voxels/logging/log_segmentation_info.h"
 #include "mps_voxels/logging/log_cv_roi.h"
 #include "mps_voxels/ParticleFilter.h"
+#include <mps_voxels/JaccardMatch.h>
 #include "mps_voxels/visualization/visualize_occupancy.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
@@ -522,10 +523,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	scene->worldFrame = mapServer->getWorldFrame();
 
 	// NB: We do this every loop because we shrink the box during the crop/filter process
-	Eigen::Vector4f maxExtent(0.4f, 0.6f, 0.5f, 1);
-	Eigen::Vector4f minExtent(-0.4f, -0.6f, -0.020f, 1);
-	scene->minExtent = minExtent;//.head<3>().cast<double>();
-	scene->maxExtent = maxExtent;//.head<3>().cast<double>();
+	scene->minExtent = scenario->minExtent;//.head<3>().cast<double>();
+	scene->maxExtent = scenario->maxExtent;//.head<3>().cast<double>();
 
 	{
 		// TODO: Clean up all these extents.
@@ -610,73 +609,125 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	/////////////////////////////////////////////
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(scene->sceneOctree,
-	                                                     scene->minExtent.head<3>().cast<double>(),
-	                                                     scene->maxExtent.head<3>().cast<double>());
-	auto voxelRegion = std::make_shared<VoxelRegion>( dims,
-	                                                  scene->sceneOctree->getResolution(),
-	                                                  scene->minExtent.head<3>().cast<double>(),
-	                                                  scene->maxExtent.head<3>().cast<double>());
+//	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(scene->sceneOctree,
+//	                                                     scene->minExtent.head<3>().cast<double>(),
+//	                                                     scene->maxExtent.head<3>().cast<double>());
+//	auto voxelRegion = std::make_shared<VoxelRegion>( dims,
+//	                                                  scene->sceneOctree->getResolution(),
+//	                                                  scene->minExtent.head<3>().cast<double>(),
+//	                                                  scene->maxExtent.head<3>().cast<double>());
 
+	// Generate segmentation samples. If no particles exist yet, create them.
 	SegmentationTreeSampler treeSampler(scene->segInfo);
-	const size_t nParticles = 1;
-	std::vector<Particle> particles;
-	std::map<ParticleIndex, tree::TreeCut> cuts;
-	for (size_t p = 0; p < nParticles; ++p)
+	const size_t nSamples = particleFilter->particles.empty() ? particleFilter->numParticles : 5;
+//	std::vector<Particle> particles;
+	std::set<tree::TreeCut> cuts;
+	std::vector<std::pair<double, SegmentationCut>> segmentationSamples;
+	for (size_t p = 0; p < nSamples; ++p)
 	{
 		const SAMPLE_TYPE sampleType = (0 == p) ? SAMPLE_TYPE::MAXIMUM : SAMPLE_TYPE::RANDOM;
 
-		Particle particle;
-		particle.particle.id = p;
+		ParticleIndex pid;
+		pid.id = p;
 
 		auto sample = treeSampler.sample(rng, sampleType);
-
-		const auto cutIter = cuts.find(particle.particle);
-		if (cuts.end() == cutIter)
-		{
-			cuts.emplace(particle.particle, sample.second.cut);
-		}
-		else
+		auto cut = sample.second.cut;
+		const auto& cutPair = cuts.insert(cut);
+		if (!cutPair.second)
 		{
 			std::cerr << "Rejected duplicate sample." << std::endl;
 			sample = treeSampler.sample(rng, sampleType);
-			cuts.emplace(particle.particle, sample.second.cut);
+			cut = sample.second.cut;
+			cuts.insert(cut); // We don't check the second result: if we fail again we just go with the duplication
 		}
+		segmentationSamples.push_back(sample);
+	}
 
-		particle.state = std::make_shared<OccupancyData>(voxelRegion);
-		particle.state->segInfo = std::make_shared<SegmentationInfo>(sample.second.segmentation);
-		particle.weight = sample.first;
-		bool execSegmentation = processor->performSegmentation(*scene, particle.state->segInfo, *particle.state);
-		if (!execSegmentation)
+	if (particleFilter->particles.empty())
+	{
+		for (size_t p = 0; p < nSamples; ++p)
 		{
-			std::cerr << "Particle " << particle.particle << " failed to segment." << std::endl;
-			return;
-		}
+			// Generate a particle corresponding to this segmentation
+			Particle particle;
+			particle.particle.id = p;
 
-		bool getCompletion = processor->buildObjects(*scene, *particle.state);
-		if (!getCompletion)
+			const auto& sample = segmentationSamples[p];
+
+			particle.state = std::make_shared<OccupancyData>(particleFilter->voxelRegion);
+			particle.state->segInfo = std::make_shared<SegmentationInfo>(sample.second.segmentation);
+			particle.weight = sample.first;
+			bool execSegmentation = processor->performSegmentation(*scene, particle.state->segInfo, *particle.state);
+			if (!execSegmentation)
+			{
+				std::cerr << "Particle " << particle.particle << " failed to segment." << std::endl;
+				return;
+			}
+
+			bool getCompletion = processor->buildObjects(*scene, *particle.state);
+			if (!getCompletion)
+			{
+				return;
+			}
+
+			particle.state->vertexState = particleFilter->voxelRegion->objectsToSubRegionVoxelLabel(particle.state->objects, scene->minExtent.head<3>().cast<double>());
+
+
+//			particle.state->vertexState = objectsToVoxelLabel(particle.state->objects,
+//			                                                  scene->minExtent.head<3>().cast<double>(),
+//			                                                  scene->maxExtent.head<3>().cast<double>());
+			particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
+
+			particle.state->parentScene = this->scene;
+
+			particleFilter->particles.push_back(particle);
+		}
+	}
+	else
+	{
+		// Compute fitness of all particles w.r.t. this segmentation
+		for (auto & particle : particleFilter->particles)
 		{
-			return;
+			cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
+
+
+			IMSHOW("segmentation", colorByLabel(segParticle));
+			WAIT_KEY(0);
+
+			double bestMatchScore = -std::numeric_limits<double>::infinity();
+			double segWeight = -std::numeric_limits<double>::infinity();
+
+			for (size_t s = 0; s < nSamples; ++s)
+			{
+				mps::JaccardMatch J(segParticle, segmentationSamples[s].second.segmentation.objectness_segmentation->image);
+				double matchScore = J.symmetricCover();
+				if (matchScore > bestMatchScore)
+				{
+					bestMatchScore = matchScore;
+					segWeight = segmentationSamples[s].first;
+				}
+			}
+
+			particle.weight += segWeight;
 		}
+	}
 
-		particle.state->vertexState = objectsToVoxelLabel(particle.state->objects,
-		                                                  scene->minExtent.head<3>().cast<double>(),
-		                                                  scene->maxExtent.head<3>().cast<double>());
-		particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
-
-		particle.state->parentScene = this->scene;
-
-		if (0 == p)
+	{
+		double bestWeight = -std::numeric_limits<double>::infinity();
+		int bestParticle = -1;
+		for (size_t p = 0; p < particleFilter->particles.size(); ++p)
 		{
-//			bool clearedVolume = processor->removeAccountedForOcclusion(scene->occludedPts, scene->occlusionTree, *particle.state);
-//			if (!clearedVolume)
-//			{
-//				std::cerr << "Occlusion deduction failed." << std::endl;
-//				return;
-//			}
+			if (particleFilter->particles[p].weight > bestWeight)
+			{
+				bestWeight = particleFilter->particles[p].weight;
+				bestParticle = static_cast<int>(p);
+			}
 		}
+		scene->bestGuess = particleFilter->particles[bestParticle].state;
+	}
 
-		if (scenario->visualize["particles"])
+	if (scenario->visualize["particles"])
+	{
+		for (const auto& particle : particleFilter->particles)
 		{
 //			cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
 //			std::cerr << "Segmentation based on particle generated!" << std::endl;
@@ -714,12 +765,17 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				this->visualPub.publish(this->allMarkers.flatten());
 			}
 		}
-
-		particles.push_back(particle);
-
-		// Save our best guess
-		if (p == 0) { scene->bestGuess = particle.state; }
 	}
+
+	{
+		bool clearedVolume = processor->removeAccountedForOcclusion(scene->occludedPts, scene->occlusionTree, *scene->bestGuess);
+		if (!clearedVolume)
+		{
+			std::cerr << "Occlusion deduction failed." << std::endl;
+			return;
+		}
+	}
+
 
 
 
@@ -1401,6 +1457,14 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	setIfMissing(pnh, "filter_ground", false);
 	setIfMissing(pnh, "filter_speckles", true);
 	setIfMissing(pnh, "publish_free_space", false);
+
+	setIfMissing(pnh, "roi/min/x", -0.4f);
+	setIfMissing(pnh, "roi/min/y", -0.6f);
+	setIfMissing(pnh, "roi/min/z", -0.020f);
+	setIfMissing(pnh, "roi/max/x",  0.4f);
+	setIfMissing(pnh, "roi/max/y",  0.6f);
+	setIfMissing(pnh, "roi/max/z",  0.5f);
+
 	setIfMissing(pnh, "sensor_model/max_range", 8.0);
 	setIfMissing(pnh, "planning_samples", 25);
 	setIfMissing(pnh, "planning_time", 60.0);
@@ -1408,18 +1472,6 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	setIfMissing(pnh, "use_memory", true);
 	setIfMissing(pnh, "use_completion", "optional");
 	setIfMissing(pnh, "visualize", std::vector<std::string>{"particles", "icp"});
-
-#ifdef USE_CUDA_SIFT
-	sparseTracker = std::make_unique<CudaTracker>();
-#else
-	sparseTracker = std::make_unique<Tracker>();
-	sparseTracker->track_options.featureRadius = 200.0f;
-	sparseTracker->track_options.pixelRadius = 1000.0f;
-	sparseTracker->track_options.meterRadius = 1.0f;
-#endif
-	denseTracker = std::make_unique<SiamTracker>();
-	historian = std::make_unique<SensorHistorian>();
-	historian->stopCapture();
 
 	bool gotParam = false;
 
@@ -1534,17 +1586,40 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 		this->scenario->visualize.emplace(m, true);
 	}
 
-	const double resolution = 0.010;
-	Eigen::Vector4f ROImaxExtent(0.4f, 0.6f, 0.5f, 1);
-	Eigen::Vector4f ROIminExtent(-0.4f, -0.6f, -0.020f, 1);
+	scenario->minExtent = Eigen::Vector4f::Ones();
+	scenario->maxExtent = Eigen::Vector4f::Ones();
+	pnh.getParam("roi/min/x", scenario->minExtent.x());
+	pnh.getParam("roi/min/y", scenario->minExtent.y());
+	pnh.getParam("roi/min/z", scenario->minExtent.z());
+	pnh.getParam("roi/max/x", scenario->maxExtent.x());
+	pnh.getParam("roi/max/y", scenario->maxExtent.y());
+	pnh.getParam("roi/max/z", scenario->maxExtent.z());
+
+	double resolution = 0.010;
+	pnh.getParam("resolution", resolution);
 	mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution,
-	                                                            ROIminExtent.head<3>().cast<double>(),
-	                                                            ROImaxExtent.head<3>().cast<double>());
+	                                                            scenario->minExtent.head<3>().cast<double>(),
+	                                                            scenario->maxExtent.head<3>().cast<double>());
 	particleFilter = std::make_unique<ParticleFilter>(scenario, dims, resolution,
-	                                                  ROIminExtent.head<3>().cast<double>(),
-	                                                  ROImaxExtent.head<3>().cast<double>(), 5);
+	                                                  scenario->minExtent.head<3>().cast<double>(),
+	                                                  scenario->maxExtent.head<3>().cast<double>(), 5);
 
 	processor = std::make_unique<SceneProcessor>(scenario, use_memory, useShapeCompletion);
+
+	Tracker::TrackingOptions opts;
+	opts.roi.minExtent = {scenario->minExtent.x(), scenario->minExtent.y(), scenario->minExtent.z()};
+	opts.roi.maxExtent = {scenario->maxExtent.x(), scenario->maxExtent.y(), scenario->maxExtent.z()};
+#ifdef USE_CUDA_SIFT
+	sparseTracker = std::make_unique<CudaTracker>(opts);
+#else
+	sparseTracker = std::make_unique<Tracker>(opts);
+	sparseTracker->track_options.featureRadius = 200.0f;
+	sparseTracker->track_options.pixelRadius = 1000.0f;
+	sparseTracker->track_options.meterRadius = 1.0f;
+#endif
+	denseTracker = std::make_unique<SiamTracker>();
+	historian = std::make_unique<SensorHistorian>();
+	historian->stopCapture();
 
 	// Wait for joints, then set the current state as the return state
 	sensor_spinner->start();
