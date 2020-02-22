@@ -133,8 +133,6 @@ ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& st
 	pcl::PointCloud<PointT>::Ptr firstCloudSegment;
 	pcl::PointCloud<PointT>::Ptr secondCloudSegment;
 
-	const auto& visIter = scenario->visualize.find("poseArray");
-	bool isVisualizeTF = visIter != scenario->visualize.end() && visIter->second;
 	Eigen::Isometry3d cameraTobject0 = Eigen::Isometry3d::Identity();
 
 	for (int t = 0; t < (int)steps.size()-1; ++t)
@@ -145,7 +143,7 @@ ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& st
 			                                    buffer.cameraModel, masks.at(steps[t]));
 			assert(!firstCloudSegment->empty());
 
-			if (isVisualizeTF)
+			if (scenario->shouldVisualize("poseArray"))
 			{
 				Eigen::Vector4f centroid;
 				pcl::compute3DCentroid(*firstCloudSegment, centroid);
@@ -192,33 +190,32 @@ ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& st
 			Final.header.frame_id = buffer.cameraModel.tfFrame();
 			pcl_conversions::toPCL(ros::Time::now(), Final.header.stamp);
 			pcPub3.publish(Final);
+		}
+		if (scenario->shouldVisualize("poseArray"))
+		{
+			tf::Transform temp;
 
-			if (isVisualizeTF)
+			// TODO: Get some global properties like table_surface, etc.
+			for (int i = 0; i < 3; ++i)
 			{
-				tf::Transform temp;
-
-				// TODO: Get some global properties like table_surface, etc.
-				for (int i = 0; i < 3; ++i)
-				{
-					Eigen::Isometry3d worldTobject0 = worldTcamera * cameraTobject0;
-					tf::transformEigenToTF(worldTobject0, temp);
-					scenario->broadcaster->sendTransform(
-						tf::StampedTransform(temp, ros::Time::now(), "table_surface", "object0"));
+				Eigen::Isometry3d worldTobject0 = worldTcamera * cameraTobject0;
+				tf::transformEigenToTF(worldTobject0, temp);
+				scenario->broadcaster->sendTransform(
+					tf::StampedTransform(temp, ros::Time::now(), "table_surface", "object0"));
 //				sleep(1);
 
-					Eigen::Isometry3d T(icp.getFinalTransformation().cast<double>());
-					T = T.inverse(Eigen::Isometry);
-					tf::transformEigenToTF(T, temp);
-					scenario->broadcaster->sendTransform(
-						tf::StampedTransform(temp, ros::Time::now(), "object" + std::to_string(t), "object" + std::to_string(t + 1)));
+				Eigen::Isometry3d T(icp.getFinalTransformation().cast<double>());
+				T = T.inverse(Eigen::Isometry);
+				tf::transformEigenToTF(T, temp);
+				scenario->broadcaster->sendTransform(
+					tf::StampedTransform(temp, ros::Time::now(), "object" + std::to_string(t), "object" + std::to_string(t + 1)));
 //				sleep(1);
 
-					T = Eigen::Isometry3d(icpRigidTF.tf);
-					tf::transformEigenToTF(T, temp);
-					scenario->broadcaster->sendTransform(
-						tf::StampedTransform(temp, ros::Time::now(), "table_surface" , "object_track"));
-					usleep(100000);
-				}
+				T = Eigen::Isometry3d(icpRigidTF.tf);
+				tf::transformEigenToTF(T, temp);
+				scenario->broadcaster->sendTransform(
+					tf::StampedTransform(temp, ros::Time::now(), "table_surface" , "object_track"));
+				usleep(100000);
 			}
 		}
 
