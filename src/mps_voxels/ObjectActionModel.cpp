@@ -174,8 +174,7 @@ ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& st
 		std::cerr << "is Converged: " << icp.hasConverged() << "; Score = " << score << std::endl;
 
 		//// Visualization of ICP
-		const auto& iter = scenario->visualize.find("icp");
-		if (iter != scenario->visualize.end() && iter->second)
+		if (scenario->shouldVisualize("icp"))
 		{
 			static ros::NodeHandle pnh("~");
 			static ros::Publisher pcPub1 = pnh.advertise<pcl::PointCloud<PointT>>("icp_source", 1, true);

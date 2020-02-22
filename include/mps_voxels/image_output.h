@@ -51,7 +51,7 @@
 #if IMAGE_VIEW_MODE == IMAGES_NONE
 #define WAIT_KEY(x) _unused((x))
 #define IMSHOW(n, t) _unused((n)); _unused((t))
-#define NAMEDWINDOW(n, t) _unused((n)); _unused((t))
+#define NAMED_WINDOW(n, t) _unused((n)); _unused((t))
 #elif IMAGE_VIEW_MODE == IMAGES_ROS
 #define WAIT_KEY(x) usleep((x)*1000);
 #define IMSHOW(n, t) ::mps::ImageOutputSingleton::sendImage((n), (t))
@@ -59,7 +59,7 @@
 #else
 #define WAIT_KEY(x) cv::waitKey((x))
 #define IMSHOW(n, t) cv::imshow((n), (t))
-#define NAMEDWINDOW(n, t) cv::namedWindow((n), (t))
+#define NAMED_WINDOW(n, t) cv::namedWindow((n), (t))
 #endif
 
 
