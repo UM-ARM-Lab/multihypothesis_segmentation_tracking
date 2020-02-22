@@ -102,8 +102,8 @@ if(CLION)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
   set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
 endif()
-#set(CMAKE_BUILD_TYPE RelWithDebInfo)
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE RelWithDebInfo)
+#set(CMAKE_BUILD_TYPE Debug)
 #set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DCGAL_DISABLE_ROUNDING_MATH_CHECK")
 #set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DCGAL_NO_ASSERTIONS")
 
@@ -288,6 +288,8 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/logging/log_cv_roi.cpp
   src/${PROJECT_NAME}/logging/log_segmentation_info.cpp
   src/${PROJECT_NAME}/logging/log_sensor_history.cpp
+  src/${PROJECT_NAME}/logging/log_voxel_region.cpp
+  src/${PROJECT_NAME}/logging/log_occupancy_data.cpp
   src/${PROJECT_NAME}/video_graph.cpp
   src/${PROJECT_NAME}/planning/State.cpp
   src/${PROJECT_NAME}/planning/Action.cpp
@@ -388,13 +390,13 @@ target_link_libraries(${PROJECT_NAME}_explorer
 #  ${catkin_LIBRARIES}
 #)
 
-#add_executable(${PROJECT_NAME}_test_particle_filter src/test_particle_filter.cpp)
-#set_target_properties(${PROJECT_NAME}_test_particle_filter PROPERTIES OUTPUT_NAME test_particle_filter PREFIX "")
-#add_dependencies(${PROJECT_NAME}_test_particle_filter ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-#target_link_libraries(${PROJECT_NAME}_test_particle_filter
-#  ${PROJECT_NAME}
-#  ${catkin_LIBRARIES}
-#)
+add_executable(${PROJECT_NAME}_test_particle_filter src/test_particle_filter.cpp)
+set_target_properties(${PROJECT_NAME}_test_particle_filter PROPERTIES OUTPUT_NAME test_particle_filter PREFIX "")
+add_dependencies(${PROJECT_NAME}_test_particle_filter ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_test_particle_filter
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
 
 # Notify any IDE that headers are part of project
 file(GLOB_RECURSE IncludeFiles "include/*")
