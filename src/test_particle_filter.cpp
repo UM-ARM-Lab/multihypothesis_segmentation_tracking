@@ -5,6 +5,9 @@
 #include <iostream>
 #include <ros/ros.h>
 #include <tf_conversions/tf_eigen.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <pcl_ros/point_cloud.h>
 
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_occupancy_data.h"
@@ -105,9 +108,26 @@ int main(int argc, char **argv)
 	sleep(2);
 
 	/////////////////////////////////////////////
-	//// Free space refinement
+	//// Visualization of first point cloud
 	/////////////////////////////////////////////
 	pcl::PointCloud<PointT>::Ptr firstPC = imagesToCloud(buffer_out.rgb.begin()->second->image, buffer_out.depth.begin()->second->image, buffer_out.cameraModel);
+
+	ros::Publisher pcPub1 = pnh.advertise<pcl::PointCloud<PointT>>("firstPC", 1, true);
+
+	firstPC->header.frame_id = buffer_out.cameraModel.tfFrame();
+	ros::Rate loop_rate(4);
+	while (nh.ok())
+	{
+		pcl_conversions::toPCL(ros::Time::now(), firstPC->header.stamp);
+		pcPub1.publish(*firstPC);
+		ros::spinOnce();
+//		loop_rate.sleep();
+	}
+	std::cerr << "First frame pointcloud shown" << std::endl;
+
+	/////////////////////////////////////////////
+	//// Free space refinement
+	/////////////////////////////////////////////
 	scenario->mapServer->insertCloud(firstPC, worldTcamera);
 	octomap::OcTree* sceneOctree = scenario->mapServer->getOctree();
 
@@ -134,9 +154,20 @@ int main(int argc, char **argv)
 	sleep(5);
 
 	/////////////////////////////////////////////
-	//// Free space refinement
+	//// Visualization of final point cloud
 	/////////////////////////////////////////////
 	pcl::PointCloud<PointT>::Ptr finalPC = imagesToCloud(buffer_out.rgb.rbegin()->second->image, buffer_out.depth.rbegin()->second->image, buffer_out.cameraModel);
+
+	ros::Publisher pcPub2 = pnh.advertise<pcl::PointCloud<PointT>>("finalPC", 1, true);
+
+	finalPC->header.frame_id = buffer_out.cameraModel.tfFrame();
+	pcl_conversions::toPCL(ros::Time::now(), finalPC->header.stamp);
+	pcPub2.publish(*finalPC);
+	std::cerr << "Last frame pointcloud shown" << std::endl;
+
+	/////////////////////////////////////////////
+	//// Free space refinement
+	/////////////////////////////////////////////
 	scenario->mapServer->insertCloud(finalPC, worldTcamera);
 	sceneOctree = scenario->mapServer->getOctree();
 
