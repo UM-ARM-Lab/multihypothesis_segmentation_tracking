@@ -172,7 +172,6 @@ public:
 	robot_model::RobotModelPtr pModel;
 	std::shared_ptr<Scenario> scenario;
 	std::shared_ptr<Scene> scene;
-//	std::unique_ptr<SceneProcessor> processor;
 	std::unique_ptr<MotionPlanner> planner;
 	std::map<std::string, std::shared_ptr<MotionModel>> selfModels;
 
@@ -431,12 +430,12 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>* gripperPub = nullptr;
 			if (gripAction->jointGroupName.find("left") != std::string::npos)
 			{
-				std::cerr << "Sending left gripper command." << std::endl;
+				ROS_INFO_STREAM("Sending left gripper command.");
 				gripperPub = gripperLPub.get();
 			}
 			else if (gripAction->jointGroupName.find("right") != std::string::npos)
 			{
-				std::cerr << "Sending right gripper command." << std::endl;
+				ROS_INFO_STREAM("Sending right gripper command.");
 				gripperPub = gripperRPub.get();
 			}
 			else
@@ -490,7 +489,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 //			if (!ros::ok()) { return false; }
 //			particleFilter->particles[i] = particleFilter->applyActionModel(particleFilter->particles[i], scene->worldTcamera,
 //			                                                                historian->buffer, sparseTracker, denseTracker, 1);
-//			std_msgs::Header header; header.frame_id = scene->worldFrame; header.stamp = ros::Time::now();
+//			std_msgs::Header header; header.frame_id = scenario->worldFrame; header.stamp = ros::Time::now();
 //			auto pfnewmarker = mps::visualize(*particleFilter->particles[i].state, header, rng);
 //			visualPub.publish(pfnewmarker);
 //			std::cerr << "Predicted state particle shown!" << std::endl;
@@ -517,9 +516,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	scene = std::make_shared<Scene>();
 	scene->scenario = scenario;
 	scene->selfModels = selfModels;
-
-//	planner->env = scene.get(); // TODO: Fix this
-	scene->worldFrame = mapServer->getWorldFrame();
 
 	// NB: We do this every loop because we shrink the box during the crop/filter process
 	scene->minExtent = scenario->minExtent;//.head<3>().cast<double>();
@@ -617,11 +613,11 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //	                                                  scene->maxExtent.head<3>().cast<double>());
 
 	// Generate segmentation samples. If no particles exist yet, create them.
-	SegmentationTreeSampler treeSampler(scene->segInfo);
-	const size_t nSamples = particleFilter->particles.empty() ? particleFilter->numParticles : 5;
+//	SegmentationTreeSampler treeSampler(scene->segInfo);
+//	const size_t nSamples = particleFilter->particles.empty() ? particleFilter->numParticles : 5;
 //	std::vector<Particle> particles;
-	std::set<tree::TreeCut> cuts;
-	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), nSamples, true);
+//	std::set<tree::TreeCut> cuts;
+//	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), nSamples, true);
 
 
 	if (particleFilter->particles.empty())
@@ -630,7 +626,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 	else
 	{
-		particleFilter->computeAndApplyActionModel(historian->buffer, sparseTracker, denseTracker);
+//		particleFilter->computeAndApplyActionModel(historian->buffer, sparseTracker, denseTracker);
 		particleFilter->applyMeasurementModel(scene);
 	}
 
@@ -826,7 +822,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		particleFilter->particles[i].state->vertexState = particleFilter->voxelRegion->objectsToSubRegionVoxelLabel(scene->bestGuess->objects, scene->minExtent.head<3>().cast<double>());
 		particleFilter->particles[i].state->uniqueObjectLabels = getUniqueObjectLabels(particleFilter->particles[i].state->vertexState);
 		// Visualize state
-		std_msgs::Header header; header.frame_id = scene->worldFrame; header.stamp = ros::Time::now();
+		std_msgs::Header header; header.frame_id = scenario->worldFrame; header.stamp = ros::Time::now();
 		auto pfMarkers = mps::visualize(*particleFilter->particles[i].state, header, rng);
 		visualPub.publish(pfMarkers);
 		std::cerr << "State particle shown!" << std::endl;
@@ -839,7 +835,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		temptf.angular = {0, 0, 1.57};
 //		labelToMotionLookup.insert({0, temptf});
 //		Particle temp = moveParticle(particleFilter->particles[i], labelToMotionLookup);
-//		auto movedpfmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(temp.state->vertexState, scene->worldFrame, "moved_State" + std::to_string(i));
+//		auto movedpfmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(temp.state->vertexState, scenario->worldFrame, "moved_State" + std::to_string(i));
 //		visualPub.publish(movedpfmarker);
 //		std::cerr << "Moved State particle shown!" << std::endl;
 //		sleep(2);
@@ -984,9 +980,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	std::priority_queue<RankedMotion, std::vector<RankedMotion>, decltype(comp)> motionQueue(comp);
 
 	scene->bestGuess->obstructions.clear();
-//	scene->computeCollisionWorld();
-	planner->env = scene->bestGuess.get();
-	planner->computePlanningScene();
+	planner = std::make_unique<MotionPlanner>(scenario, scene->bestGuess);
 	auto rs = getCurrentRobotState();
 
 	std::shared_ptr<Motion> motion;
@@ -1267,6 +1261,9 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_RECORD("Execution");
 
+
+	particleFilter->computeAndApplyActionModel(historian->buffer, sparseTracker, denseTracker);
+
 //	// Check if we used to see the target, but don't anymore
 //	if (goalSegmentID >= 0)
 //	{
@@ -1350,7 +1347,7 @@ moveit_msgs::DisplayTrajectory SceneExplorer::visualize(const std::shared_ptr<Mo
 				for (const auto& interpPose : jointTraj->palm_trajectory)
 				{
 					tf::Transform temp; tf::poseEigenToTF(interpPose, temp);
-					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), scene->worldFrame, "slide_"+std::to_string(i++)));
+					broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), scenario->worldFrame, "slide_"+std::to_string(i++)));
 				}
 			}
 		}
@@ -1473,8 +1470,6 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	std::cerr << scenario->manipulators.front()->isGrasping(getCurrentRobotState()) << std::endl;
 	std::cerr << scenario->manipulators.back()->isGrasping(getCurrentRobotState()) << std::endl;
 
-	planner = std::make_unique<MotionPlanner>();
-
 	if (!loadLinkMotionModels(pModel.get(), selfModels))
 	{
 		ROS_ERROR("Model loading failed.");
@@ -1502,6 +1497,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	pnh.getParam("roi/max/x", scenario->maxExtent.x());
 	pnh.getParam("roi/max/y", scenario->maxExtent.y());
 	pnh.getParam("roi/max/z", scenario->maxExtent.z());
+	pnh.getParam("frame_id", scenario->worldFrame);
 
 	double resolution = 0.010;
 	pnh.getParam("resolution", resolution);

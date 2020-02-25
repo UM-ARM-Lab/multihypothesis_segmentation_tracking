@@ -40,14 +40,14 @@
 #include "mps_voxels/moveit_pose_type.h"
 
 //#include <moveit/collision_detection/world.h>
-#include <moveit/macros/class_forward.h>
+//#include <moveit/macros/class_forward.h>
 
 #include <boost/bimap.hpp>
 
-namespace collision_detection
-{
-MOVEIT_CLASS_FORWARD(World)
-}
+//namespace collision_detection
+//{
+//MOVEIT_CLASS_FORWARD(World)
+//}
 
 namespace image_geometry
 {
@@ -98,12 +98,7 @@ struct OccupancyData
 	using ObstructionList = std::map<ObjectIndex, double>;
 	ObstructionList obstructions; // std::set<ObjectIndex>
 	std::shared_ptr<ObjectIndex> targetObjectID;
-
-	static const std::string CLUTTER_NAME;
-	collision_detection::WorldConstPtr collisionWorld;
 };
-
-collision_detection::WorldPtr computeCollisionWorld(const OccupancyData& occupancy);
 
 cv::Mat rayCastOccupancy(const OccupancyData& occupancy, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const cv::Rect& roi, const int& step = 1);
 

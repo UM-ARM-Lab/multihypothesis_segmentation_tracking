@@ -74,6 +74,9 @@ public:
 	// Maximum extents of "tabletop"
 	Eigen::Vector4f minExtent, maxExtent;
 
+	// Frame name of tabletop
+	std::string worldFrame;
+
 
 	std::default_random_engine& rng() const { return experiment->rng; }
 
@@ -105,7 +108,6 @@ public:
 
 	Pose worldTrobot; // transformation from robot to world
 	Pose worldTcamera; // transformation from camera to world
-	std::string worldFrame;
 	std::string cameraFrame;
 
 	// Maximum extent of active region of interest on tabletop

@@ -35,12 +35,12 @@ VictorManipulator::VictorManipulator(ros::NodeHandle& nh,
 	std::string serviceName = "";
 	if (arm->getName().find("left") != std::string::npos)
 	{
-		std::cerr << "Configuring left arm." << std::endl;
+		ROS_INFO_STREAM("Configuring left arm.");
 		serviceName = "/left_arm/set_control_mode_service";
 	}
 	else if (arm->getName().find("right") != std::string::npos)
 	{
-		std::cerr << "Configuring right arm." << std::endl;
+		ROS_INFO_STREAM("Configuring right arm.");
 		serviceName = "/right_arm/set_control_mode_service";
 	}
 	else

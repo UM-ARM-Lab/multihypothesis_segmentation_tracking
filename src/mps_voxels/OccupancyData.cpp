@@ -156,37 +156,6 @@ OccupancyData::OccupancyData(const std::shared_ptr<const Scene>& scene,
 	}
 }
 
-collision_detection::WorldPtr
-computeCollisionWorld(const OccupancyData& occupancy)
-{
-	auto world = std::make_shared<collision_detection::World>();
-
-	moveit::Pose robotTworld = occupancy.parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
-
-	for (const auto& obstacle : occupancy.parentScene.lock()->scenario->staticObstacles)
-	{
-		world->addToObject(OccupancyData::CLUTTER_NAME, obstacle.first, robotTworld * obstacle.second);
-	}
-
-	// Use aliasing shared_ptr constructor
-//	world->addToObject(CLUTTER_NAME,
-//	                   std::make_shared<shapes::OcTree>(std::shared_ptr<octomap::OcTree>(std::shared_ptr<octomap::OcTree>{}, sceneOctree)),
-//	                   robotTworld);
-
-	for (const auto& obj : occupancy.objects)
-	{
-		const std::shared_ptr<octomap::OcTree>& segment = obj.second->occupancy;
-		world->addToObject(std::to_string(obj.first.id), std::make_shared<shapes::OcTree>(segment), robotTworld);
-	}
-
-//	for (auto& approxSegment : approximateSegments)
-//	{
-//		world->addToObject(CLUTTER_NAME, approxSegment, robotTworld);
-//	}
-
-	return world;
-}
-
 
 cv::Mat rayCastOccupancy(const OccupancyData& state, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const cv::Rect& roi, const int& step)
 {

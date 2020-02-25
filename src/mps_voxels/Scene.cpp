@@ -154,12 +154,11 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 {
 	if (!ros::ok()) { return false; }
 
-	s.worldFrame = s.scenario->mapServer->getWorldFrame();
 	s.cameraFrame = s.cameraModel.tfFrame();
 
-	if (!s.scenario->listener->waitForTransform(s.worldFrame, s.cameraModel.tfFrame(), s.getTime(), ros::Duration(5.0)))
+	if (!s.scenario->listener->waitForTransform(s.scenario->worldFrame, s.cameraModel.tfFrame(), s.getTime(), ros::Duration(5.0)))
 	{
-		ROS_WARN_STREAM("Failed to look up transform between '" << s.worldFrame << "' and '" << s.cameraModel.tfFrame() << "'.");
+		ROS_WARN_STREAM("Failed to look up transform between '" << s.scenario->worldFrame << "' and '" << s.cameraModel.tfFrame() << "'.");
 		return false;
 	}
 
@@ -177,7 +176,7 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	tf::StampedTransform cameraFrameInTableCoordinates;
-	s.scenario->listener->lookupTransform(s.cameraFrame, s.worldFrame, s.getTime(), cameraFrameInTableCoordinates);
+	s.scenario->listener->lookupTransform(s.cameraFrame, s.scenario->worldFrame, s.getTime(), cameraFrameInTableCoordinates);
 	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), s.worldTcamera);
 
 	octomap::point3d cameraOrigin((float)s.worldTcamera.translation().x(),
@@ -236,15 +235,15 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 	// Update from robot state + TF
 	for (const auto& model : s.selfModels)
 	{
-		if (s.scenario->listener->waitForTransform(model.first, s.worldFrame, s.getTime(), ros::Duration(5.0)))
+		if (s.scenario->listener->waitForTransform(model.first, s.scenario->worldFrame, s.getTime(), ros::Duration(5.0)))
 		{
 			tf::StampedTransform stf;
-			s.scenario->listener->lookupTransform(model.first, s.worldFrame, s.getTime(), stf);
+			s.scenario->listener->lookupTransform(model.first, s.scenario->worldFrame, s.getTime(), stf);
 			tf::transformTFToEigen(stf, model.second->localTglobal);
 		}
 		else if (std::find(s.scenario->robotModel->getLinkModelNames().begin(), s.scenario->robotModel->getLinkModelNames().end(), model.first) != s.scenario->robotModel->getLinkModelNames().end())
 		{
-			ROS_ERROR_STREAM("Unable to compute transform from '" << s.worldFrame << "' to '" << model.first << "'.");
+			ROS_ERROR_STREAM("Unable to compute transform from '" << s.scenario->worldFrame << "' to '" << model.first << "'.");
 			return false;
 		}
 
