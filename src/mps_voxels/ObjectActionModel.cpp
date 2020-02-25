@@ -334,15 +334,15 @@ bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 	return isClusterExist;
 }
 
-bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
-{
-	cv::Mat startMask = cv::Mat::zeros(buffer_out.rgb.begin()->second->image.size(), CV_8UC1);
-	cv::Mat subwindow(startMask, seg_out.roi);
-	subwindow = label == seg_out.objectness_segmentation->image;
-	return sampleAction(buffer_out, startMask, sparseTracker, denseTracker, label, bbox);
-}
+//bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
+//{
+//	cv::Mat startMask = cv::Mat::zeros(buffer_out.rgb.begin()->second->image.size(), CV_8UC1);
+//	cv::Mat subwindow(startMask, seg_out.roi);
+//	subwindow = label == seg_out.objectness_segmentation->image;
+//	return sampleAction(buffer_out, startMask, seg_out.roi, sparseTracker, denseTracker, label, bbox);
+//}
 
-bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, const cv::Mat& firstFrameSeg, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
+bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, const cv::Mat& firstFrameSeg, const cv::Rect& roi, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
 {
 	actionSamples.clear();
 	/////////////////////////////////////////////
@@ -385,7 +385,10 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, cons
 		return false;
 	}
 	//// Fill in the first frame mask
-	cv::Mat startMask = label == firstFrameSeg;
+//	cv::Mat startMask = label == firstFrameSeg;
+	cv::Mat startMask = cv::Mat::zeros(buffer_out.rgb.begin()->second->image.size(), CV_8UC1);
+	cv::Mat subwindow(startMask, roi);
+	subwindow = label == firstFrameSeg;
 	masks.insert(masks.begin(), {steps.front(), startMask});
 
 	/////////////////////////////////////////////
