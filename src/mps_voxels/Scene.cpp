@@ -154,21 +154,21 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 {
 	if (!ros::ok()) { return false; }
 
-	s.worldFrame = scenario->mapServer->getWorldFrame();
+	s.worldFrame = s.scenario->mapServer->getWorldFrame();
 	s.cameraFrame = s.cameraModel.tfFrame();
 
-	if (!scenario->listener->waitForTransform(s.worldFrame, s.cameraModel.tfFrame(), s.getTime(), ros::Duration(5.0)))
+	if (!s.scenario->listener->waitForTransform(s.worldFrame, s.cameraModel.tfFrame(), s.getTime(), ros::Duration(5.0)))
 	{
 		ROS_WARN_STREAM("Failed to look up transform between '" << s.worldFrame << "' and '" << s.cameraModel.tfFrame() << "'.");
 		return false;
 	}
 
 	// Get Octree
-	octomap::OcTree* octree = scenario->mapServer->getOctree();
+	octomap::OcTree* octree = s.scenario->mapServer->getOctree();
 	MPS_ASSERT(octree);
 	s.sceneOctree = octree;
 
-	if (!useMemory)
+	if (!s.scenario->useMemory)
 	{
 		octree->clear();
 	}
@@ -177,7 +177,7 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	tf::StampedTransform cameraFrameInTableCoordinates;
-	scenario->listener->lookupTransform(s.cameraFrame, s.worldFrame, s.getTime(), cameraFrameInTableCoordinates);
+	s.scenario->listener->lookupTransform(s.cameraFrame, s.worldFrame, s.getTime(), cameraFrameInTableCoordinates);
 	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), s.worldTcamera);
 
 	octomap::point3d cameraOrigin((float)s.worldTcamera.translation().x(),
@@ -216,8 +216,8 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 		s.cropped_cloud = filterInCameraFrame(s.cropped_cloud);
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	scenario->mapServer->insertCloud(s.cropped_cloud, s.worldTcamera);
-//	scenario->mapServer->insertCloud(s.cloud, s.worldTcamera);
+	s.scenario->mapServer->insertCloud(s.cropped_cloud, s.worldTcamera);
+//	s.scenario->mapServer->insertCloud(s.cloud, s.worldTcamera);
 //	octree->prune();
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
@@ -236,13 +236,13 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 	// Update from robot state + TF
 	for (const auto& model : s.selfModels)
 	{
-		if (scenario->listener->waitForTransform(model.first, s.worldFrame, s.getTime(), ros::Duration(5.0)))
+		if (s.scenario->listener->waitForTransform(model.first, s.worldFrame, s.getTime(), ros::Duration(5.0)))
 		{
 			tf::StampedTransform stf;
-			scenario->listener->lookupTransform(model.first, s.worldFrame, s.getTime(), stf);
+			s.scenario->listener->lookupTransform(model.first, s.worldFrame, s.getTime(), stf);
 			tf::transformTFToEigen(stf, model.second->localTglobal);
 		}
-		else if (std::find(scenario->robotModel->getLinkModelNames().begin(), scenario->robotModel->getLinkModelNames().end(), model.first) != scenario->robotModel->getLinkModelNames().end())
+		else if (std::find(s.scenario->robotModel->getLinkModelNames().begin(), s.scenario->robotModel->getLinkModelNames().end(), model.first) != s.scenario->robotModel->getLinkModelNames().end())
 		{
 			ROS_ERROR_STREAM("Unable to compute transform from '" << s.worldFrame << "' to '" << model.first << "'.");
 			return false;
@@ -508,7 +508,7 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 
 bool SceneProcessor::callSegmentation(Scene& s)
 {
-	s.segInfo = scenario->segmentationClient->segment(s.cv_rgb_cropped, s.cv_depth_cropped, s.cam_msg_cropped);
+	s.segInfo = s.scenario->segmentationClient->segment(s.cv_rgb_cropped, s.cv_depth_cropped, s.cam_msg_cropped);
 
 	if (!s.segInfo)
 	{
@@ -613,9 +613,9 @@ bool SceneProcessor::buildObjects(const Scene& s, OccupancyData& occupancy)
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	occupancy.objects.clear();
 
-	bool completionIsAvailable = FEATURE_AVAILABILITY::FORBIDDEN != useShapeCompletion &&
-		scenario->completionClient->completionClient.exists();
-	if (FEATURE_AVAILABILITY::REQUIRED == useShapeCompletion && !completionIsAvailable)
+	bool completionIsAvailable = FEATURE_AVAILABILITY::FORBIDDEN != s.scenario->useShapeCompletion &&
+		s.scenario->completionClient->completionClient.exists();
+	if (FEATURE_AVAILABILITY::REQUIRED == s.scenario->useShapeCompletion && !completionIsAvailable)
 	{
 		throw std::runtime_error("Shape completion is set to REQUIRED, but the server is unavailable.");
 	}
@@ -673,7 +673,7 @@ bool SceneProcessor::buildObjects(const Scene& s, OccupancyData& occupancy)
 
 		if (completionIsAvailable)
 		{
-			scenario->completionClient->completeShape(min, max, s.worldTcamera.cast<float>(), s.sceneOctree, subtree.get(),
+			s.scenario->completionClient->completeShape(min, max, s.worldTcamera.cast<float>(), s.sceneOctree, subtree.get(),
 			                                          false);
 		}
 		setBBox(Eigen::Vector3f(-2, -2, -2), Eigen::Vector3f(2, 2, 2), subtree.get());
@@ -742,6 +742,7 @@ bool SceneProcessor::buildObjects(const Scene& s, OccupancyData& occupancy)
 }
 
 bool SceneProcessor::removeAccountedForOcclusion(
+	const Scenario* scenario,
 	octomap::point3d_collection& occludedPts,
 	std::shared_ptr<octomap::OcTree>& occlusionTree,
 	const OccupancyData& occupancy)
@@ -781,7 +782,7 @@ bool SceneProcessor::removeAccountedForOcclusion(
 			}
 		}
 		std::cerr << "Rejected " << rejects.size() << " hidden voxels due to shape completion." << std::endl;
-		bool completionIsAvailable = FEATURE_AVAILABILITY::FORBIDDEN != useShapeCompletion &&
+		bool completionIsAvailable = FEATURE_AVAILABILITY::FORBIDDEN != scenario->useShapeCompletion &&
 		                             scenario->completionClient->completionClient.exists();
 		if (completionIsAvailable && rejects.empty())
 		{

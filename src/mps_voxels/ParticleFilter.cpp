@@ -4,6 +4,9 @@
 
 #include "mps_voxels/ParticleFilter.h"
 #include "mps_voxels/Scene.h"
+#include "mps_voxels/SegmentationTreeSampler.h"
+#include "mps_voxels/image_output.h"
+#include "mps_voxels/JaccardMatch.h"
 
 namespace mps
 {
@@ -19,24 +22,69 @@ ParticleFilter::ParticleFilter(std::shared_ptr<const Scenario> scenario_, const 
 //	}
 }
 
-Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const image_geometry::PinholeCameraModel& cameraModel,
-                                          const moveit::Pose& worldTcamera, SensorHistoryBuffer& buffer_out,
-                                          std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker,
-                                          const int& segRes)
+bool
+ParticleFilter::initializeParticles(
+	const std::shared_ptr<const MeasurementSensorData>& scene)
 {
-	cv::Mat segParticle = rayCastParticle(inputParticle, cameraModel, worldTcamera, segRes);
-	std::cerr << "Segmentation based on particle generated!" << std::endl;
-//	cv::imwrite("/home/kunhuang/Pictures/segParticle.jpg", colorByLabel(segParticle));
+	assert(particles.empty());
+	particles.reserve(numParticles);
 
-	cv::Rect roi = {0, 0, (int)cameraModel.cameraInfo().width, (int)cameraModel.cameraInfo().height};
+	SegmentationTreeSampler treeSampler(scene->segInfo);
+	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), numParticles, true);
+
+	// TODO: This should probably be wrapped into its own thing
+	for (int p = 0; p < numParticles; ++p)
+	{
+		// Generate a particle corresponding to this segmentation
+		Particle particle;
+		particle.particle.id = p;
+
+		const auto& sample = segmentationSamples[p];
+
+		particle.state = std::make_shared<OccupancyData>(voxelRegion);
+		particle.state->segInfo = std::make_shared<SegmentationInfo>(sample.second.segmentation);
+		particle.weight = sample.first;
+		bool execSegmentation = SceneProcessor::performSegmentation(*scene, particle.state->segInfo, *particle.state);
+		if (!execSegmentation)
+		{
+			std::cerr << "Particle " << particle.particle << " failed to segment." << std::endl;
+			return false;
+		}
+
+		bool getCompletion = SceneProcessor::buildObjects(*scene, *particle.state);
+		if (!getCompletion)
+		{
+			return false;
+		}
+
+		particle.state->vertexState = this->voxelRegion->objectsToSubRegionVoxelLabel(particle.state->objects, scene->minExtent.head<3>().cast<double>());
+		particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
+		particle.state->parentScene = scene;
+
+		particles.push_back(particle);
+	}
+
+	return true;
+}
+
+std::pair<ParticleIndex, ParticleFilter::MotionModel>
+ParticleFilter::computeActionModel(
+	const Particle& inputParticle,
+	const ActionSensorData& buffer,
+	std::unique_ptr<Tracker>& sparseTracker,
+	std::unique_ptr<DenseTracker>& denseTracker) const
+{
+	const cv::Mat& segParticle = inputParticle.state->segInfo->objectness_segmentation->image;
+	const cv::Rect& roi = inputParticle.state->segInfo->roi;
+	// TODO: Use faster version
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, roi, 5);
 	std::cerr << "number of bounding boxes in segParticle: " << labelToBBoxLookup.size() << std::endl;
 
 	std::unique_ptr<ObjectActionModel> oam = std::make_unique<ObjectActionModel>(scenario, 1);
-	std::map<int, RigidTF> labelToMotionLookup;
+	std::map<ObjectIndex, RigidTF> labelToMotionLookup;
 	for (auto& pair : labelToBBoxLookup)
 	{
-		bool sampleActionSuccess = oam->sampleAction(buffer_out, segParticle, sparseTracker, denseTracker, pair.first, pair.second);
+		bool sampleActionSuccess = oam->sampleAction(buffer, segParticle, sparseTracker, denseTracker, pair.first, pair.second);
 		if (sampleActionSuccess)
 		{
 			labelToMotionLookup.emplace(pair.first - 1, oam->actionSamples[0]);
@@ -46,13 +94,109 @@ Particle ParticleFilter::applyActionModel(const Particle& inputParticle, const i
 			ROS_ERROR_STREAM("Failed to sample action for label " << pair.first -1 << " !!!");
 			//TODO: generate reasonable disturbance
 			RigidTF randomSteadyTF;
-			randomSteadyTF.tf = Eigen::Matrix4d::Identity();
+			randomSteadyTF.tf = mps::Pose::Identity();
 			labelToMotionLookup.emplace(pair.first - 1, randomSteadyTF);
 		}
 	}
 
-	Particle outputParticle = moveParticle(inputParticle, labelToMotionLookup);
+	// Validation code
+	const auto uniqueLabels = getUniqueObjectLabels(inputParticle.state->vertexState);
+	for (const ObjectIndex& label : uniqueLabels)
+	{
+		if (labelToMotionLookup.find(label) == labelToMotionLookup.end())
+		{
+//			std::cerr << "ERROR!!! No motion generated for object label '" << label << "'." << std::endl;
+//			RigidTF ident;
+//			ident.tf = mps::Pose::Identity();
+//			labelToMotionLookup.emplace(label.id, ident);
+			MPS_ASSERT(labelToMotionLookup.find(label) != labelToMotionLookup.end());
+		}
+	}
+
+	return {inputParticle.particle, labelToMotionLookup};
+}
+
+Particle ParticleFilter::applyActionModel(
+	const Particle& inputParticle,
+	const ParticleFilter::MotionModel& action) const
+{
+	const VoxelRegion& region = *inputParticle.state->voxelRegion;
+	assert(inputParticle.state->vertexState.size() == region.num_vertices());
+	VoxelRegion::VertexLabels outputState(region.num_vertices(), -1);
+
+//#pragma omp parallel for
+	for (size_t i = 0; i < inputParticle.state->vertexState.size(); ++i)
+	{
+		if (inputParticle.state->vertexState[i] >= 0)
+		{
+			const auto& T = action.at(ObjectIndex(inputParticle.state->vertexState[i])).tf;
+			VoxelRegion::vertex_descriptor vd = region.vertex_at(i);
+			Eigen::Vector3d originalCoord = vertexDescpToCoord(region.resolution, region.regionMin, vd);
+			Eigen::Vector3d newCoord = T * originalCoord;
+
+			if (!region.isInRegion(newCoord)) continue;
+
+			VoxelRegion::vertex_descriptor newVD = coordToVertexDesc(region.resolution, region.regionMin, newCoord);
+			auto index = region.index_of(newVD);
+			outputState[index] = inputParticle.state->vertexState[i];
+		}
+	}
+
+	Particle outputParticle;
+	outputParticle.state = std::make_shared<OccupancyData>(
+		inputParticle.state->parentScene.lock(), inputParticle.state->voxelRegion, outputState);
+
 	return outputParticle;
+}
+
+
+void ParticleFilter::computeAndApplyActionModel(
+	const ParticleFilter::ActionSensorData& buffer,
+	std::unique_ptr<Tracker>& sparseTracker,
+	std::unique_ptr<DenseTracker>& denseTracker)
+{
+	for (size_t p = 0; p < this->particles.size(); ++p)
+	{
+		auto motion = computeActionModel(particles[p], buffer, sparseTracker, denseTracker);
+		auto newParticle = applyActionModel(particles[p], motion.second);
+		particles[p] = newParticle;
+	}
+}
+
+void ParticleFilter::applyMeasurementModel(const std::shared_ptr<const Scene>& newScene)
+{
+	const size_t nSamples = 3;
+	SegmentationTreeSampler treeSampler(newScene->segInfo);
+	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), nSamples, true);
+
+	// Compute fitness of all particles w.r.t. this segmentation
+	for (auto & particle : particles)
+	{
+		// Ray-cast particle only in ROI
+		const cv::Mat& segParticle = particle.state->segInfo->objectness_segmentation->image;
+
+		IMSHOW("segmentation", colorByLabel(segParticle));
+		WAIT_KEY(0);
+
+		double bestMatchScore = -std::numeric_limits<double>::infinity();
+		double segWeight = -std::numeric_limits<double>::infinity();
+
+		for (size_t s = 0; s < nSamples; ++s)
+		{
+			const auto& segSample = segmentationSamples[s].second.segmentation.objectness_segmentation->image;
+			MPS_ASSERT(segParticle.size() == segSample.size());
+
+			mps::JaccardMatch J(segParticle, segSample);
+			double matchScore = J.symmetricCover();
+			if (matchScore > bestMatchScore)
+			{
+				bestMatchScore = matchScore;
+				segWeight = segmentationSamples[s].first;
+			}
+		}
+
+		particle.weight += segWeight;
+	}
 }
 
 

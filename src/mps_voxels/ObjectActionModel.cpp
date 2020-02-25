@@ -12,6 +12,8 @@
 #include <random>
 
 #include "mps_voxels/PointT.h"
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <pcl/registration/icp.h>
 
@@ -35,7 +37,7 @@ ObjectActionModel::ObjectActionModel(std::shared_ptr<const Scenario> scenario_, 
 Eigen::Vector3d
 ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& depth1,
                      const cv::Mat& mask2, const cv::Mat& depth2,
-                     const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera)
+                     const image_geometry::PinholeCameraModel& cameraModel, const mps::Pose& worldTcamera)
 {
 	assert(mask1.rows == mask2.rows);
 	assert(mask1.cols == mask2.cols);
@@ -49,6 +51,10 @@ ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& dep
 	float centerCol2 = 0;
 	float mask1size = 0;
 	float mask2size = 0;
+
+	// TODO: Use moments command:
+//	cv::Moments m1 = cv::moments(mask1,true);
+//	cv::Point2f p1(m1.m10/m1.m00, m1.m01/m1.m00);
 	for (int i = 0; i < mask1.rows; i++)
 	{
 		for (int j = 0; j < mask1.cols; j++)
@@ -66,6 +72,12 @@ ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& dep
 				mask2size += 1.0;
 			}
 		}
+	}
+
+	if (mask1size < 1 || mask2size < 1)
+	{
+		ROS_WARN_STREAM("Attempted to compute step based on 2D mask, but mask was empty.");
+		return Eigen::Vector3d::Zero();
 	}
 	centerRow1 /= mask1size;
 	centerCol1 /= mask1size;
@@ -89,7 +101,7 @@ ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& dep
 	return objectAction;
 }
 
-RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera)
+RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera)
 {
 	//// Construct PointCloud Segments
 	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer.rgb.at(steps[0])->image, buffer.depth.at(steps[0])->image,
@@ -116,18 +128,18 @@ RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& step
 	RigidTF rtf;
 	rtf.tf = Mworld;
 	std::cerr << "ICP TF: \n";
-	std::cerr << rtf.tf << std::endl;
+	std::cerr << rtf.tf.matrix() << std::endl;
 	return rtf;
 }
 
-std::map<std::pair<ros::Time, ros::Time>, Eigen::Matrix4d>
-ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const moveit::Pose& worldTcamera)
+ObjectActionModel::TimePoseLookup
+ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera)
 {
 	assert(steps.size() > 1);
-	icpRigidTF.tf = Eigen::Matrix4d::Identity();
+	icpRigidTF.tf = mps::Pose::Identity();
 
 	pcl::IterativeClosestPoint<PointT, PointT> icp;
-	std::map<std::pair<ros::Time, ros::Time>, Eigen::Matrix4d> timeToMotionLookup;
+	TimePoseLookup timeToMotionLookup;
 
 	//// Construct PointCloud Segments
 	pcl::PointCloud<PointT>::Ptr firstCloudSegment;
@@ -155,99 +167,106 @@ ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& st
 			firstCloudSegment = secondCloudSegment;
 		}
 		secondCloudSegment = make_PC_segment(buffer.rgb.at(steps[t + 1])->image,
-		                                     buffer.depth.at(steps[t + 1])->image,
-		                                     buffer.cameraModel,
-		                                     masks.at(steps[t + 1]));
-		assert(!secondCloudSegment->empty());
+		                                                                buffer.depth.at(steps[t + 1])->image,
+		                                                                buffer.cameraModel,
+		                                                                masks.at(steps[t + 1]));
 
-//		icp.setMaximumIterations(50);
-//		icp.setTransformationEpsilon(1e-9);
-		icp.setUseReciprocalCorrespondences(true);
-		icp.setEuclideanFitnessEpsilon(0.01);
-		icp.setInputSource(firstCloudSegment);
-		icp.setInputTarget(secondCloudSegment);
-		pcl::PointCloud<PointT> Final;
-		icp.align(Final);
-		double score = icp.getFitnessScore();
-		std::cerr << "is Converged: " << icp.hasConverged() << "; Score = " << score << std::endl;
-
-		//// Visualization of ICP
-		if (scenario->shouldVisualize("icp"))
+		// NB: sometimes the second segment will be empty: fall through to score-based error handling
+		double error = std::numeric_limits<double>::max();
+		if (!secondCloudSegment->empty())
 		{
-			static ros::NodeHandle pnh("~");
-			static ros::Publisher pcPub1 = pnh.advertise<pcl::PointCloud<PointT>>("icp_source", 1, true);
-			static ros::Publisher pcPub2 = pnh.advertise<pcl::PointCloud<PointT>>("icp_target", 1, true);
-			static ros::Publisher pcPub3 = pnh.advertise<pcl::PointCloud<PointT>>("icp_registered", 1, true);
+//			icp.setMaximumIterations(50);
+//			icp.setTransformationEpsilon(1e-9);
+			icp.setUseReciprocalCorrespondences(true);
+			icp.setEuclideanFitnessEpsilon(0.01);
+			icp.setInputSource(firstCloudSegment);
+			icp.setInputTarget(secondCloudSegment);
+			pcl::PointCloud<PointT> Final;
+			icp.align(Final);
+			error = icp.getFitnessScore();
+			std::cerr << "is Converged: " << icp.hasConverged() << "; Score = " << error << std::endl;
 
-			firstCloudSegment->header.frame_id = buffer.cameraModel.tfFrame();
-			pcl_conversions::toPCL(ros::Time::now(), firstCloudSegment->header.stamp);
-			pcPub1.publish(*firstCloudSegment);
-
-			secondCloudSegment->header.frame_id = buffer.cameraModel.tfFrame();
-			pcl_conversions::toPCL(ros::Time::now(), secondCloudSegment->header.stamp);
-			pcPub2.publish(*secondCloudSegment);
-
-			Final.header.frame_id = buffer.cameraModel.tfFrame();
-			pcl_conversions::toPCL(ros::Time::now(), Final.header.stamp);
-			pcPub3.publish(Final);
-		}
-		if (scenario->shouldVisualize("poseArray"))
-		{
-			tf::Transform temp;
-
-			// TODO: Get some global properties like table_surface, etc.
-			for (int i = 0; i < 3; ++i)
+			//// Visualization of ICP
+			if (scenario->shouldVisualize("icp"))
 			{
-				Eigen::Isometry3d worldTobject0 = worldTcamera * cameraTobject0;
-				tf::transformEigenToTF(worldTobject0, temp);
-				scenario->broadcaster->sendTransform(
-					tf::StampedTransform(temp, ros::Time::now(), "table_surface", "object0"));
-//				sleep(1);
+				static ros::NodeHandle pnh("~");
+				static ros::Publisher pcPub1 = pnh.advertise<pcl::PointCloud<PointT>>("icp_source", 1, true);
+				static ros::Publisher pcPub2 = pnh.advertise<pcl::PointCloud<PointT>>("icp_target", 1, true);
+				static ros::Publisher pcPub3 = pnh.advertise<pcl::PointCloud<PointT>>("icp_registered", 1, true);
 
-				Eigen::Isometry3d T(icp.getFinalTransformation().cast<double>());
-				T = T.inverse(Eigen::Isometry);
-				tf::transformEigenToTF(T, temp);
-				scenario->broadcaster->sendTransform(
-					tf::StampedTransform(temp, ros::Time::now(), "object" + std::to_string(t), "object" + std::to_string(t + 1)));
-//				sleep(1);
+				firstCloudSegment->header.frame_id = buffer.cameraModel.tfFrame();
+				pcl_conversions::toPCL(ros::Time::now(), firstCloudSegment->header.stamp);
+				pcPub1.publish(*firstCloudSegment);
 
-				T = Eigen::Isometry3d(icpRigidTF.tf);
-				tf::transformEigenToTF(T, temp);
-				scenario->broadcaster->sendTransform(
-					tf::StampedTransform(temp, ros::Time::now(), "table_surface" , "object_track"));
-				usleep(100000);
+				secondCloudSegment->header.frame_id = buffer.cameraModel.tfFrame();
+				pcl_conversions::toPCL(ros::Time::now(), secondCloudSegment->header.stamp);
+				pcPub2.publish(*secondCloudSegment);
+
+				Final.header.frame_id = buffer.cameraModel.tfFrame();
+				pcl_conversions::toPCL(ros::Time::now(), Final.header.stamp);
+				pcPub3.publish(Final);
+			}
+			if (scenario->shouldVisualize("poseArray"))
+			{
+				tf::Transform temp;
+
+				// TODO: Get some global properties like table_surface, etc.
+				for (int i = 0; i < 3; ++i)
+				{
+					mps::Pose worldTobject0 = worldTcamera * cameraTobject0;
+					tf::transformEigenToTF(worldTobject0, temp);
+					scenario->broadcaster->sendTransform(
+						tf::StampedTransform(temp, ros::Time::now(), "table_surface", "object0"));
+//					sleep(1);
+
+					mps::Pose T(icp.getFinalTransformation().cast<double>());
+					T = T.inverse(Eigen::Isometry);
+					tf::transformEigenToTF(T, temp);
+					scenario->broadcaster->sendTransform(
+						tf::StampedTransform(temp, ros::Time::now(), "object" + std::to_string(t), "object" + std::to_string(t + 1)));
+//					sleep(1);
+
+					T = mps::Pose(icpRigidTF.tf);
+					tf::transformEigenToTF(T, temp);
+					scenario->broadcaster->sendTransform(
+						tf::StampedTransform(temp, ros::Time::now(), "table_surface" , "object_track"));
+					usleep(100000);
+				}
 			}
 		}
 
-		if (score > 0.001) //// invalid
+		if (error > 0.001) //// invalid
 		{
 			std::cerr << "This is an invalid ICP, use previous TF." << std::endl;
 			if (t == 0)
 			{
-				timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t + 1]), Eigen::Matrix4d::Identity());
+				timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t + 1]), mps::Pose::Identity());
 			}
 			else
 			{
-				Eigen::Matrix4d prevMworld = timeToMotionLookup.at(std::make_pair(steps[t-1], steps[t]));
+				const auto& prevMworld = timeToMotionLookup.at(std::make_pair(steps[t-1], steps[t]));
 				timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t + 1]), prevMworld);
-				icpRigidTF.tf = prevMworld * icpRigidTF.tf;
+				icpRigidTF.tf = prevMworld.cast<double>() * icpRigidTF.tf;
 			}
 		}
 		else
 		{
-			Eigen::Matrix4f Mcamera = icp.getFinalTransformation();
-			Eigen::Matrix4d Mworld = worldTcamera.matrix() * Mcamera.cast<double>() * worldTcamera.inverse().matrix();
+			auto temp = icp.getFinalTransformation();
+			mps::Pose Mcamera;
+			Mcamera.linear() = temp.topLeftCorner<3, 3>().cast<double>();
+			Mcamera.translation() = temp.topRightCorner<3, 1>().cast<double>();
+			mps::Pose Mworld = worldTcamera * Mcamera * worldTcamera.inverse(Eigen::Isometry);
 			timeToMotionLookup.emplace(std::make_pair(steps[t], steps[t + 1]), Mworld);
 			icpRigidTF.tf = Mworld * icpRigidTF.tf;
 		}
 	}
 	std::cerr << "icp total TF:\n";
-	std::cerr << icpRigidTF.tf << std::endl;
+	std::cerr << icpRigidTF.tf.matrix() << std::endl;
 
 	return timeToMotionLookup;
 }
 
-bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const moveit::Pose& worldTcamera)
+bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<ros::Time, ros::Time>, Tracker::Flow3D>& flows3camera, const mps::Pose& worldTcamera)
 {
 	ROS_INFO("Waiting for Jlinkage server to start.");
 	// wait for the action server to start
@@ -315,7 +334,7 @@ bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 	return isClusterExist;
 }
 
-bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
+bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
 {
 	cv::Mat startMask = cv::Mat::zeros(buffer_out.rgb.begin()->second->image.size(), CV_8UC1);
 	cv::Mat subwindow(startMask, seg_out.roi);
@@ -323,7 +342,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, Segmentati
 	return sampleAction(buffer_out, startMask, sparseTracker, denseTracker, label, bbox);
 }
 
-bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& firstFrameSeg, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
+bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, const cv::Mat& firstFrameSeg, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
 {
 	actionSamples.clear();
 	/////////////////////////////////////////////
@@ -345,7 +364,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	tf::StampedTransform worldTcameraTF;
 	geometry_msgs::TransformStamped wTc = buffer_out.tfs->lookupTransform(tableFrame, buffer_out.cameraModel.tfFrame(), ros::Time(0));
 	tf::transformStampedMsgToTF(wTc, worldTcameraTF);
-	moveit::Pose worldTcamera;
+	mps::Pose worldTcamera;
 	tf::transformTFToEigen(worldTcameraTF, worldTcamera);
 
 	/////////////////////////////////////////////
@@ -372,8 +391,8 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	/////////////////////////////////////////////
 	//// Estimate motion using SiamMask
 	/////////////////////////////////////////////
-	Eigen::Vector3d roughMotion_w = sampleActionFromMask(masks[steps[0]], buffer_out.depth[steps[0]]->image,
-	                                                     masks[steps.back()], buffer_out.depth[steps.back()]->image,
+	Eigen::Vector3d roughMotion_w = sampleActionFromMask(masks[steps[0]], buffer_out.depth.at(steps[0])->image,
+	                                                     masks[steps.back()], buffer_out.depth.at(steps.back())->image,
 	                                                     buffer_out.cameraModel, worldTcamera);
 	std::cerr << "Rough Motion from SiamMask: " << roughMotion_w.x() << " " << roughMotion_w.y() << " " << roughMotion_w.z() << std::endl;
 	Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
@@ -383,7 +402,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	/////////////////////////////////////////////
 	//// ICP check & store
 	/////////////////////////////////////////////
-	std::map<std::pair<ros::Time, ros::Time>, Eigen::Matrix4d> timeToMotionLookup = icpManifoldSequencialSampler(steps, buffer_out, masks, worldTcamera);
+	ObjectActionModel::TimePoseLookup timeToMotionLookup = icpManifoldSequencialSampler(steps, buffer_out, masks, worldTcamera);
 
 	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer_out.rgb.at(steps[0])->image, buffer_out.depth.at(steps[0])->image,
 	                                                                buffer_out.cameraModel, masks.at(steps[0]));
@@ -393,7 +412,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	                                                                buffer_out.cameraModel,
 	                                                                masks.at(steps.back()));
 	assert(!lastCloudSegment->empty());
-	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002, true, icpRigidTF.tf.cast<float>())) // TODO: decide the value of threshold
+	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002, true, icpRigidTF.tf.matrix().cast<float>())) // TODO: decide the value of threshold
 	{
 		//// Generate reasonable disturbance in ParticleFilter together with failed situations
 		std::cerr << "Although ICP tells us SiamMask isn't reasonable, we still use it for now." << std::endl;
@@ -428,7 +447,7 @@ bool ObjectActionModel::sampleAction(SensorHistoryBuffer& buffer_out, cv::Mat& f
 	for (auto& as : actionSamples)
 	{
 		std::cerr << "Final action sample:\n";
-		std::cerr << as.tf << std::endl;
+		std::cerr << as.tf.matrix() << std::endl;
 	}
 	return true;
 }
@@ -454,7 +473,7 @@ void ObjectActionModel::weightedSampleSIFT(int n)
 }
 
 bool ObjectActionModel::isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::Ptr& initCloudSegment, const pcl::PointCloud<PointT>::Ptr& lastCloudSegment,
-                             const moveit::Pose& worldTcamera, const double& scoreThreshold,
+                             const mps::Pose& worldTcamera, const double& scoreThreshold,
                              const bool& useGuess, const Eigen::Matrix4f& guessCamera)
 {
 	assert(!initCloudSegment->empty());
@@ -465,7 +484,7 @@ bool ObjectActionModel::isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::P
 	pcl::IterativeClosestPoint<PointT, PointT> icp;
 	icp.setMaximumIterations(20);
 //	icp.setTransformationEpsilon(1e-9);
-	icp.setEuclideanFitnessEpsilon(0.001);
+	icp.setEuclideanFitnessEpsilon(0.1);
 	icp.setInputSource(initCloudSegment);
 	icp.setInputTarget(lastCloudSegment);
 	pcl::PointCloud<PointT> Final;
@@ -520,35 +539,6 @@ moveOcTree(const octomap::OcTree* octree, const RigidTF& action)
 	}
 	resOcTree->setOccupancyThres(octree->getOccupancyThres());
 	return resOcTree;
-}
-
-Particle
-moveParticle(const Particle& inputParticle, const std::map<int, RigidTF>& labelToMotionLookup)
-{
-	Particle outputParticle;
-	outputParticle.state = std::make_shared<OccupancyData>(inputParticle.state->voxelRegion);
-
-#pragma omp parallel for
-	for (int i = 0; i < (int)inputParticle.state->vertexState.size(); ++i)
-	{
-		if (inputParticle.state->vertexState[i] >= 0)
-		{
-			auto& tf = labelToMotionLookup.at(inputParticle.state->vertexState[i]).tf;
-			VoxelRegion::vertex_descriptor vd = inputParticle.state->voxelRegion->vertex_at(i);
-			Eigen::Vector3d originalCoord = vertexDescpToCoord(inputParticle.state->voxelRegion->resolution, inputParticle.state->voxelRegion->regionMin, vd);
-			Eigen::Vector4d oCoord = {originalCoord.x(), originalCoord.y(), originalCoord.z(), 1.0};
-			Eigen::Vector4d nCoord = tf * oCoord;
-			Eigen::Vector3d newCoord = {nCoord.x(), nCoord.y(), nCoord.z()};
-
-			if (!outputParticle.state->voxelRegion->isInRegion(newCoord)) continue;
-
-			VoxelRegion::vertex_descriptor newVD = coordToVertexDesc(outputParticle.state->voxelRegion->resolution, outputParticle.state->voxelRegion->regionMin, newCoord);
-			auto index = outputParticle.state->voxelRegion->index_of(newVD);
-			outputParticle.state->vertexState[index] = inputParticle.state->vertexState[i];
-		}
-	}
-
-	return outputParticle;
 }
 
 }

@@ -145,37 +145,30 @@ int main(int argc, char **argv)
 	                                                                                  scenario->maxExtent.head<3>().cast<double>(), 1);
 	particleFilter->voxelRegion = particle.state->voxelRegion;
 
+	// TODO: Initialize particle filter
 
-	Particle outputParticle = particleFilter->applyActionModel(particle, buffer_out.cameraModel, worldTcamera,
-	                                                           buffer_out, sparseTracker, denseTracker,10);
-	auto pfnewmarker = mps::visualize(*outputParticle.state, header, rng);
-	visualPub.publish(pfnewmarker);
-	std::cerr << "Predicted state particle shown!" << std::endl;
-	sleep(5);
+	// TODO: Apply history/action to particles
+//	Particle outputParticle = particleFilter->applyActionModel(particle, buffer_out.cameraModel, worldTcamera,
+//	                                                           buffer_out, sparseTracker, denseTracker,10);
+//	auto pfnewmarker = mps::visualize(*outputParticle.state, header, rng);
+//	visualPub.publish(pfnewmarker);
+//	std::cerr << "Predicted state particle shown!" << std::endl;
+//	sleep(5);
 
-	/////////////////////////////////////////////
-	//// Visualization of final point cloud
-	/////////////////////////////////////////////
-	pcl::PointCloud<PointT>::Ptr finalPC = imagesToCloud(buffer_out.rgb.rbegin()->second->image, buffer_out.depth.rbegin()->second->image, buffer_out.cameraModel);
-
-	ros::Publisher pcPub2 = pnh.advertise<pcl::PointCloud<PointT>>("finalPC", 1, true);
-
-	finalPC->header.frame_id = buffer_out.cameraModel.tfFrame();
-	pcl_conversions::toPCL(ros::Time::now(), finalPC->header.stamp);
-	pcPub2.publish(*finalPC);
-	std::cerr << "Last frame pointcloud shown" << std::endl;
+	// TODO: Apply scene #2 measurement to particles
 
 	/////////////////////////////////////////////
 	//// Free space refinement
 	/////////////////////////////////////////////
-	scenario->mapServer->insertCloud(finalPC, worldTcamera);
-	sceneOctree = scenario->mapServer->getOctree();
-
-	refineParticleFreeSpace(outputParticle, sceneOctree);
-	pfnewmarker = mps::visualize(*outputParticle.state, header, rng);
-	visualPub.publish(pfnewmarker);
-	std::cerr << "Refined predicted state particle shown!" << std::endl;
-	sleep(5);
+//	pcl::PointCloud<PointT>::Ptr finalPC = imagesToCloud(buffer_out.rgb.rbegin()->second->image, buffer_out.depth.rbegin()->second->image, buffer_out.cameraModel);
+//	scenario->mapServer->insertCloud(finalPC, worldTcamera);
+//	sceneOctree = scenario->mapServer->getOctree();
+//
+//	refineParticleFreeSpace(outputParticle, sceneOctree);
+//	pfnewmarker = mps::visualize(*outputParticle.state, header, rng);
+//	visualPub.publish(pfnewmarker);
+//	std::cerr << "Refined predicted state particle shown!" << std::endl;
+//	sleep(5);
 
 	return 0;
 }

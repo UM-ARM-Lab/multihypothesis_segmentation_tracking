@@ -163,8 +163,8 @@ public:
 	std::unique_ptr<message_filters::Subscriber<sensor_msgs::CameraInfo>> cam_sub;
 	std::unique_ptr<message_filters::Synchronizer<SyncPolicy>> sync;
 
-    std::unique_ptr<ros::CallbackQueue> sensor_queue;
-    std::unique_ptr<ros::AsyncSpinner> sensor_spinner;
+	std::unique_ptr<ros::CallbackQueue> sensor_queue;
+	std::unique_ptr<ros::AsyncSpinner> sensor_spinner;
 	std::unique_ptr<tf::TransformListener> listener;
 	std::unique_ptr<tf::TransformBroadcaster> broadcaster;
 
@@ -172,7 +172,7 @@ public:
 	robot_model::RobotModelPtr pModel;
 	std::shared_ptr<Scenario> scenario;
 	std::shared_ptr<Scene> scene;
-	std::unique_ptr<SceneProcessor> processor;
+//	std::unique_ptr<SceneProcessor> processor;
 	std::unique_ptr<MotionPlanner> planner;
 	std::map<std::string, std::shared_ptr<MotionModel>> selfModels;
 
@@ -196,7 +196,7 @@ public:
 	void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	               const sensor_msgs::ImageConstPtr& depth_msg,
 	               const sensor_msgs::CameraInfoConstPtr& cam_msg);
-//    void manCallback(const std_msgs::Int64& msg);
+//	void manCallback(const std_msgs::Int64& msg);
 	moveit_msgs::DisplayTrajectory visualize(const std::shared_ptr<Motion>& motion, const bool primaryOnly = false);
 
 	visualization_msgs::MarkerArray generateRobotCollisionSpheres(const std::string& globalFrame) const;
@@ -395,11 +395,11 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 				tol.acceleration = 1.0;
 				goal.goal_tolerance.push_back(tol);
 			}
-			goal.goal_time_tolerance = ros::Duration(30.0);
+			goal.goal_time_tolerance = ros::Duration(10.0);
 
 			std::cerr << "Sending joint trajectory." << std::endl;
 
-			auto res = trajectoryClient->sendGoalAndWait(goal, ros::Duration(30.0) + totalTime, ros::Duration(1.0));
+			auto res = trajectoryClient->sendGoalAndWait(goal, ros::Duration(10.0) + totalTime, ros::Duration(1.0));
 			if (!res.isDone() || (res.state_!=actionlib::SimpleClientGoalState::SUCCEEDED))
 			{
 				if (!res.isDone())
@@ -462,7 +462,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		/////////////////////////////////////////////
 		//// log historian->buffer & scene->segInfo & scene->roi
 		/////////////////////////////////////////////
-		bool ifLog = true;
+		bool ifLog = false;
 		if (ifLog)
 		{
 			std::string worldname = "experiment_world_02_21";
@@ -482,20 +482,20 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			}
 		}
 
-		/////////////////////////////////////////////
-		//// sample object motions (new)
-		/////////////////////////////////////////////
-		for (int i=0; i<particleFilter->numParticles; ++i)
-		{
-			if (!ros::ok()) { return false; }
-			particleFilter->particles[i] = particleFilter->applyActionModel(particleFilter->particles[i], scene->cameraModel, scene->worldTcamera,
-			                                                                historian->buffer, sparseTracker, denseTracker,1);
-			std_msgs::Header header; header.frame_id = scene->worldFrame; header.stamp = ros::Time::now();
-			auto pfnewmarker = mps::visualize(*particleFilter->particles[i].state, header, rng);
-			visualPub.publish(pfnewmarker);
-			std::cerr << "Predicted state particle shown!" << std::endl;
-			sleep(5);
-		}
+//		/////////////////////////////////////////////
+//		//// sample object motions (new)
+//		/////////////////////////////////////////////
+//		for (int i=0; i<particleFilter->numParticles; ++i)
+//		{
+//			if (!ros::ok()) { return false; }
+//			particleFilter->particles[i] = particleFilter->applyActionModel(particleFilter->particles[i], scene->worldTcamera,
+//			                                                                historian->buffer, sparseTracker, denseTracker, 1);
+//			std_msgs::Header header; header.frame_id = scene->worldFrame; header.stamp = ros::Time::now();
+//			auto pfnewmarker = mps::visualize(*particleFilter->particles[i].state, header, rng);
+//			visualPub.publish(pfnewmarker);
+//			std::cerr << "Predicted state particle shown!" << std::endl;
+//			sleep(5);
+//		}
 	}
 	return true;
 }
@@ -543,7 +543,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		return;
 	}
 
-	bool getScene = processor->loadAndFilterScene(*scene);
+	bool getScene = SceneProcessor::loadAndFilterScene(*scene);
 	if (!getScene)
 	{
 		return;
@@ -589,14 +589,14 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_START("Segment Scene");
 
-	bool getSegmentation = processor->callSegmentation(*scene);
+	bool getSegmentation = SceneProcessor::callSegmentation(*scene);
 	if (!getSegmentation)
 	{
 		std::cerr << "Segmentation generation failed." << std::endl;
 		return;
 	}
 
-	bool getOcclusion = processor->computeOcclusions(*scene);
+	bool getOcclusion = SceneProcessor::computeOcclusions(*scene);
 	if (!getOcclusion)
 	{
 		std::cerr << "Occlusion generation failed." << std::endl;
@@ -621,86 +621,17 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	const size_t nSamples = particleFilter->particles.empty() ? particleFilter->numParticles : 5;
 //	std::vector<Particle> particles;
 	std::set<tree::TreeCut> cuts;
-	std::vector<std::pair<double, SegmentationCut>> segmentationSamples;
-	for (size_t p = 0; p < nSamples; ++p)
-	{
-		const SAMPLE_TYPE sampleType = (0 == p) ? SAMPLE_TYPE::MAXIMUM : SAMPLE_TYPE::RANDOM;
+	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), nSamples, true);
 
-		ParticleIndex pid;
-		pid.id = p;
-
-		auto sample = treeSampler.sample(rng, sampleType);
-		auto cut = sample.second.cut;
-		const auto& cutPair = cuts.insert(cut);
-		if (!cutPair.second)
-		{
-			std::cerr << "Rejected duplicate sample." << std::endl;
-			sample = treeSampler.sample(rng, sampleType);
-			cut = sample.second.cut;
-			cuts.insert(cut); // We don't check the second result: if we fail again we just go with the duplication
-		}
-		segmentationSamples.push_back(sample);
-	}
 
 	if (particleFilter->particles.empty())
 	{
-		for (size_t p = 0; p < nSamples; ++p)
-		{
-			// Generate a particle corresponding to this segmentation
-			Particle particle;
-			particle.particle.id = p;
-
-			const auto& sample = segmentationSamples[p];
-
-			particle.state = std::make_shared<OccupancyData>(particleFilter->voxelRegion);
-			particle.state->segInfo = std::make_shared<SegmentationInfo>(sample.second.segmentation);
-			particle.weight = sample.first;
-			bool execSegmentation = processor->performSegmentation(*scene, particle.state->segInfo, *particle.state);
-			if (!execSegmentation)
-			{
-				std::cerr << "Particle " << particle.particle << " failed to segment." << std::endl;
-				return;
-			}
-
-			bool getCompletion = processor->buildObjects(*scene, *particle.state);
-			if (!getCompletion)
-			{
-				return;
-			}
-
-			particle.state->vertexState = particleFilter->voxelRegion->objectsToSubRegionVoxelLabel(particle.state->objects, scene->minExtent.head<3>().cast<double>());
-			particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
-			particle.state->parentScene = this->scene;
-			particleFilter->particles.push_back(particle);
-		}
+		particleFilter->initializeParticles(scene);
 	}
 	else
 	{
-		// Compute fitness of all particles w.r.t. this segmentation
-		for (auto & particle : particleFilter->particles)
-		{
-			cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
-
-
-			IMSHOW("segmentation", colorByLabel(segParticle));
-			WAIT_KEY(0);
-
-			double bestMatchScore = -std::numeric_limits<double>::infinity();
-			double segWeight = -std::numeric_limits<double>::infinity();
-
-			for (size_t s = 0; s < nSamples; ++s)
-			{
-				mps::JaccardMatch J(segParticle, segmentationSamples[s].second.segmentation.objectness_segmentation->image);
-				double matchScore = J.symmetricCover();
-				if (matchScore > bestMatchScore)
-				{
-					bestMatchScore = matchScore;
-					segWeight = segmentationSamples[s].first;
-				}
-			}
-
-			particle.weight += segWeight;
-		}
+		particleFilter->computeAndApplyActionModel(historian->buffer, sparseTracker, denseTracker);
+		particleFilter->applyMeasurementModel(scene);
 	}
 
 	{
@@ -731,7 +662,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				visualization_msgs::MarkerArray ma;
 				ma.markers.resize(1);
 				ma.markers.front().action = visualization_msgs::Marker::DELETEALL;
-//				visualPub.publish(ma);
+				visualPub.publish(ma);
 			}
 
 			IMSHOW("segmentation", colorByLabel(particle.state->segInfo->objectness_segmentation->image));
@@ -760,7 +691,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 
 	{
-		bool clearedVolume = processor->removeAccountedForOcclusion(scene->occludedPts, scene->occlusionTree, *scene->bestGuess);
+		bool clearedVolume = SceneProcessor::removeAccountedForOcclusion(scenario.get(), scene->occludedPts, scene->occlusionTree, *scene->bestGuess);
 		if (!clearedVolume)
 		{
 			std::cerr << "Occlusion deduction failed." << std::endl;
@@ -889,6 +820,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	//// scene->minExtent and scene->maxExtent are changing from frame to frame
+	/*
 	for (int i=0; i<particleFilter->numParticles; ++i)
 	{
 		particleFilter->particles[i].state->vertexState = particleFilter->voxelRegion->objectsToSubRegionVoxelLabel(scene->bestGuess->objects, scene->minExtent.head<3>().cast<double>());
@@ -912,6 +844,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		std::cerr << "Moved State particle shown!" << std::endl;
 //		sleep(2);
 	}
+	 */
 
 	PROFILE_RECORD("Complete Scene");
 
@@ -1075,7 +1008,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		MPS_ASSERT(scene->bestGuess->obstructions.find(*scene->bestGuess->targetObjectID) == scene->bestGuess->obstructions.end());
 	}
 
-	if (scene->bestGuess->targetObjectID && !motion && processor->useShapeCompletion != FEATURE_AVAILABILITY::FORBIDDEN)
+	if (scene->bestGuess->targetObjectID && !motion && scenario->useShapeCompletion != FEATURE_AVAILABILITY::FORBIDDEN)
 	{
 		// We've seen the target, but can't pick it up
 		bool hasVisualObstructions = planner->addVisualObstructions(*scene->bestGuess->targetObjectID, scene->bestGuess->obstructions);
@@ -1534,7 +1467,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 
 	MPS_ASSERT(!pModel->getJointModelGroupNames().empty());
 
-	scenario = std::make_shared<Scenario>();
+	scenario = std::make_shared<Scenario>(use_memory, useShapeCompletion);
 	scenario->loadManipulators(pModel);
 
 	std::cerr << scenario->manipulators.front()->isGrasping(getCurrentRobotState()) << std::endl;
@@ -1579,7 +1512,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	                                                  scenario->minExtent.head<3>().cast<double>(),
 	                                                  scenario->maxExtent.head<3>().cast<double>(), 5);
 
-	processor = std::make_unique<SceneProcessor>(scenario, use_memory, useShapeCompletion);
+//	processor = std::make_unique<SceneProcessor>(scenario, use_memory, useShapeCompletion);
 
 	Tracker::TrackingOptions opts;
 	opts.roi.minExtent = {scenario->minExtent.x(), scenario->minExtent.y(), scenario->minExtent.z()};

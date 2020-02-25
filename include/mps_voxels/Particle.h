@@ -46,8 +46,6 @@ namespace mps
 
 struct OccupancyData;
 
-std::set<ObjectIndex> getUniqueObjectLabels(const VoxelRegion::VertexLabels& input);
-
 struct Particle
 {
 	using ParticleData = OccupancyData;
@@ -55,7 +53,7 @@ struct Particle
 	// Indexing properties of this particular particle
 	TimeIndex time;
 	SubproblemIndex problem;
-	ObjectIndex object;
+//	ObjectIndex object;
 	ParticleIndex particle;
 
 	// The actual state data and its cached computations
@@ -64,8 +62,6 @@ struct Particle
 	// Our belief weight of this particle
 	double weight = 0;
 };
-
-cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const int& step = 1);
 
 void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOctree);
 

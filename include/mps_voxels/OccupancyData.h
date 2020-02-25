@@ -37,6 +37,7 @@
 #include "mps_voxels/SegmentationInfo.h"
 
 #include "mps_voxels/util/vector_less_than.hpp"
+#include "mps_voxels/moveit_pose_type.h"
 
 //#include <moveit/collision_detection/world.h>
 #include <moveit/macros/class_forward.h>
@@ -46,6 +47,11 @@
 namespace collision_detection
 {
 MOVEIT_CLASS_FORWARD(World)
+}
+
+namespace image_geometry
+{
+class PinholeCameraModel;
 }
 
 namespace mps
@@ -58,6 +64,8 @@ struct OccupancyData
 	// Constructor to initialize valid region, empty state
 	explicit
 	OccupancyData(std::shared_ptr<VoxelRegion> region);
+
+	OccupancyData(const std::shared_ptr<const Scene>& scene, std::shared_ptr<VoxelRegion> region, VoxelRegion::VertexLabels vertexState);
 
 	// Domain properties shared by this particle
 	std::shared_ptr<VoxelRegion> voxelRegion;
@@ -80,7 +88,7 @@ struct OccupancyData
 	// Objects in this scene
 	std::map<ObjectIndex, std::unique_ptr<Object>> objects;
 
-	std::weak_ptr<Scene> parentScene;
+	std::weak_ptr<const Scene> parentScene;
 
 	// TODO: These are probably obviated by the vertexState type
 	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> coordToObject;
@@ -96,6 +104,8 @@ struct OccupancyData
 };
 
 collision_detection::WorldPtr computeCollisionWorld(const OccupancyData& occupancy);
+
+cv::Mat rayCastOccupancy(const OccupancyData& occupancy, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const cv::Rect& roi, const int& step = 1);
 
 }
 

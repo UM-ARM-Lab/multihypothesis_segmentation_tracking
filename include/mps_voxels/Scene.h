@@ -51,6 +51,12 @@ public:
 	using Pose = moveit::Pose;
 	// Lifetime properties
 
+	Scenario(bool memory = true, FEATURE_AVAILABILITY completion = FEATURE_AVAILABILITY::OPTIONAL)
+	: useMemory(memory), useShapeCompletion(completion) {}
+
+	const bool useMemory;
+	const FEATURE_AVAILABILITY useShapeCompletion;
+
 	tf::TransformListener* listener;
 	tf::TransformBroadcaster* broadcaster;
 
@@ -152,27 +158,35 @@ class SceneProcessor
 public:
 	using Pose = Scenario::Pose;
 
-	const std::shared_ptr<Scenario> scenario;
-	const bool useMemory;
-	const FEATURE_AVAILABILITY useShapeCompletion;
+//	const std::shared_ptr<Scenario> scenario;
+//	const bool useMemory;
+//	const FEATURE_AVAILABILITY useShapeCompletion;
 
-	explicit
-	SceneProcessor(std::shared_ptr<Scenario> _scenario, bool memory = true, FEATURE_AVAILABILITY completion = FEATURE_AVAILABILITY::OPTIONAL)
-	: scenario(std::move(_scenario)), useMemory(memory), useShapeCompletion(completion) {}
+//	explicit
+//	SceneProcessor(std::shared_ptr<Scenario> _scenario, bool memory = true, FEATURE_AVAILABILITY completion = FEATURE_AVAILABILITY::OPTIONAL)
+//	: scenario(std::move(_scenario)), useMemory(memory), useShapeCompletion(completion) {}
 
+	static
 	bool loadAndFilterScene(Scene& s);
 
+	static
 	bool callSegmentation(Scene& s);
 
+	static
 	bool computeOcclusions(Scene& s);
 
+	static
 	bool performSegmentation(const Scene& s, const std::shared_ptr<SegmentationInfo>& segHypo, OccupancyData& occupancy);
 
+	static
 	bool buildObjects(const Scene& s, OccupancyData& occupancy);
 
-	bool removeAccountedForOcclusion(octomap::point3d_collection& occludedPts,
-	                                 std::shared_ptr<octomap::OcTree>& occlusionTree,
-	                                 const OccupancyData& occupancy);
+	static
+	bool removeAccountedForOcclusion(
+		const Scenario* scenario,
+		octomap::point3d_collection& occludedPts,
+		std::shared_ptr<octomap::OcTree>& occlusionTree,
+		const OccupancyData& occupancy);
 
 };
 
