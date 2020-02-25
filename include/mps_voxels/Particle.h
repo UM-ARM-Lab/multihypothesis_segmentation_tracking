@@ -53,7 +53,7 @@ struct Particle
 	// Indexing properties of this particular particle
 	TimeIndex time;
 	SubproblemIndex problem;
-	ObjectIndex object;
+//	ObjectIndex object;
 	ParticleIndex particle;
 
 	// The actual state data and its cached computations
@@ -63,9 +63,7 @@ struct Particle
 	double weight = 0;
 };
 
-cv::Mat rayCastParticle(const Particle& particle, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const int& step = 1);
-
-void refineParticleFreeSpace(Particle& particle);
+void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOctree);
 
 }
 

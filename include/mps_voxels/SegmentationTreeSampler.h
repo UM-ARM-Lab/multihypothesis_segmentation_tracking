@@ -80,6 +80,7 @@ public:
 	~SegmentationTreeSampler();
 
 	std::pair<double, SegmentationCut> sample(RNG& rng, const SAMPLE_TYPE type) override;
+	std::vector<std::pair<double, SegmentationCut>> sample(RNG& rng, const size_t nSamples, const bool maximumFirst);
 };
 
 }

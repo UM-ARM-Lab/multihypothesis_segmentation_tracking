@@ -84,6 +84,31 @@ SegmentationTreeSampler::sample(RNG& rng, const SAMPLE_TYPE type)
 	return {res.first, {newSeg, res.second}};
 }
 
+
+std::vector<std::pair<double, SegmentationCut>>
+SegmentationTreeSampler::sample(RNG& rng, const size_t nSamples, const bool maximumFirst)
+{
+	std::set<tree::TreeCut> cuts;
+	std::vector<std::pair<double, SegmentationCut>> segmentationSamples;
+	for (size_t p = 0; p < nSamples; ++p)
+	{
+		const SAMPLE_TYPE sampleType = (0 == p && maximumFirst) ? SAMPLE_TYPE::MAXIMUM : SAMPLE_TYPE::RANDOM;
+
+		auto s = sample(rng, sampleType);
+		auto cut = s.second.cut;
+		const auto& cutPair = cuts.insert(cut);
+		if (!cutPair.second)
+		{
+			std::cerr << "Rejected duplicate sample." << std::endl;
+			s = sample(rng, sampleType);
+			cut = s.second.cut;
+			cuts.insert(cut); // We don't check the second result: if we fail again we just go with the duplication
+		}
+		segmentationSamples.push_back(s);
+	}
+	return segmentationSamples;
+}
+
 SegmentationTreeSampler::~SegmentationTreeSampler() = default;
 
 }

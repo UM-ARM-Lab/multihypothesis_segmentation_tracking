@@ -14,10 +14,17 @@ namespace mps
 {
 
 class Scenario;
+struct RigidTF;
 
 class ParticleFilter
 {
 public:
+	using MotionModel = std::map<ObjectIndex, RigidTF>; // TODO: This should be probabilistic
+	using MeasurementSensorData = Scene;
+	using ActionSensorData = SensorHistoryBuffer;
+
+	// TODO: Classes for storing intermediate results
+
 	ParticleFilter(std::shared_ptr<const Scenario> scenario_, const VoxelRegion::vertex_descriptor& dims, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n=10);
 
 	std::shared_ptr<const Scenario> scenario;
@@ -27,10 +34,27 @@ public:
 	int numParticles;
 	std::vector<Particle> particles;
 
-	Particle applyActionModel(const Particle& inputParticle, const image_geometry::PinholeCameraModel& cameraModel,
-	                          const moveit::Pose& worldTcamera, SensorHistoryBuffer& buffer_out,
-	                          std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker,
-	                          const int& segRes = 1);
+	bool initializeParticles(const std::shared_ptr<const MeasurementSensorData>& data);
+
+	std::pair<ParticleIndex, MotionModel>
+	computeActionModel(
+		const Particle& inputParticle,
+		const ActionSensorData& buffer,
+		std::unique_ptr<Tracker>& sparseTracker,
+		std::unique_ptr<DenseTracker>& denseTracker) const;
+
+	Particle applyActionModel(
+		const Particle& inputParticle,
+		const ParticleFilter::MotionModel& action) const;
+
+	void computeAndApplyActionModel(
+		const ActionSensorData& buffer,
+		std::unique_ptr<Tracker>& sparseTracker,
+		std::unique_ptr<DenseTracker>& denseTracker);
+
+	void applyMeasurementModel(const std::shared_ptr<const Scene>& newScene);
+
+	// TODO: resample()
 };
 
 }
