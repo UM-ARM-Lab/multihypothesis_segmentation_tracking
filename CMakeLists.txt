@@ -104,8 +104,8 @@ if(CLION)
 endif()
 #set(CMAKE_BUILD_TYPE RelWithDebInfo)
 set(CMAKE_BUILD_TYPE Debug)
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DCGAL_DISABLE_ROUNDING_MATH_CHECK")
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DCGAL_NO_ASSERTIONS")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DCGAL_DISABLE_ROUNDING_MATH_CHECK")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DCGAL_NO_ASSERTIONS")
 
 macro(use_strict_compile_flags)
   set(BUILD_FLAGS "-Wshadow -Wall -Wextra -Wpedantic -Werror=return-type")
@@ -290,6 +290,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/logging/log_sensor_history.cpp
   src/${PROJECT_NAME}/logging/log_voxel_region.cpp
   src/${PROJECT_NAME}/logging/log_occupancy_data.cpp
+  src/${PROJECT_NAME}/logging/log_scene.cpp
   src/${PROJECT_NAME}/video_graph.cpp
   src/${PROJECT_NAME}/planning/State.cpp
   src/${PROJECT_NAME}/planning/Action.cpp

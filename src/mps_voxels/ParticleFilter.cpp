@@ -84,7 +84,7 @@ ParticleFilter::computeActionModel(
 	std::map<ObjectIndex, RigidTF> labelToMotionLookup;
 	for (auto& pair : labelToBBoxLookup)
 	{
-		bool sampleActionSuccess = oam->sampleAction(buffer, segParticle, sparseTracker, denseTracker, pair.first, pair.second);
+		bool sampleActionSuccess = oam->sampleAction(buffer, segParticle, roi, sparseTracker, denseTracker, pair.first, pair.second);
 		if (sampleActionSuccess)
 		{
 			labelToMotionLookup.emplace(pair.first - 1, oam->actionSamples[0]);
