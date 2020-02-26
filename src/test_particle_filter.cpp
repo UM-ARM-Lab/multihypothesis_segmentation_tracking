@@ -52,7 +52,7 @@ public:
 		/////////////////////////////////////////////
 		std::string logDir = parsePackageURL(testDirName);
 		{
-			DataLog loader(logDir + "/explorer_buffer_" + worldname + ".bag", {}, rosbag::bagmode::Read);
+			DataLog loader(logDir + "explorer_buffer_" + worldname + ".bag", {}, rosbag::bagmode::Read);
 			loader.activeChannels.insert("buffer");
 			loader.load<SensorHistoryBuffer>("buffer", motionData);
 			std::cerr << "Successfully loaded." << std::endl;

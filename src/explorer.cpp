@@ -472,13 +472,13 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 				logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
 				std::cerr << "Successfully logged." << std::endl;
 			}
-			{
-				std::cerr << "start logging scene->segInfo" << std::endl;
-				DataLog logger(scenario->experiment->experiment_dir + "/explorer_segInfo_" + worldname + ".bag");
-				logger.activeChannels.insert("segInfo");
-				logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
-				std::cerr << "Successfully logged." << std::endl;
-			}
+//			{
+//				std::cerr << "start logging scene->segInfo" << std::endl;
+//				DataLog logger(scenario->experiment->experiment_dir + "/explorer_segInfo_" + worldname + ".bag");
+//				logger.activeChannels.insert("segInfo");
+//				logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
+//				std::cerr << "Successfully logged." << std::endl;
+//			}
 		}
 
 //		/////////////////////////////////////////////
@@ -1507,7 +1507,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	                                                            scenario->maxExtent.head<3>().cast<double>());
 	particleFilter = std::make_unique<ParticleFilter>(scenario, dims, resolution,
 	                                                  scenario->minExtent.head<3>().cast<double>(),
-	                                                  scenario->maxExtent.head<3>().cast<double>(), 5);
+	                                                  scenario->maxExtent.head<3>().cast<double>(), 2);
 
 //	processor = std::make_unique<SceneProcessor>(scenario, use_memory, useShapeCompletion);
 
