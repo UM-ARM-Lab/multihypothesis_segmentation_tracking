@@ -46,7 +46,7 @@ visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
 	std::map<int, std_msgs::ColorRGBA> colormap;
 	for (size_t i = 0; i < labels.size(); i++)
 	{
-		if (labels[i] < 0) { continue; }
+		if (labels[i] == VoxelRegion::FREE_SPACE) { continue; }
 		const VoxelRegion::vertex_descriptor vd = region.vertex_at(i);
 		Eigen::Vector3d coord = region.regionMin + region.resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>()) + offset;
 

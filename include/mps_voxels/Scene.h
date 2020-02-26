@@ -57,7 +57,8 @@ public:
 	const bool useMemory;
 	const FEATURE_AVAILABILITY useShapeCompletion;
 
-	tf::TransformListener* listener;
+	tf2_ros::Buffer transformBuffer;
+	std::shared_ptr<tf2_ros::TransformListener> listener;
 	tf::TransformBroadcaster* broadcaster;
 
 	std::shared_ptr<LocalOctreeServer> mapServer;
@@ -91,6 +92,8 @@ public:
 
 	bool loadManipulators(robot_model::RobotModelPtr& pModel);
 };
+
+std::shared_ptr<Scenario> scenarioFactory(ros::NodeHandle& nh, ros::NodeHandle& pnh, robot_model::RobotModelPtr& robotModel);
 
 class Scene
 {
@@ -169,7 +172,7 @@ public:
 //	: scenario(std::move(_scenario)), useMemory(memory), useShapeCompletion(completion) {}
 
 	static
-	bool loadAndFilterScene(Scene& s);
+	bool loadAndFilterScene(Scene& s, const tf2_ros::Buffer& transformBuffer);
 
 	static
 	bool callSegmentation(Scene& s);

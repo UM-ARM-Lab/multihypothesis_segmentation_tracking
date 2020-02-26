@@ -84,6 +84,17 @@ bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 		return false;
 	}
 
+	const auto& serverStateForGoal = actionClient.getState();
+	if (serverStateForGoal != actionlib::SimpleClientGoalState::SUCCEEDED)
+	{
+		ROS_ERROR_STREAM("SiamMask action reported state '" << serverStateForGoal.toString() << "': " << serverStateForGoal.getText());
+		if (serverStateForGoal == actionlib::SimpleClientGoalState::RECALLED)
+		{
+			ROS_ERROR_STREAM("Goal was recalled. Did time go backwards?");
+		}
+		return false;
+	}
+
 	// each raw tracking result takes around 300Mb at 0.5fps, too large!!!
 	const auto& res = actionClient.getResult();
 

@@ -78,7 +78,7 @@ namespace mps
 
 OccupancyData::OccupancyData(std::shared_ptr<VoxelRegion> region)
 	: voxelRegion(std::move(region)),
-	  vertexState(voxelRegion->num_vertices(), -1),
+	  vertexState(voxelRegion->num_vertices(), VoxelRegion::FREE_SPACE),
 	  edgeState(voxelRegion->num_edges(), false)
 {
 
@@ -119,7 +119,7 @@ OccupancyData::OccupancyData(const std::shared_ptr<const Scene>& scene,
 	for (mps::VoxelRegion::vertices_size_type v = 0; v < voxelRegion->num_vertices(); ++v)
 	{
 		const auto label = vertexState[v];
-		if (label < 0) { continue; }
+		if (label == VoxelRegion::FREE_SPACE) { continue; }
 		const auto descriptor = voxelRegion->vertex_at(v);
 		const auto coordinate = voxelRegion->coordinate_of(descriptor).cast<float>();
 
@@ -202,7 +202,7 @@ cv::Mat rayCastOccupancy(const OccupancyData& state, const image_geometry::Pinho
 					if (dist < zBuf)
 					{
 						zBuf = dist;
-						labels.at<LabelT>(v, u) = pair.first.id + 1; //// voxel label == -1: free sapce; seg label == 0: free space;
+						labels.at<LabelT>(v, u) = pair.first.id; //// voxel label == 0: free sapce; seg label == 0: free space;
 //						std::cerr << "label value: " << labels.at<LabelT>(v, u) << std::endl;
 					}
 				}

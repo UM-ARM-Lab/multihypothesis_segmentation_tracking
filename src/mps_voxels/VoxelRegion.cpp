@@ -40,7 +40,9 @@
 namespace mps
 {
 
-VoxelRegion::VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax) // NOLINT(hicpp-member-init)
+const int VoxelRegion::FREE_SPACE;
+
+VoxelRegion::VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax) // NOLINT(hicpp-member-init,cppcoreguidelines-pro-type-member-init)
 	: resolution(res), regionMin(std::move(rmin)), regionMax(std::move(rmax)), m_dimension_lengths(dims)
 {
 	precalculate();
@@ -105,7 +107,7 @@ VoxelRegion::VertexLabels VoxelRegion::components(VoxelRegion::EdgeState& edges)
 		ObjectIndex label(dsf.getAncestor(i));
 		if (sizes[label] == 1)
 		{
-			dsf.nodes[i] = -1;
+			dsf.nodes[i] = VoxelRegion::FREE_SPACE;
 		}
 	}
 
@@ -415,7 +417,7 @@ std::set<ObjectIndex> getUniqueObjectLabels(const VoxelRegion::VertexLabels& inp
 	{
 		out.insert(ObjectIndex(input[i]));
 	}
-	out.erase(ObjectIndex());
+	out.erase(ObjectIndex(VoxelRegion::FREE_SPACE));
 	return out;
 }
 
@@ -501,7 +503,7 @@ mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, s
 	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(objects.begin()->second->occupancy.get(), roiMinExtent, roiMaxExtent);
 	mps::VoxelRegion vox(dims, objects.begin()->second->occupancy->getResolution(), roiMinExtent, roiMaxExtent);
 
-	mps::VoxelRegion::VertexLabels res(vox.num_vertices(), -1);
+	mps::VoxelRegion::VertexLabels res(vox.num_vertices(), VoxelRegion::FREE_SPACE);
 
 	int label = 0;
 	for (auto& pair : objects)
@@ -536,7 +538,7 @@ VoxelRegion::VertexLabels
 VoxelRegion::objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects,
                                           const Eigen::Vector3d& subRegionMinExtent)
 {
-	mps::VoxelRegion::VertexLabels res(num_vertices(), -1);
+	mps::VoxelRegion::VertexLabels res(num_vertices(), VoxelRegion::FREE_SPACE);
 	mps::VoxelRegion::vertex_descriptor subRegionMinVD = coordToVertexDesc(resolution, regionMin, subRegionMinExtent);
 
 	for (auto& pair : objects)

@@ -107,7 +107,7 @@ bool DataLog::load<Scene>(const std::string& channel, Scene& msg)
 	return true;
 }
 
-Scene computeSceneFromSensorHistorian(const SensorHistoryBuffer& buffer, const ros::Time& t, const std::string& worldFrame)
+Scene computeSceneFromSensorHistorian(const std::shared_ptr<Scenario>& scenario, const SensorHistoryBuffer& buffer, const ros::Time& t, const std::string& worldFrame)
 {
 	Scene sout;
 	if (buffer.rgb.find(t) == buffer.rgb.end())
@@ -118,13 +118,16 @@ Scene computeSceneFromSensorHistorian(const SensorHistoryBuffer& buffer, const r
 	sout.cv_rgb_ptr = buffer.rgb.at(t);
 	sout.cv_depth_ptr = buffer.depth.at(t);
 	sout.cameraModel = buffer.cameraModel;
+	sout.scenario = scenario;
 
 	tf::StampedTransform worldTcameraTF;
 	geometry_msgs::TransformStamped wTc = buffer.tfs->lookupTransform(worldFrame, buffer.cameraModel.tfFrame(), ros::Time(0));
 	tf::transformStampedMsgToTF(wTc, worldTcameraTF);
 	tf::transformTFToEigen(worldTcameraTF, sout.worldTcamera);
 
-	SceneProcessor::loadAndFilterScene(sout);
+//	tf2_ros::Buffer
+
+	SceneProcessor::loadAndFilterScene(sout, *buffer.tfs);
 	SceneProcessor::callSegmentation(sout);
 	SceneProcessor::computeOcclusions(sout);
 

@@ -54,6 +54,7 @@ class VoxelRegion
 {
 public:
 	const static int Dimensions = 3;
+	const static int FREE_SPACE = 0;
 	using Grid = boost::grid_graph<Dimensions>;
 	using vertex_descriptor = Grid::vertex_descriptor;
 	// vertex_descriptor is the boost::array of the grid coordinates
@@ -87,10 +88,10 @@ public:
 	}
 
 	const vertex_descriptor m_dimension_lengths;
-	vertices_size_type m_num_vertices;
+	vertices_size_type m_num_vertices{};
 
-	boost::array<edges_size_type, Dimensions> m_edge_count;
-	edges_size_type m_num_edges;
+	boost::array<edges_size_type, Dimensions> m_edge_count{};
+	edges_size_type m_num_edges{};
 
 	// Pre-computes the number of vertices and edges
 	void precalculate();

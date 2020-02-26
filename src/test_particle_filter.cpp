@@ -18,8 +18,54 @@
 #include "mps_voxels/ParticleFilter.h"
 #include "mps_voxels/visualization/visualize_occupancy.h"
 #include "mps_voxels/LocalOctreeServer.h"
+#include "mps_voxels/util/package_paths.h"
+
+#include <moveit/robot_model_loader/robot_model_loader.h>
 
 using namespace mps;
+
+const std::string testDirName = "package://mps_test_data/";
+const std::string worldname = "experiment_world_02_21";
+
+
+class ParticleFilterTestFixture
+{
+public:
+	std::unique_ptr<robot_model_loader::RobotModelLoader> mpLoader;
+	robot_model::RobotModelPtr pModel;
+	std::shared_ptr<Scenario> scenario;
+	std::shared_ptr<Scene> initialScene;
+	SensorHistoryBuffer motionData;
+
+	void SetUp()
+	{
+		ros::NodeHandle nh, pnh("~");
+
+		// Load robot and scenario configurations
+		mpLoader = std::make_unique<robot_model_loader::RobotModelLoader>();
+		pModel = mpLoader->getModel();
+		scenario = scenarioFactory(nh, pnh, pModel);
+		scenario->segmentationClient = std::make_shared<RGBDSegmenter>(nh);
+
+		/////////////////////////////////////////////
+		//// Load initial sensor data
+		/////////////////////////////////////////////
+		std::string logDir = parsePackageURL(testDirName);
+		{
+			DataLog loader(logDir + "/explorer_buffer_" + worldname + ".bag", {}, rosbag::bagmode::Read);
+			loader.activeChannels.insert("buffer");
+			loader.load<SensorHistoryBuffer>("buffer", motionData);
+			std::cerr << "Successfully loaded." << std::endl;
+		}
+		std::cerr << "number of frames: " << motionData.rgb.size() << std::endl;
+
+		ros::Time initialTime = motionData.rgb.begin()->first;
+		initialScene = std::make_shared<Scene>(computeSceneFromSensorHistorian(scenario, motionData, initialTime, scenario->worldFrame));
+
+
+		// Load motion data
+	}
+};
 
 int main(int argc, char **argv)
 {
@@ -30,36 +76,19 @@ int main(int argc, char **argv)
 //		ROS_INFO("No param named '/use_sim_time'");
 //	}
 //	nh.setParam("/use_sim_time", false);
+
+	ParticleFilterTestFixture fixture;
+	fixture.SetUp();
+
 	ros::Publisher visualPub = nh.advertise<visualization_msgs::MarkerArray>("visualization", 1, true);
 	std::default_random_engine rng;
 
-	/////////////////////////////////////////////
-	//// Load sensor history
-	/////////////////////////////////////////////
-	std::string logDir = "/home/kunhuang/mps_log/0221";
-	std::string worldname = "experiment_world_02_21";
-	SensorHistoryBuffer buffer_out;
-	{
-		DataLog loader(logDir + "/explorer_buffer_" + worldname + ".bag", {}, rosbag::bagmode::Read);
-		loader.activeChannels.insert("buffer");
-		loader.load<SensorHistoryBuffer>("buffer", buffer_out);
-		std::cerr << "Successfully loaded." << std::endl;
-	}
-	std::cerr << "number of frames: " << buffer_out.rgb.size() << std::endl;
 
-	/////////////////////////////////////////////
-	//// Compute Scene
-	/////////////////////////////////////////////
-	const std::string worldFrame = "table_surface";
-	computeSceneFromSensorHistorian(buffer_out, buffer_out.rgb.begin()->first, worldFrame);
+	std::string logDir = parsePackageURL(testDirName);
 
 	/////////////////////////////////////////////
 	//// Initialize Utils
 	/////////////////////////////////////////////
-	Eigen::Vector3f ROImaxExtent(0.4f, 0.6f, 0.5f);
-	Eigen::Vector3f ROIminExtent(-0.4f, -0.6f, -0.020f);
-	octomap::point3d tMin(-0.4f, -0.6f, -0.020f);
-	octomap::point3d tMax(0.4f, 0.6f, 0.5f);
 
 	std::unique_ptr<Tracker> sparseTracker = std::make_unique<Tracker>();
 	sparseTracker->track_options.featureRadius = 200.0f;
@@ -67,10 +96,11 @@ int main(int argc, char **argv)
 	sparseTracker->track_options.meterRadius = 1.0f;
 	std::unique_ptr<DenseTracker> denseTracker = std::make_unique<SiamTracker>();
 
-	std::shared_ptr<Scenario> scenario = std::make_shared<Scenario>();
-	scenario->experiment = std::make_shared<Experiment>(nh, pnh);
+	std::shared_ptr<Scenario> scenario = fixture.scenario;
 	scenario->mapServer = std::make_shared<LocalOctreeServer>(pnh);
 
+	octomap::point3d tMin(scenario->minExtent.x(), scenario->minExtent.y(), scenario->minExtent.z());
+	octomap::point3d tMax(scenario->maxExtent.x(), scenario->maxExtent.y(), scenario->maxExtent.z());
 	scenario->mapServer->m_octree->setBBXMin(tMin);
 	scenario->mapServer->m_octree->setBBXMax(tMax);
 
@@ -81,11 +111,11 @@ int main(int argc, char **argv)
 	//// in case the voxelRegion is not initialized, the value of this voxelRegion doesn't matter
 	const double resolution = 0.010;
 	mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution,
-	                                                            ROIminExtent.cast<double>(),
-	                                                            ROImaxExtent.cast<double>());
+	                                                            scenario->minExtent.head<3>().cast<double>(),
+	                                                            scenario->maxExtent.head<3>().cast<double>());
 	std::shared_ptr<VoxelRegion> voxelRegion = std::make_shared<VoxelRegion>(dims, resolution,
-	                                                                         ROIminExtent.cast<double>(),
-	                                                                         ROImaxExtent.cast<double>());
+	                                                                         scenario->minExtent.head<3>().cast<double>(),
+	                                                                         scenario->maxExtent.head<3>().cast<double>());
 
 	particle.state = std::make_shared<OccupancyData>(voxelRegion);
 	{
@@ -103,15 +133,15 @@ int main(int argc, char **argv)
 	visualPub.publish(pfMarkers);
 	std::cerr << "State particle shown!" << std::endl;
 	sleep(2);
-/*
+
 	/////////////////////////////////////////////
 	//// Visualization of first point cloud
 	/////////////////////////////////////////////
-	pcl::PointCloud<PointT>::Ptr firstPC = imagesToCloud(buffer_out.rgb.begin()->second->image, buffer_out.depth.begin()->second->image, buffer_out.cameraModel);
+	pcl::PointCloud<PointT>::Ptr firstPC = fixture.initialScene->cropped_cloud;//imagesToCloud(fixture.motionData.rgb.begin()->second->image, fixture.motionData.depth.begin()->second->image, fixture.motionData.cameraModel);
 
 	ros::Publisher pcPub1 = pnh.advertise<pcl::PointCloud<PointT>>("firstPC", 1, true);
 
-	firstPC->header.frame_id = buffer_out.cameraModel.tfFrame();
+	firstPC->header.frame_id = fixture.motionData.cameraModel.tfFrame();
 	ros::Rate loop_rate(4);
 	while (nh.ok())
 	{
@@ -125,7 +155,7 @@ int main(int argc, char **argv)
 	/////////////////////////////////////////////
 	//// Free space refinement
 	/////////////////////////////////////////////
-	scenario->mapServer->insertCloud(firstPC, worldTcamera);
+	scenario->mapServer->insertCloud(firstPC, fixture.initialScene->worldTcamera);
 	octomap::OcTree* sceneOctree = scenario->mapServer->getOctree();
 
 	refineParticleFreeSpace(particle, sceneOctree);
@@ -133,7 +163,7 @@ int main(int argc, char **argv)
 	visualPub.publish(pfMarkers);
 	std::cerr << "Refined state particle shown!" << std::endl;
 	sleep(5);
-*/
+
 	/////////////////////////////////////////////
 	//// sample object motions (new)
 	/////////////////////////////////////////////
@@ -145,8 +175,8 @@ int main(int argc, char **argv)
 	// TODO: Initialize particle filter
 
 	// TODO: Apply history/action to particles
-//	Particle outputParticle = particleFilter->applyActionModel(particle, buffer_out.cameraModel, worldTcamera,
-//	                                                           buffer_out, sparseTracker, denseTracker,10);
+//	Particle outputParticle = particleFilter->applyActionModel(particle, fixture.motionData.cameraModel, worldTcamera,
+//	                                                           fixture.motionData, sparseTracker, denseTracker,10);
 //	auto pfnewmarker = mps::visualize(*outputParticle.state, header, rng);
 //	visualPub.publish(pfnewmarker);
 //	std::cerr << "Predicted state particle shown!" << std::endl;
@@ -157,7 +187,7 @@ int main(int argc, char **argv)
 	/////////////////////////////////////////////
 	//// Free space refinement
 	/////////////////////////////////////////////
-//	pcl::PointCloud<PointT>::Ptr finalPC = imagesToCloud(buffer_out.rgb.rbegin()->second->image, buffer_out.depth.rbegin()->second->image, buffer_out.cameraModel);
+//	pcl::PointCloud<PointT>::Ptr finalPC = imagesToCloud(fixture.motionData.rgb.rbegin()->second->image, fixture.motionData.depth.rbegin()->second->image, fixture.motionData.cameraModel);
 //	scenario->mapServer->insertCloud(finalPC, worldTcamera);
 //	sceneOctree = scenario->mapServer->getOctree();
 //

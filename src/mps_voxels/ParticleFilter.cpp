@@ -57,9 +57,12 @@ ParticleFilter::initializeParticles(
 			return false;
 		}
 
-		particle.state->vertexState = this->voxelRegion->objectsToSubRegionVoxelLabel(particle.state->objects, scene->minExtent.head<3>().cast<double>());
+		particle.state->vertexState = voxelRegion->objectsToSubRegionVoxelLabel(particle.state->objects, scene->minExtent.head<3>().cast<double>());
 		particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
 		particle.state->parentScene = scene;
+
+		auto uniqueImageLabels = unique(particle.state->segInfo->objectness_segmentation->image);
+
 
 		particles.push_back(particle);
 	}
@@ -87,21 +90,22 @@ ParticleFilter::computeActionModel(
 		bool sampleActionSuccess = oam->sampleAction(buffer, segParticle, roi, sparseTracker, denseTracker, pair.first, pair.second);
 		if (sampleActionSuccess)
 		{
-			labelToMotionLookup.emplace(pair.first - 1, oam->actionSamples[0]);
+			labelToMotionLookup.emplace(pair.first, oam->actionSamples[0]);
 		}
 		else
 		{
-			ROS_ERROR_STREAM("Failed to sample action for label " << pair.first -1 << " !!!");
+			ROS_ERROR_STREAM("Failed to sample action for label " << pair.first << " !!!");
 			//TODO: generate reasonable disturbance
 			RigidTF randomSteadyTF;
 			randomSteadyTF.tf = mps::Pose::Identity();
-			labelToMotionLookup.emplace(pair.first - 1, randomSteadyTF);
+			labelToMotionLookup.emplace(pair.first, randomSteadyTF);
 		}
 	}
 
 	// Validation code
-	const auto uniqueLabels = getUniqueObjectLabels(inputParticle.state->vertexState);
-	for (const ObjectIndex& label : uniqueLabels)
+	const auto uniqueVoxelLabels = getUniqueObjectLabels(inputParticle.state->vertexState);
+	const auto uniqueImageLabels = unique(segParticle);
+	for (const ObjectIndex& label : uniqueVoxelLabels)
 	{
 		if (labelToMotionLookup.find(label) == labelToMotionLookup.end())
 		{
@@ -122,12 +126,12 @@ Particle ParticleFilter::applyActionModel(
 {
 	const VoxelRegion& region = *inputParticle.state->voxelRegion;
 	assert(inputParticle.state->vertexState.size() == region.num_vertices());
-	VoxelRegion::VertexLabels outputState(region.num_vertices(), -1);
+	VoxelRegion::VertexLabels outputState(region.num_vertices(), VoxelRegion::FREE_SPACE);
 
 //#pragma omp parallel for
 	for (size_t i = 0; i < inputParticle.state->vertexState.size(); ++i)
 	{
-		if (inputParticle.state->vertexState[i] >= 0)
+		if (inputParticle.state->vertexState[i] != VoxelRegion::FREE_SPACE)
 		{
 			const auto& T = action.at(ObjectIndex(inputParticle.state->vertexState[i])).tf;
 			VoxelRegion::vertex_descriptor vd = region.vertex_at(i);
@@ -172,8 +176,9 @@ void ParticleFilter::applyMeasurementModel(const std::shared_ptr<const Scene>& n
 	// Compute fitness of all particles w.r.t. this segmentation
 	for (auto & particle : particles)
 	{
+		particle.state->parentScene = newScene; // Update the scene pointer
 		// Ray-cast particle only in ROI
-		const cv::Mat& segParticle = particle.state->segInfo->objectness_segmentation->image;
+		cv::Mat segParticle(particle.state->segInfo->objectness_segmentation->image, newScene->roi);
 
 		IMSHOW("segmentation", colorByLabel(segParticle));
 		WAIT_KEY(0);
@@ -184,6 +189,7 @@ void ParticleFilter::applyMeasurementModel(const std::shared_ptr<const Scene>& n
 		for (size_t s = 0; s < nSamples; ++s)
 		{
 			const auto& segSample = segmentationSamples[s].second.segmentation.objectness_segmentation->image;
+			MPS_ASSERT(newScene->roi.size() == segSample.size());
 			MPS_ASSERT(segParticle.size() == segSample.size());
 
 			mps::JaccardMatch J(segParticle, segSample);
