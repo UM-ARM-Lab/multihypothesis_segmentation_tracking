@@ -30,6 +30,7 @@
 #include "mps_voxels/ParticleFilter.h"
 #include <mps_voxels/JaccardMatch.h>
 #include "mps_voxels/visualization/visualize_occupancy.h"
+#include "mps_voxels/visualization/visualize_bounding_spheres.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
@@ -96,13 +97,6 @@ using namespace mps;
 sensor_msgs::JointState::ConstPtr latestJoints;
 std::mutex joint_mtx;
 
-int mostAmbNode;
-void manCallback(const std_msgs::Int64::ConstPtr& msg)
-{
-    mostAmbNode = msg->data;
-    ROS_DEBUG_ONCE("Most Amb Node callback!");
-}
-
 void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 {
 	std::lock_guard<std::mutex> lk(joint_mtx);
@@ -121,24 +115,11 @@ void insertDirect(const octomap::point3d_collection& points, const moveit::Pose&
 	tree->prune();
 }
 
-void setAlpha(visualization_msgs::MarkerArray& ma, const float alpha)
-{
-	for (auto& ms : ma.markers)
-	{
-		ms.color.a = alpha;
-		for (auto& c : ms.colors)
-		{
-			c.a = ms.color.a;
-		}
-	}
-}
-
 const std::string DEFAULT_TRAJECTORY_SERVER = "follow_joint_trajectory";
 
 class SceneExplorer
 {
 public:
-	//using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::PointCloud2, sensor_msgs::CameraInfo>;
 	using SyncPolicy = message_filters::sync_policies::ExactTime<sensor_msgs::Image, sensor_msgs::Image, sensor_msgs::CameraInfo>;
 	using TrajectoryClient = actionlib::SimpleActionClient<control_msgs::FollowJointTrajectoryAction>;
 
@@ -156,7 +137,6 @@ public:
 	ros::Publisher visualPub;
 	ros::Publisher displayPub;
 	ros::Publisher pcPub;
-	ros::Subscriber indexofinterestSub;
 
 	std::unique_ptr<image_transport::SubscriberFilter> rgb_sub;
 	std::unique_ptr<image_transport::SubscriberFilter> depth_sub;
@@ -177,7 +157,6 @@ public:
 
 	double planning_time = 60.0;
 	int planning_samples = 25;
-//	int mostAmbNode = -1;
 	ros::ServiceClient externalVideoClient;
 	MarkerSet allMarkers;
 
@@ -195,10 +174,8 @@ public:
 	void cloud_cb (const sensor_msgs::ImageConstPtr& rgb_msg,
 	               const sensor_msgs::ImageConstPtr& depth_msg,
 	               const sensor_msgs::CameraInfoConstPtr& cam_msg);
-//	void manCallback(const std_msgs::Int64& msg);
-	moveit_msgs::DisplayTrajectory visualize(const std::shared_ptr<Motion>& motion, const bool primaryOnly = false);
 
-	visualization_msgs::MarkerArray generateRobotCollisionSpheres(const std::string& globalFrame) const;
+	moveit_msgs::DisplayTrajectory visualize(const std::shared_ptr<Motion>& motion, const bool primaryOnly = false);
 };
 
 robot_state::RobotState SceneExplorer::getCurrentRobotState()
@@ -480,21 +457,6 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 				std::cerr << "Successfully logged." << std::endl;
 			}
 		}
-
-//		/////////////////////////////////////////////
-//		//// sample object motions (new)
-//		/////////////////////////////////////////////
-//		for (int i=0; i<particleFilter->numParticles; ++i)
-//		{
-//			if (!ros::ok()) { return false; }
-//			particleFilter->particles[i] = particleFilter->applyActionModel(particleFilter->particles[i], scene->worldTcamera,
-//			                                                                historian->buffer, sparseTracker, denseTracker, 1);
-//			std_msgs::Header header; header.frame_id = scenario->worldFrame; header.stamp = ros::Time::now();
-//			auto pfnewmarker = mps::visualize(*particleFilter->particles[i].state, header, rng);
-//			visualPub.publish(pfnewmarker);
-//			std::cerr << "Predicted state particle shown!" << std::endl;
-//			sleep(5);
-//		}
 	}
 	return true;
 }
@@ -518,14 +480,11 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	scene->selfModels = selfModels;
 
 	{
-		// TODO: Clean up all these extents.
 		visualization_msgs::MarkerArray ma;
 		ma.markers.push_back(sparseTracker->track_options.roi.getMarker());
 //		ma.markers.back().ns = "roi";
 		allMarkers["roi"] = ma;
 	}
-
-	mostAmbNode = -1;
 
 	PROFILE_START("Preprocess Scene");
 
@@ -573,7 +532,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	// Show robot collision
 	if (scenario->shouldVisualize("collision"))
 	{
-		this->allMarkers["collision"] = generateRobotCollisionSpheres(globalFrame);
+		std_msgs::Header header; header.frame_id = globalFrame; header.stamp = ros::Time::now();
+		this->allMarkers["collision"] = mps::visualize(this->selfModels, header, scenario->rng());
 		this->visualPub.publish(this->allMarkers.flatten());
 	}
 
@@ -599,21 +559,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	//// Sample state particles
 	/////////////////////////////////////////////
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-
-//	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(scene->sceneOctree,
-//	                                                     scene->minExtent.head<3>().cast<double>(),
-//	                                                     scene->maxExtent.head<3>().cast<double>());
-//	auto voxelRegion = std::make_shared<VoxelRegion>( dims,
-//	                                                  scene->sceneOctree->getResolution(),
-//	                                                  scene->minExtent.head<3>().cast<double>(),
-//	                                                  scene->maxExtent.head<3>().cast<double>());
-
-	// Generate segmentation samples. If no particles exist yet, create them.
-//	SegmentationTreeSampler treeSampler(scene->segInfo);
-//	const size_t nSamples = particleFilter->particles.empty() ? particleFilter->numParticles : 5;
-//	std::vector<Particle> particles;
-//	std::set<tree::TreeCut> cuts;
-//	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), nSamples, true);
 
 
 	if (particleFilter->particles.empty())
@@ -644,10 +589,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	{
 		for (const auto& particle : particleFilter->particles)
 		{
-//			cv::Mat segParticle = rayCastParticle(particle, scene->cameraModel, scene->worldTcamera);
-//			std::cerr << "Segmentation based on particle generated!" << std::endl;
-//			IMSHOW("particle", segParticle);
-//			WAIT_KEY(0);
 
 			// Clear visualization
 			{
@@ -769,15 +710,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		visualPub.publish(ma);
 	}
 
-//	{
-//		visualization_msgs::MarkerArray ma = visualizeOctree(octree, globalFrame, &mapColor);
-//		for (visualization_msgs::Marker& m : ma.markers)
-//		{
-//			m.ns = "map";
-//		}
-//		allMarkers["map"] = ma;
-//		visualPub.publish(allMarkers.flatten());
-//	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
 	PROFILE_START("Complete Scene");
@@ -806,56 +738,9 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
  */
 
-	/////////////////////////////////////////////
-	//// Sample state particles
-	/////////////////////////////////////////////
-	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-
-	//// scene->minExtent and scene->maxExtent are changing from frame to frame
-	/*
-	for (int i=0; i<particleFilter->numParticles; ++i)
-	{
-		particleFilter->particles[i].state->vertexState = particleFilter->voxelRegion->objectsToSubRegionVoxelLabel(scene->bestGuess->objects, scene->minExtent.head<3>().cast<double>());
-		particleFilter->particles[i].state->uniqueObjectLabels = getUniqueObjectLabels(particleFilter->particles[i].state->vertexState);
-		// Visualize state
-		std_msgs::Header header; header.frame_id = scenario->worldFrame; header.stamp = ros::Time::now();
-		auto pfMarkers = mps::visualize(*particleFilter->particles[i].state, header, rng);
-		visualPub.publish(pfMarkers);
-		std::cerr << "State particle shown!" << std::endl;
-		sleep(2);
-
-////	labelToMotionLookup is not complete
-//		std::map<int, RigidTF> labelToMotionLookup;
-//		RigidTF temptf;
-//		temptf.linear = {0, 0, 0.1};
-//		temptf.angular = {0, 0, 1.57};
-//		labelToMotionLookup.insert({0, temptf});
-//		Particle temp = moveParticle(particleFilter->particles[i], labelToMotionLookup);
-//		auto movedpfmarker = particleFilter->voxelRegion->visualizeVertexLabelsDirectly(temp.state->vertexState, scenario->worldFrame, "moved_State" + std::to_string(i));
-//		visualPub.publish(movedpfmarker);
-//		std::cerr << "Moved State particle shown!" << std::endl;
-//		sleep(2);
-	}
-	 */
-
 	PROFILE_RECORD("Complete Scene");
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-
-//	int mostOccludingSegmentIdx = std::advance(occludedBySegmentCount.begin(), (int)std::distance(occludedBySegmentCount.begin(),
-//		std::max_element(occludedBySegmentCount.begin(), occludedBySegmentCount.end()))).first;
-//	if (goalSegmentID.id != -1) { mostOccludingSegmentIdx = goalSegmentID; }
-//	visualization_msgs::MarkerArray objToMoveVis = visualizeOctree(scene->completedSegments[mostOccludingSegmentIdx].get(), globalFrame);
-//	for (visualization_msgs::Marker& m : objToMoveVis.markers)
-//	{
-//		m.colors.clear();
-//		m.color.r = 1.0;
-//		m.color.a = 1.0;
-//		m.scale.x *= 1.2; m.scale.y *= 1.2; m.scale.z *= 1.2;
-//		m.ns = "worst";// + std::to_string(m.id);
-//	}
-//	visualPub.publish(objToMoveVis);
-//	WAIT_KEY(10);
 
 //	{//visualize the shadow
 //		std_msgs::ColorRGBA shadowColor;
@@ -903,6 +788,8 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
         ec.setInputCloud (all_shadow_points);
         ec.extract (clusters);
 
+		std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
+
         for (const pcl::PointIndices& cluster : clusters)
         {
             pcl::ExtractIndices<PointT> cluster_extractor;
@@ -937,9 +824,9 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
             shadow_mk.scale.y=size;
             shadow_mk.scale.z=size;
             shadow_mk.color.a=1;
-            shadow_mk.color.r=rand()/(float)RAND_MAX;
-            shadow_mk.color.g=rand()/(float)RAND_MAX;
-            shadow_mk.color.b=rand()/(float)RAND_MAX;
+            shadow_mk.color.r=uni(scenario->rng());
+            shadow_mk.color.g=uni(scenario->rng());
+            shadow_mk.color.b=uni(scenario->rng());
             count++;
             ma.markers.push_back(shadow_mk);
         }
@@ -1065,83 +952,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_RECORD("Planning");
 
-//	for (int i = 0; i < std::min(6, (int)motionQueue.size()/3); ++i)
-//	{
-//		const auto res = motionQueue.top().second;
-//		const ObjectSampler sample = motionQueue.top().second.second.objectSampleInfo;
-//		motionQueue.pop(); motionQueue.pop(); motionQueue.pop();
-//
-//		visualization_msgs::MarkerArray ma;
-//		visualization_msgs::Marker m;
-//		m.header.frame_id = globalFrame;
-//		m.header.stamp = ros::Time::now();
-//		m.action = visualization_msgs::Marker::ADD;
-//		m.frame_locked = true;
-//		m.id = 1;
-//		m.pose.orientation.w = 1.0;
-//
-//		// Display sample point
-//		m.type = visualization_msgs::Marker::CUBE;
-//		m.ns = "sample_point";
-//		m.scale.x = m.scale.y = m.scale.z = octree->getResolution();
-//		m.pose.position.x = sample.samplePoint.x();
-//		m.pose.position.y = sample.samplePoint.y();
-//		m.pose.position.z = sample.samplePoint.z();
-//		m.color.r = 1.0;
-//		m.color.g = 0.0;
-//		m.color.b = 1.0;
-//		m.color.a = 1.0;
-//
-//
-//		ma.markers.push_back(m);
-//		for (auto& a : allMarkers.arrays)
-//		{
-//			float alpha = 0.05;
-//			if ("map" == a.first) { alpha = 0.2; }
-//			if (std::string::npos != a.first.find("completed")) { alpha = 0.2; }
-//			setAlpha(a.second, alpha);
-//		}
-//		allMarkers[m.ns] = ma;
-//		visualPub.publish(allMarkers.flatten());
-//		sleep(1);
-//
-//		// Display sample ray
-//		m.type = visualization_msgs::Marker::ARROW;
-//		m.ns = "sample_ray";
-//		m.points.resize(2);
-//		m.points[1] = m.pose.position; // Copy target location to head
-//		m.points[0].x = sample.cameraOrigin.x();
-//		m.points[0].y = sample.cameraOrigin.y();
-//		m.points[0].z = sample.cameraOrigin.z();
-//		m.pose.position.x =  m.pose.position.y = m.pose.position.z = 0.0f;
-//		m.scale.x /= 2.0;
-//		m.scale.y *= 2.0;
-//		m.scale.z = 0.1;
-//		ma.markers.front() = m;
-//
-//		allMarkers[m.ns] = ma;
-//		visualPub.publish(allMarkers.flatten());
-//		sleep(1);
-//
-//		// Display sample object
-//		setAlpha(allMarkers["completed_"+std::to_string(std::abs(sample.id.id))], 1.0);
-//		visualPub.publish(allMarkers.flatten());
-//		sleep(1);
-////		ma.markers.push_back(m);
-//
-//
-//		for (auto& a : allMarkers.arrays)
-//		{
-//			setAlpha(a.second, 1.0);
-//		}
-//
-////		139  69  19
-//
-//		// Display move(s?)
-////		displayPub.publish(visualize(res.first, true));
-////		sleep(3);
-//	}
-
 	WAIT_KEY(10);
 
 	PROFILE_START("Execution");
@@ -1201,12 +1011,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 					externalVideoClient.call(req, resp);
 				}
 
-//				sync.reset();
-//				planner.reset();
-//				processor.reset();
-//				listener.reset();
-//				broadcaster.reset();
-
 				ros::shutdown();
 				return;
 			}
@@ -1260,52 +1064,9 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	particleFilter->computeAndApplyActionModel(historian->buffer, sparseTracker, denseTracker);
 
-//	// Check if we used to see the target, but don't anymore
-//	if (goalSegmentID >= 0)
-//	{
-//		cv::Mat targetMask = targetDetector->getMask(targetMask, seg->image);
-//		if (matchID >= 0)
-//		{
-//
-//		}
-//
-//	}
-
 	WAIT_KEY(10);
 
 }
-
-visualization_msgs::MarkerArray SceneExplorer::generateRobotCollisionSpheres(const std::string& globalFrame) const
-{
-	visualization_msgs::MarkerArray markers;
-	int id = 0;
-	for (const auto& model : this->scene->selfModels)
-	{
-		visualization_msgs::Marker m;
-		m.ns = "collision";
-		m.id = id++;
-		m.type = visualization_msgs::Marker::SPHERE;
-		m.action = visualization_msgs::Marker::ADD;
-		m.scale.x = m.scale.y = m.scale.z = model.second->boundingSphere.radius*2.0;
-		m.color.a = 0.5f;
-		Eigen::Vector3d p = model.second->localTglobal.inverse() * model.second->boundingSphere.center;
-		m.pose.position.x = p.x();
-		m.pose.position.y = p.y();
-		m.pose.position.z = p.z();
-		m.pose.orientation.w = 1.0;
-		m.frame_locked = true;
-		m.header.stamp = ros::Time::now();//cam_msg->header.stamp;
-		m.header.frame_id = globalFrame;
-		markers.markers.push_back(m);
-	}
-	return markers;
-}
-
-
-//void SceneExplorer::manCallback(const std_msgs::Int64& msg)
-//{
-//    this->mostAmbNode = msg.data;
-//}
 
 moveit_msgs::DisplayTrajectory SceneExplorer::visualize(const std::shared_ptr<Motion>& motion, const bool primaryOnly)
 {
@@ -1505,8 +1266,6 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	                                                  scenario->minExtent.head<3>().cast<double>(),
 	                                                  scenario->maxExtent.head<3>().cast<double>(), 5);
 
-//	processor = std::make_unique<SceneProcessor>(scenario, use_memory, useShapeCompletion);
-
 	Tracker::TrackingOptions opts;
 	opts.roi.minExtent = {scenario->minExtent.x(), scenario->minExtent.y(), scenario->minExtent.z()};
 	opts.roi.maxExtent = {scenario->maxExtent.x(), scenario->maxExtent.y(), scenario->maxExtent.z()};
@@ -1612,13 +1371,6 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	mapColor.b = 0.0;
 
 	std::string topic_prefix = "/kinect2_victor_head/hd";
-//	ros::Subscriber camInfoSub = nh.subscribe("kinect2_victor_head/qhd/camera_info", 1, camera_cb);
-
-//	message_filters::Subscriber<sensor_msgs::PointCloud2> point_sub(nh, topic_prefix+"/points", 10);
-//	message_filters::Subscriber<sensor_msgs::CameraInfo> info_sub(nh, topic_prefix+"/camera_info", 10);
-//
-//	message_filters::Synchronizer<SyncPolicy> sync(SyncPolicy(10), point_sub, info_sub);
-//	sync.registerCallback(cloud_cb);
 
 	NAMED_WINDOW("target_mask", cv::WINDOW_GUI_NORMAL);
 	NAMED_WINDOW("rgb", cv::WINDOW_GUI_NORMAL);
@@ -1633,15 +1385,8 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	depth_sub = std::make_unique<image_transport::SubscriberFilter>(it, options.depth_topic, options.queue_size, options.hints);
 	cam_sub = std::make_unique<message_filters::Subscriber<sensor_msgs::CameraInfo>>(options.nh, options.cam_topic, options.queue_size);
 
-    auto man_sub_options = ros::SubscribeOptions::create<std_msgs::Int64>("/segment_rgbd/man", 2, manCallback, ros::VoidPtr(), sensor_queue.get());
-//    ros::SubscribeOptions man_sub_options;
-//    man_sub_options.init<std_msgs::Int64>("/segment_rgbd/man", 1, &SceneExplorer::manCallback);
-    indexofinterestSub = nh.subscribe(man_sub_options);
-//    indexofinterestSub = nh.subscribe("/segment_rgbd/man", 1, &SceneExplorer::manCallback, this);
-
 	sync = std::make_unique<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(options.queue_size), *rgb_sub, *depth_sub, *cam_sub);
 	sync->registerCallback(boost::bind(&SceneExplorer::cloud_cb, this, _1, _2, _3));
-
 }
 
 int main(int argc, char* argv[])
