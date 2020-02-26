@@ -5,7 +5,9 @@
 #include "mps_voxels/Manipulator.h"
 #include "mps_voxels/MotionModel.h"
 #include "mps_voxels/Tracker.h"
+#ifdef USE_CUDA_SIFT
 #include "mps_voxels/CudaTracker.h"
+#endif
 #include "mps_voxels/SiamTracker.h"
 #include "mps_voxels/TargetDetector.h"
 #include "mps_voxels/LocalOctreeServer.h"
@@ -25,8 +27,6 @@
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_sensor_history.h"
 #include "mps_voxels/logging/log_segmentation_info.h"
-#include "mps_voxels/logging/log_cv_roi.h"
-#include "mps_voxels/logging/log_occupancy_data.h"
 #include "mps_voxels/ParticleFilter.h"
 #include <mps_voxels/JaccardMatch.h>
 #include "mps_voxels/visualization/visualize_occupancy.h"
@@ -36,7 +36,6 @@
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/robot_state/robot_state.h>
 #include <moveit/robot_state/conversions.h>
-#include <moveit/planning_scene/planning_scene.h>
 #include <moveit_msgs/DisplayTrajectory.h>
 
 #include <pcl_ros/point_cloud.h> // Needed to publish a point cloud
@@ -46,28 +45,12 @@
 #include <realtime_tools/realtime_publisher.h>
 #include <mutex>
 
-// Point cloud utilities
-#include <depth_image_proc/depth_conversions.h>
-#include <sensor_msgs/PointCloud2.h>
-#include <pcl_conversions/pcl_conversions.h>
-#include <pcl_ros/transforms.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/segmentation/extract_clusters.h>
-#include <pcl/ModelCoefficients.h>
-#include <pcl/kdtree/kdtree.h>
-#include <pcl/filters/extract_indices.h>
-#include <boost/core/null_deleter.hpp>
-
-//#include <pcl/visualization/cloud_viewer.h>
-
 #include "mps_voxels/VoxelRegion.h"
 
 #include <geometric_shapes/shape_operations.h>
 
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
-#include <std_msgs/Int64.h>
 
 #include <control_msgs/FollowJointTrajectoryAction.h>
 #include <mps_msgs/TrackBBoxAction.h>
@@ -761,77 +744,77 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //	}
 //    std::cerr << "Published " << scene->occludedPts.size() << " points." << std::endl;
 
-    {
-        //visualize shadows with different colors
-//        scene->occlusionTree->expand();
-//        const auto shadow_pts = getPoints(scene->occlusionTree.get());
-        pcl::PointCloud<PointT>::Ptr all_shadow_points (new pcl::PointCloud<PointT>);
-        for (const auto & pt_octo : scene->occludedPts){
-            PointT pt;
-            pt.x=pt_octo.x();
-            pt.y=pt_octo.y();
-            pt.z=pt_octo.z();
-            all_shadow_points->points.push_back(pt);
-        }
-
-        std::vector<pcl::PointCloud<PointT>::Ptr> segments;
-
-        pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
-        tree->setInputCloud(all_shadow_points);
-
-        std::vector<pcl::PointIndices> clusters;
-        pcl::EuclideanClusterExtraction<PointT> ec;
-        ec.setClusterTolerance (0.03); // 3cm
-        ec.setMinClusterSize (100);
-        ec.setMaxClusterSize (25000);
-        ec.setSearchMethod (tree);
-        ec.setInputCloud (all_shadow_points);
-        ec.extract (clusters);
-
-		std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
-
-        for (const pcl::PointIndices& cluster : clusters)
-        {
-            pcl::ExtractIndices<PointT> cluster_extractor;
-            cluster_extractor.setInputCloud(all_shadow_points);
-            cluster_extractor.setIndices(pcl::PointIndices::ConstPtr(&cluster, boost::null_deleter()));
-            cluster_extractor.setNegative(false);
-
-            pcl::PointCloud<PointT>::Ptr cluster_cloud(new pcl::PointCloud<PointT>());
-            cluster_extractor.filter(*cluster_cloud);
-
-            segments.push_back(cluster_cloud);
-        }
-        int count=0;
-        visualization_msgs::MarkerArray ma;
-        for (const auto & segment : segments){
-            visualization_msgs::Marker shadow_mk;
-            for(const auto & pt : *segment){
-                geometry_msgs::Point geo_pt;
-                geo_pt.x=pt.x;
-                geo_pt.y=pt.y;
-                geo_pt.z=pt.z;
-                shadow_mk.points.emplace_back(geo_pt);
-            }
-            double size = octree->getResolution();
-
-            shadow_mk.header.frame_id=globalFrame;
-            shadow_mk.header.stamp=ros::Time::now();
-            shadow_mk.ns="shadow" ;
-            shadow_mk.id=count;
-            shadow_mk.type=visualization_msgs::Marker::CUBE_LIST;
-            shadow_mk.scale.x=size;
-            shadow_mk.scale.y=size;
-            shadow_mk.scale.z=size;
-            shadow_mk.color.a=1;
-            shadow_mk.color.r=uni(scenario->rng());
-            shadow_mk.color.g=uni(scenario->rng());
-            shadow_mk.color.b=uni(scenario->rng());
-            count++;
-            ma.markers.push_back(shadow_mk);
-        }
-        visualPub.publish(ma);
-    }
+//    {
+//        //visualize shadows with different colors
+////        scene->occlusionTree->expand();
+////        const auto shadow_pts = getPoints(scene->occlusionTree.get());
+//        pcl::PointCloud<PointT>::Ptr all_shadow_points (new pcl::PointCloud<PointT>);
+//        for (const auto & pt_octo : scene->occludedPts){
+//            PointT pt;
+//            pt.x=pt_octo.x();
+//            pt.y=pt_octo.y();
+//            pt.z=pt_octo.z();
+//            all_shadow_points->points.push_back(pt);
+//        }
+//
+//        std::vector<pcl::PointCloud<PointT>::Ptr> segments;
+//
+//        pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
+//        tree->setInputCloud(all_shadow_points);
+//
+//        std::vector<pcl::PointIndices> clusters;
+//        pcl::EuclideanClusterExtraction<PointT> ec;
+//        ec.setClusterTolerance (0.03); // 3cm
+//        ec.setMinClusterSize (100);
+//        ec.setMaxClusterSize (25000);
+//        ec.setSearchMethod (tree);
+//        ec.setInputCloud (all_shadow_points);
+//        ec.extract (clusters);
+//
+//		std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
+//
+//        for (const pcl::PointIndices& cluster : clusters)
+//        {
+//            pcl::ExtractIndices<PointT> cluster_extractor;
+//            cluster_extractor.setInputCloud(all_shadow_points);
+//            cluster_extractor.setIndices(pcl::PointIndices::ConstPtr(&cluster, boost::null_deleter()));
+//            cluster_extractor.setNegative(false);
+//
+//            pcl::PointCloud<PointT>::Ptr cluster_cloud(new pcl::PointCloud<PointT>());
+//            cluster_extractor.filter(*cluster_cloud);
+//
+//            segments.push_back(cluster_cloud);
+//        }
+//        int count=0;
+//        visualization_msgs::MarkerArray ma;
+//        for (const auto & segment : segments){
+//            visualization_msgs::Marker shadow_mk;
+//            for(const auto & pt : *segment){
+//                geometry_msgs::Point geo_pt;
+//                geo_pt.x=pt.x;
+//                geo_pt.y=pt.y;
+//                geo_pt.z=pt.z;
+//                shadow_mk.points.emplace_back(geo_pt);
+//            }
+//            double size = octree->getResolution();
+//
+//            shadow_mk.header.frame_id=globalFrame;
+//            shadow_mk.header.stamp=ros::Time::now();
+//            shadow_mk.ns="shadow" ;
+//            shadow_mk.id=count;
+//            shadow_mk.type=visualization_msgs::Marker::CUBE_LIST;
+//            shadow_mk.scale.x=size;
+//            shadow_mk.scale.y=size;
+//            shadow_mk.scale.z=size;
+//            shadow_mk.color.a=1;
+//            shadow_mk.color.r=uni(scenario->rng());
+//            shadow_mk.color.g=uni(scenario->rng());
+//            shadow_mk.color.b=uni(scenario->rng());
+//            count++;
+//            ma.markers.push_back(shadow_mk);
+//        }
+//        visualPub.publish(ma);
+//    }
 
 
 	// Reach out and touch target
