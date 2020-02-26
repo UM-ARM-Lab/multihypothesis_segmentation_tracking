@@ -12,6 +12,7 @@
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_occupancy_data.h"
 #include "mps_voxels/logging/log_sensor_history.h"
+#include "mps_voxels/logging/log_scene.h"
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/SensorHistorian.h"
 #include "mps_voxels/ParticleFilter.h"
@@ -33,7 +34,7 @@ int main(int argc, char **argv)
 	std::default_random_engine rng;
 
 	/////////////////////////////////////////////
-	//// Load sensor history & particle data
+	//// Load sensor history
 	/////////////////////////////////////////////
 	std::string logDir = "/home/kunhuang/mps_log/0221";
 	std::string worldname = "experiment_world_02_21";
@@ -47,14 +48,10 @@ int main(int argc, char **argv)
 	std::cerr << "number of frames: " << buffer_out.rgb.size() << std::endl;
 
 	/////////////////////////////////////////////
-	//// Look up worldTcamera
+	//// Compute Scene
 	/////////////////////////////////////////////
-	const std::string tableFrame = "table_surface";
-	tf::StampedTransform worldTcameraTF;
-	geometry_msgs::TransformStamped wTc = buffer_out.tfs->lookupTransform(tableFrame, buffer_out.cameraModel.tfFrame(), ros::Time(0));
-	tf::transformStampedMsgToTF(wTc, worldTcameraTF);
-	moveit::Pose worldTcamera;
-	tf::transformTFToEigen(worldTcameraTF, worldTcamera);
+	const std::string worldFrame = "table_surface";
+	computeSceneFromSensorHistorian(buffer_out, buffer_out.rgb.begin()->first, worldFrame);
 
 	/////////////////////////////////////////////
 	//// Initialize Utils
@@ -106,7 +103,7 @@ int main(int argc, char **argv)
 	visualPub.publish(pfMarkers);
 	std::cerr << "State particle shown!" << std::endl;
 	sleep(2);
-
+/*
 	/////////////////////////////////////////////
 	//// Visualization of first point cloud
 	/////////////////////////////////////////////
@@ -136,7 +133,7 @@ int main(int argc, char **argv)
 	visualPub.publish(pfMarkers);
 	std::cerr << "Refined state particle shown!" << std::endl;
 	sleep(5);
-
+*/
 	/////////////////////////////////////////////
 	//// sample object motions (new)
 	/////////////////////////////////////////////

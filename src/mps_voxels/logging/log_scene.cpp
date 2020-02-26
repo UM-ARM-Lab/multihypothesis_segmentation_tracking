@@ -22,6 +22,12 @@ void DataLog::log<Scene>(const std::string& channel, const Scene& msg)
 {
 	std_msgs::Header header = msg.cameraModel.cameraInfo().header;
 
+	activeChannels.insert(channel + "/cv_rgb_ptr");
+	log(channel + "/cv_rgb_ptr", toMessage(msg.cv_rgb_ptr->image, header));
+
+	activeChannels.insert(channel + "/cv_depth_ptr");
+	log(channel + "/cv_depth_ptr", toMessage(msg.cv_depth_ptr->image, header));
+
 	activeChannels.insert(channel + "/camera_model");
 	log(channel + "/camera_model", msg.cameraModel);
 
@@ -55,11 +61,22 @@ void DataLog::log<Scene>(const std::string& channel, const Scene& msg)
 
 	activeChannels.insert(channel + "/scenario"); /// ?
 
+
 }
 
 template <>
 bool DataLog::load<Scene>(const std::string& channel, Scene& msg)
 {
+	sensor_msgs::Image rgb;
+	load(channel + "/cv_rgb_ptr", rgb);
+	msg.cv_rgb_ptr = cv_bridge::toCvCopy(rgb);
+	assert(msg.cv_rgb_ptr->image.type() == CV_8UC3);
+
+	sensor_msgs::Image depth;
+	load(channel + "/cv_depth_ptr", depth);
+	msg.cv_depth_ptr = cv_bridge::toCvCopy(depth);
+	assert(msg.cv_depth_ptr->image.type() == CV_16UC1);
+
 	image_geometry::PinholeCameraModel cameraModel;
 	load(channel + "/camera_model", cameraModel);
 	msg.cameraModel = cameraModel;
