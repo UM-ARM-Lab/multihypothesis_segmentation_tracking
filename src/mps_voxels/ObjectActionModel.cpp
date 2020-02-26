@@ -400,7 +400,7 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, cons
 	std::cerr << "Rough Motion from SiamMask: " << roughMotion_w.x() << " " << roughMotion_w.y() << " " << roughMotion_w.z() << std::endl;
 	Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
 	guess.topRightCorner<3, 1>() = roughMotion_w.cast<float>();
-	Eigen::Matrix4f roughMotion_c = worldTcamera.inverse().matrix().cast<float>() * guess * worldTcamera.matrix().cast<float>();
+//	Eigen::Matrix4f roughMotion_c = worldTcamera.inverse().matrix().cast<float>() * guess * worldTcamera.matrix().cast<float>();
 
 	/////////////////////////////////////////////
 	//// ICP check & store

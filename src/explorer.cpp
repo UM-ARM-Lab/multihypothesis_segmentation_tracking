@@ -68,7 +68,7 @@
 #include <queue>
 
 
-#define ENABLE_PROFILING
+//#define ENABLE_PROFILING
 #include <arc_utilities/timing.hpp>
 
 #include <arm_video_recorder/TriggerVideoRecording.h>

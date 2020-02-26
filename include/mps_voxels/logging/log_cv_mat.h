@@ -56,7 +56,7 @@ struct ros_message_type_of {};
  * @param a Aux data object (defaults to null pointer)
  * @return
  */
-template <typename T, typename Aux = nullptr_t>
+template <typename T, typename Aux = std::nullptr_t>
 auto toMessage(T t, Aux a = nullptr)
 {
 	return ros_message_conversion<std::remove_cv_t<std::remove_reference_t<T>>>::toMessage(t, a);
@@ -79,7 +79,7 @@ struct ros_message_conversion<cv::Mat>
 	using CppType = cv::Mat;
 
 	static
-	MsgType toMessage(const CppType& t, const nullptr_t);
+	MsgType toMessage(const CppType& t, const std::nullptr_t);
 
 	static
 	MsgType toMessage(const CppType& t, const std_msgs::Header& h);

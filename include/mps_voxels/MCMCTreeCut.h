@@ -35,7 +35,6 @@
 #include "mps_voxels/UniformRandomSelector.hpp"
 
 #include <tuple>
-#include <cassert>
 
 namespace mps
 {
