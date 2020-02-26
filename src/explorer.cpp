@@ -539,7 +539,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		return;
 	}
 
-	bool getScene = SceneProcessor::loadAndFilterScene(*scene);
+	bool getScene = SceneProcessor::loadAndFilterScene(*scene, scenario->transformBuffer);
 	if (!getScene)
 	{
 		return;
@@ -1482,7 +1482,8 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	selfModels.erase("victor_left_arm_link_0");
 	selfModels.erase("victor_right_arm_link_0");
 
-	scenario->listener = listener.get();
+	scenario->listener = std::make_shared<tf2_ros::TransformListener>(scenario->transformBuffer);//listener.get();
+	scenario->transformBuffer.setUsingDedicatedThread(true);
 	scenario->broadcaster = broadcaster.get();
 	scenario->mapServer = mapServer;
 	scenario->completionClient = completionClient;

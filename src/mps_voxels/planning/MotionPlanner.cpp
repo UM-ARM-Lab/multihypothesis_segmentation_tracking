@@ -400,6 +400,7 @@ collision_detection::WorldPtr
 computeCollisionWorld(const OccupancyData& occupancy)
 {
 	auto world = std::make_shared<collision_detection::World>();
+	assert(occupancy.parentScene.lock());
 
 	moveit::Pose robotTworld = occupancy.parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
 

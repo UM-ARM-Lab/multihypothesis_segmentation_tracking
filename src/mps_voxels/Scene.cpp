@@ -86,6 +86,87 @@ bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 	return true;
 }
 
+std::shared_ptr<Scenario> scenarioFactory(ros::NodeHandle& nh, ros::NodeHandle& pnh, robot_model::RobotModelPtr& robotModel)
+{
+	auto experiment = std::make_shared<Experiment>(nh, pnh);
+
+	setIfMissing(pnh, "frame_id", "table_surface");
+	setIfMissing(pnh, "resolution", 0.010);
+	setIfMissing(pnh, "latch", false);
+	setIfMissing(pnh, "filter_ground", false);
+	setIfMissing(pnh, "filter_speckles", true);
+	setIfMissing(pnh, "publish_free_space", false);
+
+	setIfMissing(pnh, "roi/min/x", -0.4f);
+	setIfMissing(pnh, "roi/min/y", -0.6f);
+	setIfMissing(pnh, "roi/min/z", -0.020f);
+	setIfMissing(pnh, "roi/max/x",  0.4f);
+	setIfMissing(pnh, "roi/max/y",  0.6f);
+	setIfMissing(pnh, "roi/max/z",  0.5f);
+
+	setIfMissing(pnh, "sensor_model/max_range", 8.0);
+	setIfMissing(pnh, "planning_samples", 25);
+	setIfMissing(pnh, "planning_time", 60.0);
+	setIfMissing(pnh, "track_color", "green");
+	setIfMissing(pnh, "use_memory", true);
+	setIfMissing(pnh, "use_completion", "optional");
+	setIfMissing(pnh, "visualize", std::vector<std::string>{"particles", "icp"});
+
+	bool gotParam;
+
+	// Get shape completion requirements
+	FEATURE_AVAILABILITY useShapeCompletion;
+	std::string use_completion;
+	gotParam = pnh.getParam("use_completion", use_completion); MPS_ASSERT(gotParam);
+	std::transform(use_completion.begin(), use_completion.end(), use_completion.begin(), ::tolower);
+	if (use_completion == "forbidden")
+	{
+		useShapeCompletion = FEATURE_AVAILABILITY::FORBIDDEN;
+	}
+	else if (use_completion == "optional")
+	{
+		useShapeCompletion = FEATURE_AVAILABILITY::OPTIONAL;
+	}
+	else if (use_completion == "required")
+	{
+		useShapeCompletion = FEATURE_AVAILABILITY::REQUIRED;
+	}
+	else
+	{
+		ROS_ERROR_STREAM("Color must be one of {forbidden, optional, required}.");
+		throw std::runtime_error("Invalid completion option.");
+	}
+
+	bool use_memory;
+	gotParam = pnh.getParam("use_memory", use_memory); MPS_ASSERT(gotParam);
+
+	std::shared_ptr<Scenario> scenario = std::make_shared<Scenario>(use_memory, useShapeCompletion);
+	scenario->loadManipulators(robotModel);
+
+	scenario->experiment = experiment;
+
+	scenario->listener = std::make_shared<tf2_ros::TransformListener>(scenario->transformBuffer);//listener.get();
+	scenario->transformBuffer.setUsingDedicatedThread(true);
+
+	scenario->minExtent = Eigen::Vector4f::Ones();
+	scenario->maxExtent = Eigen::Vector4f::Ones();
+
+
+	pnh.getParam("roi/min/x", scenario->minExtent.x());
+	pnh.getParam("roi/min/y", scenario->minExtent.y());
+	pnh.getParam("roi/min/z", scenario->minExtent.z());
+	pnh.getParam("roi/max/x", scenario->maxExtent.x());
+	pnh.getParam("roi/max/y", scenario->maxExtent.y());
+	pnh.getParam("roi/max/z", scenario->maxExtent.z());
+	pnh.getParam("frame_id", scenario->worldFrame);
+
+	auto homeState = std::make_shared<robot_state::RobotState>(robotModel);
+	homeState->setToDefaultValues();
+	scenario->homeState = homeState;
+
+	return scenario;
+}
+
 bool Scene::convertImages(const sensor_msgs::ImageConstPtr& rgb_msg,
                           const sensor_msgs::ImageConstPtr& depth_msg,
                           const sensor_msgs::CameraInfo& cam_msg)
@@ -150,13 +231,14 @@ bool Scene::convertImages(const sensor_msgs::ImageConstPtr& rgb_msg,
 	return true;
 }
 
-bool SceneProcessor::loadAndFilterScene(Scene& s)
+bool SceneProcessor::loadAndFilterScene(Scene& s, const tf2_ros::Buffer& transformBuffer)
 {
 	if (!ros::ok()) { return false; }
 
 	s.cameraFrame = s.cameraModel.tfFrame();
 
-	if (!s.scenario->listener->waitForTransform(s.scenario->worldFrame, s.cameraModel.tfFrame(), s.getTime(), ros::Duration(5.0)))
+	ros::Duration timeout = transformBuffer.isUsingDedicatedThread() ? ros::Duration(5.0) : ros::Duration(0.0);
+	if (!transformBuffer.canTransform(s.scenario->worldFrame, s.cameraModel.tfFrame(), s.getTime(), timeout)) // ros::Duration(5.0)
 	{
 		ROS_WARN_STREAM("Failed to look up transform between '" << s.scenario->worldFrame << "' and '" << s.cameraModel.tfFrame() << "'.");
 		return false;
@@ -176,7 +258,8 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	tf::StampedTransform cameraFrameInTableCoordinates;
-	s.scenario->listener->lookupTransform(s.cameraFrame, s.scenario->worldFrame, s.getTime(), cameraFrameInTableCoordinates);
+	const auto stupid = transformBuffer.lookupTransform(s.cameraFrame, s.scenario->worldFrame, s.getTime());
+	tf::transformStampedMsgToTF(stupid, cameraFrameInTableCoordinates);
 	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), s.worldTcamera);
 
 	octomap::point3d cameraOrigin((float)s.worldTcamera.translation().x(),
@@ -235,10 +318,11 @@ bool SceneProcessor::loadAndFilterScene(Scene& s)
 	// Update from robot state + TF
 	for (const auto& model : s.selfModels)
 	{
-		if (s.scenario->listener->waitForTransform(model.first, s.scenario->worldFrame, s.getTime(), ros::Duration(5.0)))
+		if (transformBuffer.canTransform(model.first, s.scenario->worldFrame, s.getTime(), ros::Duration(5.0)))
 		{
 			tf::StampedTransform stf;
-			s.scenario->listener->lookupTransform(model.first, s.scenario->worldFrame, s.getTime(), stf);
+			const auto temp = transformBuffer.lookupTransform(model.first, s.scenario->worldFrame, s.getTime());
+			tf::transformStampedMsgToTF(temp, stf);
 			tf::transformTFToEigen(stf, model.second->localTglobal);
 		}
 		else if (std::find(s.scenario->robotModel->getLinkModelNames().begin(), s.scenario->robotModel->getLinkModelNames().end(), model.first) != s.scenario->robotModel->getLinkModelNames().end())

@@ -180,7 +180,8 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 		                       / static_cast<double>(cv::countNonZero(filtered_labels == pair.first));
 		if (percentFilled >= percentThreshold && static_cast<int>(pair.second->size()) > sizeThreshold)
 		{
-			ObjectIndex objID{-(static_cast<ObjectIndex::IDType>(retVal.size()) - 100)}; // retVal.size()-1
+			ObjectIndex objID{pair.first};
+//			ObjectIndex objID{-(static_cast<ObjectIndex::IDType>(retVal.size()) - 100)}; // retVal.size()-1
 			retVal.insert({objID, pair.second});
 			if (labelToIndexLookup)
 			{
