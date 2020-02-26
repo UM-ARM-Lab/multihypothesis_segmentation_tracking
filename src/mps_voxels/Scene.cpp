@@ -164,6 +164,12 @@ std::shared_ptr<Scenario> scenarioFactory(ros::NodeHandle& nh, ros::NodeHandle& 
 	homeState->setToDefaultValues();
 	scenario->homeState = homeState;
 
+	scenario->mapServer = std::make_shared<LocalOctreeServer>(pnh);
+
+
+	// Sanity checks
+	for (int i = 0; i < 3; ++i) { MPS_ASSERT(scenario->minExtent[i] < scenario->maxExtent[i]); }
+
 	return scenario;
 }
 
@@ -235,13 +241,28 @@ bool SceneProcessor::loadAndFilterScene(Scene& s, const tf2_ros::Buffer& transfo
 {
 	if (!ros::ok()) { return false; }
 
+	// NB: We do this every loop because we shrink the box during the crop/filter process
+	s.minExtent = s.scenario->minExtent;//.head<3>().cast<double>();
+	s.maxExtent = s.scenario->maxExtent;//.head<3>().cast<double>();
+
 	s.cameraFrame = s.cameraModel.tfFrame();
 
-	ros::Duration timeout = transformBuffer.isUsingDedicatedThread() ? ros::Duration(5.0) : ros::Duration(0.0);
-	if (!transformBuffer.canTransform(s.scenario->worldFrame, s.cameraModel.tfFrame(), s.getTime(), timeout)) // ros::Duration(5.0)
+
+	const ros::Time queryTime = transformBuffer.isUsingDedicatedThread() ? s.getTime() : ros::Time(0);
+	const ros::Duration timeout = ros::Duration(5.0);
+	std::string tfError;
 	{
-		ROS_WARN_STREAM("Failed to look up transform between '" << s.scenario->worldFrame << "' and '" << s.cameraModel.tfFrame() << "'.");
-		return false;
+		bool canTransform = transformBuffer.isUsingDedicatedThread() ?
+		                    transformBuffer.canTransform(s.scenario->worldFrame, s.cameraModel.tfFrame(), queryTime, timeout, &tfError) :
+		                    transformBuffer.canTransform(s.scenario->worldFrame, s.cameraModel.tfFrame(), queryTime, &tfError);
+
+		if (!canTransform) // ros::Duration(5.0)
+		{
+			ROS_WARN_STREAM("Failed to look up transform between '" << s.scenario->worldFrame << "' and '"
+			                                                        << s.cameraModel.tfFrame() << "' with error '"
+			                                                        << tfError << "'.");
+			return false;
+		}
 	}
 
 	// Get Octree
@@ -257,10 +278,12 @@ bool SceneProcessor::loadAndFilterScene(Scene& s, const tf2_ros::Buffer& transfo
 	setBBox(s.minExtent, s.maxExtent, octree);
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-	tf::StampedTransform cameraFrameInTableCoordinates;
-	const auto stupid = transformBuffer.lookupTransform(s.cameraFrame, s.scenario->worldFrame, s.getTime());
-	tf::transformStampedMsgToTF(stupid, cameraFrameInTableCoordinates);
-	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), s.worldTcamera);
+	{
+		tf::StampedTransform cameraFrameInTableCoordinates;
+		const auto temp = transformBuffer.lookupTransform(s.cameraFrame, s.scenario->worldFrame, queryTime);
+		tf::transformStampedMsgToTF(temp, cameraFrameInTableCoordinates);
+		tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), s.worldTcamera);
+	}
 
 	octomap::point3d cameraOrigin((float)s.worldTcamera.translation().x(),
 	                              (float)s.worldTcamera.translation().y(),
@@ -318,10 +341,13 @@ bool SceneProcessor::loadAndFilterScene(Scene& s, const tf2_ros::Buffer& transfo
 	// Update from robot state + TF
 	for (const auto& model : s.selfModels)
 	{
-		if (transformBuffer.canTransform(model.first, s.scenario->worldFrame, s.getTime(), ros::Duration(5.0)))
+		bool canTransform = transformBuffer.isUsingDedicatedThread() ?
+		                    transformBuffer.canTransform(model.first, s.scenario->worldFrame, queryTime, timeout, &tfError) :
+		                    transformBuffer.canTransform(model.first, s.scenario->worldFrame, queryTime, &tfError);
+		if (canTransform)
 		{
 			tf::StampedTransform stf;
-			const auto temp = transformBuffer.lookupTransform(model.first, s.scenario->worldFrame, s.getTime());
+			const auto temp = transformBuffer.lookupTransform(model.first, s.scenario->worldFrame, queryTime);
 			tf::transformStampedMsgToTF(temp, stf);
 			tf::transformTFToEigen(stf, model.second->localTglobal);
 		}

@@ -517,10 +517,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	scene->scenario = scenario;
 	scene->selfModels = selfModels;
 
-	// NB: We do this every loop because we shrink the box during the crop/filter process
-	scene->minExtent = scenario->minExtent;//.head<3>().cast<double>();
-	scene->maxExtent = scenario->maxExtent;//.head<3>().cast<double>();
-
 	{
 		// TODO: Clean up all these extents.
 		visualization_msgs::MarkerArray ma;
