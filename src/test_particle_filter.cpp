@@ -25,7 +25,7 @@
 using namespace mps;
 
 const std::string testDirName = "package://mps_test_data/";
-const std::string worldname = "experiment_world_02_21";
+const std::string worldname = "experiment_world_02_25";
 
 
 class ParticleFilterTestFixture
@@ -52,7 +52,7 @@ public:
 		/////////////////////////////////////////////
 		std::string logDir = parsePackageURL(testDirName);
 		{
-			DataLog loader(logDir + "explorer_buffer_" + worldname + ".bag", {}, rosbag::bagmode::Read);
+			DataLog loader(logDir + "buffer_" + worldname + ".bag", {}, rosbag::bagmode::Read);
 			loader.activeChannels.insert("buffer");
 			loader.load<SensorHistoryBuffer>("buffer", motionData);
 			std::cerr << "Successfully loaded." << std::endl;
@@ -119,9 +119,9 @@ int main(int argc, char **argv)
 
 	particle.state = std::make_shared<OccupancyData>(voxelRegion);
 	{
-		DataLog loader(logDir + "/explorer_particle_state_" + worldname + ".bag", {}, rosbag::bagmode::Read);
-		loader.activeChannels.insert("particleState");
-		loader.load<OccupancyData>("particleState", *particle.state);
+		DataLog loader(logDir + "/particle_0_" + worldname + ".bag", {}, rosbag::bagmode::Read);
+		loader.activeChannels.insert("particle");
+		loader.load<OccupancyData>("particle", *particle.state);
 		std::cerr << "Successfully loaded." << std::endl;
 	}
 	std::cerr << "Voxel state size = " << particle.state->vertexState.size() << std::endl;
@@ -142,14 +142,8 @@ int main(int argc, char **argv)
 	ros::Publisher pcPub1 = pnh.advertise<pcl::PointCloud<PointT>>("firstPC", 1, true);
 
 	firstPC->header.frame_id = fixture.motionData.cameraModel.tfFrame();
-	ros::Rate loop_rate(4);
-	while (nh.ok())
-	{
-		pcl_conversions::toPCL(ros::Time::now(), firstPC->header.stamp);
-		pcPub1.publish(*firstPC);
-		ros::spinOnce();
-//		loop_rate.sleep();
-	}
+	pcl_conversions::toPCL(ros::Time::now(), firstPC->header.stamp);
+	pcPub1.publish(*firstPC);
 	std::cerr << "First frame pointcloud shown" << std::endl;
 
 	/////////////////////////////////////////////
