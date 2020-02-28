@@ -70,7 +70,7 @@ Experiment::Experiment(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 
 	std::vector<std::string> visualizeChannels;
 	pnh.param("visualize", visualizeChannels, std::vector<std::string>());
-	if (!visualizeChannels.empty())
+//	if (!visualizeChannels.empty())
 	{
 		ROS_INFO_STREAM("Visualizing channels:");
 		for (const auto& m : visualizeChannels)

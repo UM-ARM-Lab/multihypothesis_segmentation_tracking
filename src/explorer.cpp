@@ -144,7 +144,7 @@ public:
 	std::map<std::string, std::shared_ptr<MotionModel>> selfModels;
 
 	double planning_time = 60.0;
-	int planning_samples = 25;
+	int planning_samples = 10;
 	ros::ServiceClient externalVideoClient;
 	MarkerSet allMarkers;
 
@@ -163,6 +163,25 @@ public:
 	               const sensor_msgs::ImageConstPtr& depth_msg,
 	               const sensor_msgs::CameraInfoConstPtr& cam_msg);
 	moveit_msgs::DisplayTrajectory visualize(const std::shared_ptr<Motion>& motion, const bool primaryOnly = false);
+};
+
+struct PFUpdateGuard
+{
+public:
+	SceneExplorer* tracked;
+
+	PFUpdateGuard(SceneExplorer* t)
+		:tracked(t)
+	{ }
+
+	~PFUpdateGuard()
+	{
+		if (tracked)
+		{
+			tracked->particleFilter->computeAndApplyActionModel(
+				tracked->historian->buffer, tracked->sparseTracker, tracked->denseTracker);
+		}
+	}
 };
 
 robot_state::RobotState SceneExplorer::getCurrentRobotState()
@@ -700,12 +719,12 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	PROFILE_RECORD("Segment Scene");
 
 	// Clear visualization
-	{
-		visualization_msgs::MarkerArray ma;
-		ma.markers.resize(1);
-		ma.markers.front().action = visualization_msgs::Marker::DELETEALL;
-		visualPub.publish(ma);
-	}
+//	{
+//		visualization_msgs::MarkerArray ma;
+//		ma.markers.resize(1);
+//		ma.markers.front().action = visualization_msgs::Marker::DELETEALL;
+//		visualPub.publish(ma);
+//	}
 
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
@@ -926,8 +945,9 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			std::shared_ptr<Motion> motionPush = planner->samplePush(rs, &pushInfo);
 			if (motionPush)
 			{
+				double reward = (ros::Time::isSimTime()) ? 10000000 : planner->reward(rs, motionPush.get());
 //				double reward = planner->reward(rs, motionPush.get());
-				double reward = 10000000; // TODO: remove this line to use grasp
+//				double reward = 10000000; // TODO: remove this line to use grasp
 				#pragma omp critical
 				{
 					motionQueue.push({reward, {motionPush, pushInfo}});
@@ -949,9 +969,16 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_RECORD("Planning");
 
+	if (motion)
+	{
+		displayPub.publish(visualize(motion, true));
+	}
+
 	WAIT_KEY(10);
 
 	PROFILE_START("Execution");
+
+	PFUpdateGuard trackerUpdateGuard(this);
 
 	auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
 	// Allow some visualization time
@@ -1058,9 +1085,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_RECORD("Execution");
 
-
-	particleFilter->computeAndApplyActionModel(historian->buffer, sparseTracker, denseTracker);
-
 	WAIT_KEY(10);
 
 }
@@ -1143,7 +1167,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	setIfMissing(pnh, "roi/max/z",  0.5f);
 
 	setIfMissing(pnh, "sensor_model/max_range", 8.0);
-	setIfMissing(pnh, "planning_samples", 25);
+	setIfMissing(pnh, "planning_samples", 10);
 	setIfMissing(pnh, "planning_time", 60.0);
 	setIfMissing(pnh, "track_color", "green");
 	setIfMissing(pnh, "use_memory", true);
@@ -1261,7 +1285,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	                                                            scenario->maxExtent.head<3>().cast<double>());
 	particleFilter = std::make_unique<ParticleFilter>(scenario, dims, resolution,
 	                                                  scenario->minExtent.head<3>().cast<double>(),
-	                                                  scenario->maxExtent.head<3>().cast<double>(), 2);
+	                                                  scenario->maxExtent.head<3>().cast<double>(), 5);
 
 	Tracker::TrackingOptions opts;
 	opts.roi.minExtent = {scenario->minExtent.x(), scenario->minExtent.y(), scenario->minExtent.z()};
@@ -1311,7 +1335,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 		table->size[2] = 0.1;
 		moveit::Pose pose = moveit::Pose::Identity();
 		pose.translation() = Eigen::Vector3d(0, 0, -table->size[2]/2.0);
-		scenario->staticObstacles.push_back({table, pose});
+		scenario->staticObstacles.emplace_back(table, pose);
 	}
 	else
 	{

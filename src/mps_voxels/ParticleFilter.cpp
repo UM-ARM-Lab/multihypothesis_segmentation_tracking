@@ -77,6 +77,23 @@ ParticleFilter::computeActionModel(
 	std::unique_ptr<Tracker>& sparseTracker,
 	std::unique_ptr<DenseTracker>& denseTracker) const
 {
+	// Return type
+	std::map<ObjectIndex, RigidTF> labelToMotionLookup;
+
+	// Handle empty buffer
+	if (buffer.rgb.empty())
+	{
+		const auto uniqueVoxelLabels = getUniqueObjectLabels(inputParticle.state->vertexState);
+		for (const ObjectIndex& label : uniqueVoxelLabels)
+		{
+			RigidTF ident;
+			ident.tf = mps::Pose::Identity();
+			labelToMotionLookup.emplace(label.id, ident);
+		}
+
+		return {inputParticle.particle, labelToMotionLookup};
+	}
+
 	const cv::Mat& segParticle = inputParticle.state->segInfo->objectness_segmentation->image;
 	const cv::Rect& roi = inputParticle.state->segInfo->roi;
 	// TODO: Use faster version
@@ -84,7 +101,6 @@ ParticleFilter::computeActionModel(
 	std::cerr << "number of bounding boxes in segParticle: " << labelToBBoxLookup.size() << std::endl;
 
 	std::unique_ptr<ObjectActionModel> oam = std::make_unique<ObjectActionModel>(scenario, 1);
-	std::map<ObjectIndex, RigidTF> labelToMotionLookup;
 	for (auto& pair : labelToBBoxLookup)
 	{
 		bool sampleActionSuccess = oam->sampleAction(buffer, segParticle, roi, sparseTracker, denseTracker, pair.first, pair.second);
@@ -173,11 +189,16 @@ void ParticleFilter::applyMeasurementModel(const std::shared_ptr<const Scene>& n
 	SegmentationTreeSampler treeSampler(newScene->segInfo);
 	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), nSamples, true);
 
+	assert(newScene->roi.width > 0);
+	assert(newScene->roi.height > 0);
+
 	// Compute fitness of all particles w.r.t. this segmentation
 	for (auto & particle : particles)
 	{
+		assert(particle.state);
 		particle.state->parentScene = newScene; // Update the scene pointer
 		// Ray-cast particle only in ROI
+		assert(particle.state->segInfo->objectness_segmentation);
 		cv::Mat segParticle(particle.state->segInfo->objectness_segmentation->image, newScene->roi);
 
 		IMSHOW("segmentation", colorByLabel(segParticle));
