@@ -158,31 +158,6 @@ int main(int argc, char **argv)
 	}
 
 	/////////////////////////////////////////////
-	//// Visualization of first point cloud
-	/////////////////////////////////////////////
-//	pcl::PointCloud<PointT>::Ptr firstPC = fixture.initialScene->cropped_cloud;//imagesToCloud(fixture.motionData.rgb.begin()->second->image, fixture.motionData.depth.begin()->second->image, fixture.motionData.cameraModel);
-//
-//	ros::Publisher pcPub1 = pnh.advertise<pcl::PointCloud<PointT>>("firstPC", 1, true);
-//
-//	firstPC->header.frame_id = fixture.motionData.cameraModel.tfFrame();
-//	pcl_conversions::toPCL(ros::Time::now(), firstPC->header.stamp);
-//	pcPub1.publish(*firstPC);
-//	std::cerr << "First frame pointcloud shown" << std::endl;
-//	sleep(2);
-
-	/////////////////////////////////////////////
-	//// Free space refinement
-	/////////////////////////////////////////////
-//	scenario->mapServer->insertCloud(firstPC, fixture.initialScene->worldTcamera);
-//	octomap::OcTree* sceneOctree = scenario->mapServer->getOctree();
-//
-//	refineParticleFreeSpace(particle, sceneOctree);
-//	pfMarkers = mps::visualize(*particle.state, header, rng);
-//	visualPub.publish(pfMarkers);
-//	std::cerr << "Refined state particle shown!" << std::endl;
-//	sleep(5);
-
-	/////////////////////////////////////////////
 	//// sample object motions (new)
 	/////////////////////////////////////////////
 	fixture.particleFilter->computeAndApplyActionModel(fixture.motionData, fixture.sparseTracker, fixture.denseTracker);

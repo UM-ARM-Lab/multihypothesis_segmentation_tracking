@@ -226,5 +226,30 @@ void ParticleFilter::applyMeasurementModel(const std::shared_ptr<const Scene>& n
 	}
 }
 
+void ParticleFilter::resample(std::default_random_engine& rng)
+{
+	std::vector<double> weightBar;
+
+	for (auto &p : particles)
+	{
+		weightBar.push_back(p.weight);
+	}
+	std::discrete_distribution<> distribution(weightBar.begin(), weightBar.end());
+	std::cout << "Probabilities: ";
+	for (double x:distribution.probabilities()) std::cout << x << " ";
+	std::cout << std::endl;
+
+	std::vector<Particle> resampledParticles;
+	for (int i = 0; i < numParticles; ++i)
+	{
+		int index = distribution(rng);
+		resampledParticles.push_back(particles[index]);
+	}
+	/// Should be deep copy!
+	for (int i = 0; i < numParticles; ++i)
+	{
+		particles[i] = resampledParticles[i];
+	}
+}
 
 }

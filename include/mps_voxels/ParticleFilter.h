@@ -54,7 +54,7 @@ public:
 
 	void applyMeasurementModel(const std::shared_ptr<const Scene>& newScene);
 
-	// TODO: resample()
+	void resample(std::default_random_engine& rng);
 };
 
 }
