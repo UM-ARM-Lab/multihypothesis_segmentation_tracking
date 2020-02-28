@@ -27,6 +27,8 @@
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_sensor_history.h"
 #include "mps_voxels/logging/log_segmentation_info.h"
+#include "mps_voxels/logging/log_cv_roi.h"
+#include "mps_voxels/logging/log_occupancy_data.h"
 #include "mps_voxels/ParticleFilter.h"
 #include <mps_voxels/JaccardMatch.h>
 #include "mps_voxels/visualization/visualize_occupancy.h"
@@ -79,6 +81,9 @@ using namespace mps;
 
 sensor_msgs::JointState::ConstPtr latestJoints;
 std::mutex joint_mtx;
+
+const bool shouldLog = false;
+const std::string worldname = "experiment_world_02_25";
 
 void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 {
@@ -421,23 +426,14 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		/////////////////////////////////////////////
 		//// log historian->buffer & scene->segInfo & scene->roi
 		/////////////////////////////////////////////
-		bool ifLog = false;
-		if (ifLog)
+		if (shouldLog)
 		{
-			std::string worldname = "experiment_world_02_21";
 			{
 				std::cerr << "start logging historian->buffer" << std::endl;
-				DataLog logger(scenario->experiment->experiment_dir + "/explorer_buffer_" + worldname + ".bag");
+				DataLog logger(scenario->experiment->experiment_dir + "/buffer_" + worldname + ".bag");
 				logger.activeChannels.insert("buffer");
 				logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
-				std::cerr << "Successfully logged." << std::endl;
-			}
-			{
-				std::cerr << "start logging scene->segInfo" << std::endl;
-				DataLog logger(scenario->experiment->experiment_dir + "/explorer_segInfo_" + worldname + ".bag");
-				logger.activeChannels.insert("segInfo");
-				logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
-				std::cerr << "Successfully logged." << std::endl;
+				std::cerr << "Successfully logged buffer." << std::endl;
 			}
 		}
 	}
@@ -566,6 +562,18 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			}
 		}
 		scene->bestGuess = particleFilter->particles[bestParticle].state;
+	}
+
+	if (shouldLog)
+	{
+		for (int i = 0; i<particleFilter->numParticles; ++i)
+		{
+			std::cerr << "start logging particle " << i << std::endl;
+			DataLog logger(scenario->experiment->experiment_dir + "/particle_" + std::to_string(i) + "_" + worldname + ".bag");
+			logger.activeChannels.insert("particle");
+			logger.log<OccupancyData>("particle", *particleFilter->particles[i].state);
+			std::cerr << "Successfully logged particle " << i << std::endl;
+		}
 	}
 
 	if (scenario->shouldVisualize("particles"))

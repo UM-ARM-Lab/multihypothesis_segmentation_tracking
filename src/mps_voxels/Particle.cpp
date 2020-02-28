@@ -14,7 +14,7 @@ void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOct
 {
 	for (int i = 0; i < (int)particle.state->voxelRegion->num_vertices(); ++i)
 	{
-		if (particle.state->vertexState[i] >= 0)
+		if (particle.state->vertexState[i] != VoxelRegion::FREE_SPACE)
 		{
 			VoxelRegion::vertex_descriptor vd = particle.state->voxelRegion->vertex_at(i);
 			Eigen::Vector3d coord = particle.state->voxelRegion->coordinate_of(vd);
@@ -24,7 +24,7 @@ void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOct
 			{
 				if (node->getOccupancy() <= sceneOctree->getOccupancyThres())
 				{
-					particle.state->vertexState[i] = -1; /// set to empty
+					particle.state->vertexState[i] = VoxelRegion::FREE_SPACE; /// set to empty
 				}
 			}
 		}
