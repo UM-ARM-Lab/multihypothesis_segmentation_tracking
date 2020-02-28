@@ -50,7 +50,6 @@ public:
 	TreeCut cStar;
 	double vStar;
 
-	uniform_random_selector<> randomSelector;
 	std::uniform_real_distribution<> uni;
 
 	double sigmaSquared;

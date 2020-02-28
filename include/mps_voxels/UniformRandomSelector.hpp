@@ -41,7 +41,7 @@ template <typename RandomGenerator = std::default_random_engine>
 struct uniform_random_selector
 {
 	explicit
-	uniform_random_selector(RandomGenerator g = RandomGenerator(std::random_device()()))
+	uniform_random_selector(RandomGenerator g)
 		: gen(g) {}
 
 	template <typename Iter>

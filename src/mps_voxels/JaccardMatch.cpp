@@ -123,7 +123,10 @@ double JaccardMatch::symmetricCover() const
 		// pair is (label, index)
 		score += jSizes.at(pair.first) * jMax[pair.second];
 	}
-	return score;
+
+	double fullSize = 0;
+	for (const auto& i : iSizes) { fullSize += i.second; }
+	return score / (2.0 * fullSize);
 }
 
 }

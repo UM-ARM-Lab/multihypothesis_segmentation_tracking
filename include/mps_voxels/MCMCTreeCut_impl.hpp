@@ -179,6 +179,7 @@ std::pair<double, TreeCut> MCMCTreeCut<ValueTree>::sample(RNG& rng, const SAMPLE
 {
 	if (SAMPLE_TYPE::RANDOM == type)
 	{
+		uniform_random_selector<> randomSelector(rng);
 		TreeCut cut_i = cStar;
 		double logprob_i = 0.0;
 		for (int i = 0; i < nTrials; ++i)

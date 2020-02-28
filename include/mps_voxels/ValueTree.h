@@ -30,6 +30,8 @@
 #ifndef SRC_VALUETREE_H
 #define SRC_VALUETREE_H
 
+#include <boost/bimap.hpp>
+
 #include <vector>
 #include <set>
 #include <map>
@@ -57,7 +59,7 @@ struct SparseValueTree
 	std::map<NodeID, double> value_;
 };
 
-std::pair<DenseValueTree, std::map<NodeID, NodeID>> densify(const SparseValueTree& T);
+std::pair<DenseValueTree, boost::bimap<NodeID, NodeID>> densify(const SparseValueTree& T);
 
 }
 
