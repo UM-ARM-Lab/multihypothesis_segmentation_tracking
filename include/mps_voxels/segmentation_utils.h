@@ -33,6 +33,9 @@ public:
 	explicit
 	RGBDSegmenter(ros::NodeHandle &nh);
 
+	virtual
+	~RGBDSegmenter() = default;
+
 	mutable
 	SegmentationClient segmentClient;
 

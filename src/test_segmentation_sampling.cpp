@@ -36,6 +36,7 @@
 #include "mps_voxels/JaccardMatch.h"
 #include "mps_voxels/ValueTree_impl.hpp"
 #include "mps_voxels/relabel_tree_image.hpp"
+#include "mps_voxels/colormap.h"
 
 #include "mps_voxels/util/package_paths.h"
 #include "mps_voxels/logging/DataLog.h"
@@ -55,6 +56,11 @@ using namespace mps;
 
 //template <typename T>
 //using DataGeneratorFn = std::function<bool(T&)>;
+
+using LabelT = JaccardMatch::LabelT;
+using ExtractionMap = boost::bimap<tree::NodeID, tree::NodeID>;
+using CorrespondenceMap = boost::bimap<tree::NodeID, LabelT>;
+using CorrespondenceTree = std::pair<tree::DenseValueTree, CorrespondenceMap>;
 
 template <typename T>
 using DataGeneratorFn = bool(T&);
@@ -187,6 +193,81 @@ void reallySimpleImageMatch()
 	cv::waitKey(0);
 }
 
+std::string rgb2hex(int r, int g, int b, bool with_head)
+{
+	std::stringstream ss;
+	if (with_head)
+		ss << "#";
+	ss << std::hex << (r << 16 | g << 8 | b );
+	return ss.str();
+}
+
+template <typename T>
+void printGraphviz(std::ostream& os, const T& t)
+{
+	os << "digraph g {" << std::endl;
+	os << "rankdir=\"BT\";" << std::endl;
+	for (size_t n = 0; n < size(t); ++n)
+	{
+		os << n << "->" << tree::parent(t, n) << ";";
+	}
+	os << "}" << std::endl;
+}
+
+template <typename T>
+void printGraphviz(std::ostream& os, const T& t, const ExtractionMap& sparseToDenseID)
+{
+	os << "digraph g {" << std::endl;
+	os << "rankdir=\"BT\";" << std::endl;
+	for (size_t n = 0; n < size(t); ++n)
+	{
+		os << sparseToDenseID.right.at(n) << "->" << sparseToDenseID.right.at(tree::parent(t, n)) << ";";
+	}
+	os << std::endl << "}" << std::endl;
+}
+
+template <typename T>
+void printGraphviz(std::ostream& os, const T& t, const tree::TreeCut& cut)
+{
+	os << "digraph g {" << std::endl;
+	os << "rankdir=\"BT\";" << std::endl;
+	Eigen::Map<const Eigen::VectorXd> dataMap(t.value_.data(), size(t));
+	double minVal = dataMap.minCoeff();
+	double maxVal = dataMap.maxCoeff();
+	for (size_t n = 0; n < size(t); ++n)
+	{
+		if (cut.find(n) != cut.end())
+		{
+			os << n << R"([style="filled" fillcolor="red"];)";
+		}
+		else
+		{
+			double normedVal = (value(t, n) - minVal) / (maxVal - minVal);
+			assert(0 <= normedVal);
+			assert(normedVal <= 1.0);
+
+			double r, g, b;
+			colormap(igl::parula_cm, std::pow(normedVal, 8), r, g, b);
+			std::string colorKey = rgb2hex(r*255, g*255, b*255, true);
+			os << n << R"([style="filled" fillcolor=")" << colorKey << R"("];)";
+		}
+	}
+
+	for (size_t n = 0; n < size(t); ++n)
+	{
+		os << n << "->" << tree::parent(t, n) << ";";
+	}
+	os << "}" << std::endl;
+}
+
+std::ostream& operator<<(std::ostream& os, const tree::TreeCut& t)
+{
+	for (const auto& node : t)
+	{
+		os << std::setw(3) << node << " ";
+	}
+	return os;
+}
 
 int main(int argc, char* argv[])
 {
@@ -238,11 +319,13 @@ int main(int argc, char* argv[])
 //	auto pairing = jaccardMatch(si->objectness_segmentation->image, si->objectness_segmentation->image);
 //	const auto& pairing = jaccardMatch.match;
 
-	std::random_device rd;
+//	std::random_device rd;
 	std::default_random_engine re(0);// (rd());
 	Colormap colormap = createColormap(gt_labels, re);
 
 	SegmentationTreeSampler treeSampler(si);
+
+	printGraphviz(std::cerr, treeSampler.vt);
 
 //	Ultrametric um(si->ucm2, si->labels2);
 //	SceneCut sc;
@@ -254,9 +337,6 @@ int main(int argc, char* argv[])
 //	const int seed = 1;
 //
 //	tree::MCMCTreeCut<tree::DenseValueTree> mcmc(T, sigmaSquared);
-
-//	std::random_device rd;
-//	std::default_random_engine re(rd());
 
 #ifndef NDEBUG
 	// Validate this cut
@@ -317,8 +397,6 @@ int main(int argc, char* argv[])
 	cv::namedWindow("Masked Labels", cv::WINDOW_NORMAL);
 	cv::imshow("Masked Labels", colorByLabel(maskedLabels));
 
-	using LabelT = JaccardMatch::LabelT;
-	using ClusterLabelT = uint16_t;
 //	JaccardMatch J(clusterLabels, maskedLabels);
 	JaccardMatch J(clusterLabels, si->labels);
 
@@ -346,7 +424,6 @@ int main(int argc, char* argv[])
 //		}
 //	}
 
-	using CorrespondenceMap = boost::bimap<tree::NodeID, LabelT>;
 	CorrespondenceMap treeIndexToImageLabel;
 	for (const auto& pair : treeSampler.um->label_to_index)
 	{
@@ -354,9 +431,9 @@ int main(int argc, char* argv[])
 	}
 
 
-	using CorrespondenceTree = std::pair<tree::DenseValueTree, CorrespondenceMap>;
 	std::map<SubproblemIndex, CorrespondenceTree> subtrees;
 	std::map<SubproblemIndex, cv::Rect> subregions;
+	std::map<SubproblemIndex, ExtractionMap> extractions;
 	for (const auto& pair1 : J.lblIndex1.left)
 	{
 		SubproblemIndex label; label.id = pair1.first;
@@ -384,12 +461,13 @@ int main(int argc, char* argv[])
 		// Densify
 		auto dense = tree::densify(subtree);
 		CorrespondenceMap subtreeIndexToImageLabel;
-		for (const auto& pair : dense.second)
+		for (const auto& pair : dense.second.left)
 		{
 			subtreeIndexToImageLabel.insert({pair.second, treeIndexToImageLabel.left.at(pair.first)});
 		}
 		subtrees.insert({label, {dense.first, subtreeIndexToImageLabel}});
 		subregions.emplace(label, cv::Rect(bounds));
+		extractions.emplace(label, dense.second);
 //		std::cerr << "Tree size: " << size(T) << " -> " << size(subtree) << std::endl;
 //		tree::compressTree(subtree);
 //		std::cerr << " -> " << size(subtree) << std::endl;
@@ -416,7 +494,8 @@ int main(int argc, char* argv[])
 //	mcmc.sigmaSquared = 0.5*vStar*vStar; // The larger this number, the more permissive exploration is allowed
 //	mcmc.nTrials = 50;
 
-	const int nSamples = 100;
+	const int maxRejections = 100;
+	const int nSamples = 5000;
 	for (const auto& pair : subtrees)
 	{
 		SubproblemIndex subProblem = pair.first;
@@ -425,22 +504,44 @@ int main(int argc, char* argv[])
 		cv::Mat subLabels(si->labels, subregions.at(subProblem));
 		cv::Mat subLabelGT(gt_labels, subregions.at(subProblem));
 
-		auto cutStar = tree::optimalCut(subTree.first);
-		tree::MCMCTreeCut<tree::DenseValueTree> mcLocal(subTree.first, 0.5 * cutStar.first * cutStar.first);
+		auto cutStarLocal = tree::optimalCut(subTree.first);
+		tree::MCMCTreeCut<tree::DenseValueTree> mcLocal(subTree.first, 0.5 * cutStarLocal.first * cutStarLocal.first);
 
-		std::string subDir = dir + "/" + std::to_string(subProblem.id) + "/";
-		fs::create_directory(subDir);
+//		printGraphviz(std::cerr, subTree.first);
+		printGraphviz(std::cerr, subTree.first, extractions.at(subProblem));
+
+		fs::path subDir(dir + "/" + std::to_string(subProblem.id) + "/");
+		fs::create_directories(subDir);
 		std::ofstream csv;
-		csv.open(subDir + "data.csv", std::ios::out);
+		csv.open(subDir.string() + "data.csv", std::ios::out);
 
-		csv << "Trial\tlogp(cut)\tJaccard\tCover" << std::endl;
+//		for (size_t l = 0; l < size(subTree.first); ++l)
+//		{
+//			tree::NodeID n = size(subTree.first) - l - 1;
+//			tree::TreeCut singletonCut = {static_cast<int>(n)};
+////			int label = subTree.second.left.at(l);
+//			cv::Mat singleSeg = relabelCut(subTree.first, singletonCut, subTree.second.left, subLabels);
+//
+//			std::ofstream dot;
+//			dot.open(subDir.string() + "data.dot", std::ios::out);
+//			printGraphviz(dot, subTree.first, singletonCut);
+//			dot.close();
+//
+//			cv::imshow("Segmentation", colorByLabel(singleSeg));
+//			cv::waitKey(0);
+//		}
 
+
+		csv << "Trial,logp(cut),Jaccard,Cover,cut" << std::endl;
+
+		int numRejections = 0;
+		std::set<tree::TreeCut> cuts;
 		for (int i = 0; i < nSamples; ++i)
 		{
 			std::pair<double, tree::TreeCut> cut;
 			if (0 == i)
 			{
-				cut = cutStar;
+				cut = cutStarLocal;
 				cut.first = 0.0;
 			}
 			else
@@ -448,18 +549,51 @@ int main(int argc, char* argv[])
 				cut = mcLocal.sample(re, SAMPLE_TYPE::RANDOM);
 			}
 
+//			const auto& cutPair = cuts.insert(cut.second);
+//			if (!cutPair.second)
+//			{
+//				// Already have this one: try again
+//				std::cerr << "Rejected duplicate cut " << cut.second << std::endl;
+//				++numRejections;
+//				if (numRejections < maxRejections)
+//				{
+//					--i;
+//					continue;
+//				}
+//			}
+
+//			{
+//				std::ofstream dot;
+//				dot.open(subDir.string() + "data.dot", std::ios::out);
+//				printGraphviz(dot, subTree.first, cut.second);
+//				dot.close();
+//			}
+
 			cv::Mat seg = relabelCut(subTree.first, cut.second, subTree.second.left, subLabels);
 //			seg.setTo(0, maskInv);
 			JaccardMatch jaccard(subLabelGT, seg);
 			Colormap cmap = colormap;
 			extendColormap(cmap, seg, re);
 			cv::Mat disp = colorByLabel(relabel(seg, jaccard.match.second.right), cmap);
-			cv::imshow("Segmentation", disp);
-			cv::imwrite(subDir + "c" + std::to_string(i) + ".png", disp);
-			csv << i << "\t" << cut.first << "\t" << jaccard.match.first << "\t" << jaccard.symmetricCover() << std::endl;
+//			cv::imshow("Segmentation", disp);
+//			cv::imwrite(subDir.string() + "c" + std::to_string(i) + ".png", disp);
+			csv.setf(std::ios::fixed, std::ios::floatfield);
+			csv << std::setw(3) << i << ","
+			    << std::setw(8) << std::setprecision(5) << cut.first << ","
+				<< std::setw(8) << std::setprecision(5) << jaccard.match.first << ","
+				<< std::setw(8) << std::setprecision(5) << jaccard.symmetricCover() << ","
+			    << "{" << cut.second << "}" << std::endl;
+
+//			{
+//				std::ofstream dot;
+//				dot.open(subDir.string() + std::to_string(i) + ".dot", std::ios::out);
+//				printGraphviz(dot, subTree.first, cut.second);
+//				dot.close();
+//			}
 
 //			cv::waitKey(0);
 		}
+		return 0;
 	}
 
 //	csv.close();

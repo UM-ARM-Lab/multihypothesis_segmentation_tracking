@@ -125,11 +125,12 @@ cv::Mat colorByLabel(const cv::Mat& input, const Colormap& colormap)
 	output.forEach<ColorPixel>([&](ColorPixel& px, const int* pos) -> void
 	                           {
 		                           uint16_t label = input.at<uint16_t>(pos[0], pos[1]);
-		                           auto iter = colormap.find(label);
-		                           if (iter != colormap.end())
-		                           {
-			                           px = iter->second;
-		                           }
+		                           px = colormap.at(label);
+//		                           auto iter = colormap.find(label);
+//		                           if (iter != colormap.end())
+//		                           {
+//			                           px = iter->second;
+//		                           }
 	                           });
 
 	return output;
@@ -158,7 +159,7 @@ void extendColormap(Colormap& colormap, const std::set<uint16_t>& labels, std::d
 		auto iter = colormap.find(label);
 		if (iter == colormap.end())
 		{
-			colormap[label] = cv::Point3_<uint8_t>(dis(re), dis(re), dis(re));
+			colormap.emplace(label, cv::Point3_<uint8_t>(dis(re), dis(re), dis(re)));
 		}
 	}
 }

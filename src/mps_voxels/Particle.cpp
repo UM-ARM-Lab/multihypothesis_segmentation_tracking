@@ -12,7 +12,6 @@ namespace mps
 
 void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOctree)
 {
-	Eigen::Vector3d roiMin = particle.state->voxelRegion->regionMin;
 	for (int i = 0; i < (int)particle.state->voxelRegion->num_vertices(); ++i)
 	{
 		if (particle.state->vertexState[i] != VoxelRegion::FREE_SPACE)

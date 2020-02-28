@@ -34,6 +34,7 @@
 #include "mps_voxels/ValueTree_impl.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <random>
 
 namespace mps
@@ -128,7 +129,7 @@ double logProbCut(const double optVal, const double cutVal, const double sigmaSq
 
 	return -(delta*delta)/sigmaSquared;
 }
-
+/*
 template <typename ValueTree>
 std::vector<std::pair<double, TreeCut>> sampleCuts(const ValueTree& T)
 {
@@ -137,7 +138,7 @@ std::vector<std::pair<double, TreeCut>> sampleCuts(const ValueTree& T)
 	double cStarVal;
 	std::tie(cStarVal, cStar) = optimalCut(T);
 
-	cuts.push_back({0.0, cStar});
+	cuts.emplace_back(0.0, cStar);
 
 	uniform_random_selector<> randomSelector;
 	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
@@ -163,21 +164,22 @@ std::vector<std::pair<double, TreeCut>> sampleCuts(const ValueTree& T)
 
 		double acceptance = std::exp(logprob_prime + std::log(return_prob) - (logprob_i + std::log(proposal_prob)));
 
-		if (uni(rd) < acceptance)
+		if (uni(re) < acceptance)
 		{
-			cuts.push_back({logprob_prime, cut_prime});
+			cuts.emplace_back(logprob_prime, cut_prime);
 			cut_i = cut_prime;
 		}
 	}
 
 	return cuts;
 }
-
+*/
 template <typename ValueTree>
 std::pair<double, TreeCut> MCMCTreeCut<ValueTree>::sample(RNG& rng, const SAMPLE_TYPE type)
 {
 	if (SAMPLE_TYPE::RANDOM == type)
 	{
+		uniform_random_selector<> randomSelector(rng);
 		TreeCut cut_i = cStar;
 		double logprob_i = 0.0;
 		for (int i = 0; i < nTrials; ++i)

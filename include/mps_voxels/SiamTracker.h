@@ -23,6 +23,9 @@ public:
 	virtual
 	bool track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks) = 0;
 
+	virtual
+	~DenseTracker() = default;
+
 };
 
 class SiamTracker : public DenseTracker

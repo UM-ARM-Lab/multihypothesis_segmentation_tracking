@@ -42,6 +42,8 @@ public:
 	virtual double membershipLikelihood(const Eigen::Vector3d& pt, const SensorModel& sensor) const = 0;
 	virtual Eigen::Vector3d expectedVelocity(const Eigen::Vector3d& pt, const MotionParameters& theta) const = 0;
 
+	virtual ~MotionModel() = default;
+
 	/// NB: pt_local = localTglobal * pt_global
 	Pose localTglobal;
 

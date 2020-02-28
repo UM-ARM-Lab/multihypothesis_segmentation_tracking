@@ -55,6 +55,8 @@ public:
 
 	// Density function?
 
+	virtual
+	~Belief() = default;
 };
 
 }

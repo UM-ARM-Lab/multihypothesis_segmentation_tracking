@@ -35,7 +35,6 @@
 #include "mps_voxels/UniformRandomSelector.hpp"
 
 #include <tuple>
-#include <cassert>
 
 namespace mps
 {
@@ -51,7 +50,6 @@ public:
 	TreeCut cStar;
 	double vStar;
 
-	uniform_random_selector<> randomSelector;
 	std::uniform_real_distribution<> uni;
 
 	double sigmaSquared;

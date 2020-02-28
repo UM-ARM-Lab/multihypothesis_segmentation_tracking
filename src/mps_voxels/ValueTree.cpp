@@ -72,9 +72,9 @@ void compressTree(SparseValueTree& T)
 	}
 }
 
-std::pair<DenseValueTree, std::map<NodeID, NodeID>> densify(const SparseValueTree& S)
+std::pair<DenseValueTree, boost::bimap<NodeID, NodeID>> densify(const SparseValueTree& S)
 {
-	std::map<NodeID, NodeID> sparseIDtoDenseID;
+	boost::bimap<NodeID, NodeID> sparseIDtoDenseID;
 
 	int count = 0;
 	for (const auto& p : S.value_)
@@ -90,13 +90,13 @@ std::pair<DenseValueTree, std::map<NodeID, NodeID>> densify(const SparseValueTre
 	for (const auto& pair : S.value_)
 	{
 		const NodeID& s = pair.first; // sparse node
-		const NodeID& d = sparseIDtoDenseID.at(s); // dense node
+		const NodeID& d = sparseIDtoDenseID.left.at(s); // dense node
 		value(D, d) = pair.second;
-		parent(D, d) = sparseIDtoDenseID.at(parent(S, s));
+		parent(D, d) = sparseIDtoDenseID.left.at(parent(S, s));
 		children(D, d).reserve(children(S, s).size());
 		for (const auto& c : children(S, s))
 		{
-			children(D, d).push_back(sparseIDtoDenseID.at(c));
+			children(D, d).push_back(sparseIDtoDenseID.left.at(c));
 		}
 	}
 

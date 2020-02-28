@@ -31,6 +31,9 @@
 #define SRC_AABB_H
 
 #include <opencv2/core.hpp>
+
+#include <stdint.h>
+#include <limits>
 #include <map>
 
 namespace mps

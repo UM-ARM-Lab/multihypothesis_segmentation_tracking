@@ -38,7 +38,6 @@
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/robot_state/robot_state.h>
 #include <moveit/robot_state/conversions.h>
-#include <moveit/planning_scene/planning_scene.h>
 #include <moveit_msgs/DisplayTrajectory.h>
 
 #include <pcl_ros/point_cloud.h> // Needed to publish a point cloud
@@ -54,7 +53,6 @@
 
 #include <message_filters/subscriber.h>
 #include <message_filters/time_synchronizer.h>
-#include <std_msgs/Int64.h>
 
 #include <control_msgs/FollowJointTrajectoryAction.h>
 #include <mps_msgs/TrackBBoxAction.h>
@@ -72,7 +70,7 @@
 #include <queue>
 
 
-#define ENABLE_PROFILING
+//#define ENABLE_PROFILING
 #include <arc_utilities/timing.hpp>
 
 #include <arm_video_recorder/TriggerVideoRecording.h>
@@ -84,16 +82,8 @@ using namespace mps;
 sensor_msgs::JointState::ConstPtr latestJoints;
 std::mutex joint_mtx;
 
-
-std::string worldname = "experiment_world_02_27";
-bool shouldLog = false;
-
-int mostAmbNode;
-void manCallback(const std_msgs::Int64::ConstPtr& msg)
-{
-    mostAmbNode = msg->data;
-    ROS_DEBUG_ONCE("Most Amb Node callback!");
-}
+const bool shouldLog = false;
+const std::string worldname = "experiment_world_02_25";
 
 void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 {
@@ -155,7 +145,6 @@ public:
 
 	double planning_time = 60.0;
 	int planning_samples = 25;
-//	int mostAmbNode = -1;
 	ros::ServiceClient externalVideoClient;
 	MarkerSet allMarkers;
 

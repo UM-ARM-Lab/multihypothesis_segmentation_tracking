@@ -65,7 +65,7 @@ std::string cvType2Str(int type)
 
 
 sensor_msgs::Image
-ros_message_conversion<cv::Mat>::toMessage(const cv::Mat& t, const nullptr_t)
+ros_message_conversion<cv::Mat>::toMessage(const cv::Mat& t, const std::nullptr_t)
 {
 	return *cv_bridge::CvImage(std_msgs::Header(), cvType2Str(t.type()), t).toImageMsg();
 }

@@ -30,8 +30,8 @@
 #include "mps_voxels/AABB.h"
 #include "mps_voxels/image_utils.h"
 
-#include <memory>
 #include <mutex>
+#include <utility>
 
 namespace mps
 {
