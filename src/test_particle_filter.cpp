@@ -13,19 +13,22 @@
 #include "mps_voxels/logging/log_occupancy_data.h"
 #include "mps_voxels/logging/log_sensor_history.h"
 #include "mps_voxels/logging/log_scene.h"
+#include "mps_voxels/logging/log_segmentation_info.h"
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/SensorHistorian.h"
 #include "mps_voxels/ParticleFilter.h"
 #include "mps_voxels/visualization/visualize_occupancy.h"
 #include "mps_voxels/LocalOctreeServer.h"
 #include "mps_voxels/util/package_paths.h"
+#include "mps_voxels/Scene.h"
+#include "mps_voxels/octree_utils.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 
 using namespace mps;
 
 const std::string testDirName = "package://mps_test_data/";
-const std::string worldname = "experiment_world_02_25";
+const std::string worldname = "experiment_world_02_26";
 
 
 class ParticleFilterTestFixture
@@ -49,6 +52,7 @@ public:
 		pModel = mpLoader->getModel();
 		scenario = scenarioFactory(nh, pnh, pModel);
 		scenario->segmentationClient = std::make_shared<RGBDSegmenter>(nh);
+		scenario->completionClient = std::make_shared<VoxelCompleter>(nh);
 
 		sparseTracker = std::make_unique<Tracker>();
 		sparseTracker->track_options.featureRadius = 200.0f;
@@ -76,26 +80,38 @@ public:
 			std::cerr << "Successfully loaded." << std::endl;
 		}
 		std::cerr << "number of frames: " << motionData.rgb.size() << std::endl;
+		SegmentationInfo seg_out;
+		{
+			DataLog loader(logDir + "segInfo_" + worldname + ".bag", {}, rosbag::bagmode::Read);
+			loader.activeChannels.insert("segInfo");
+			loader.load<SegmentationInfo>("segInfo", seg_out);
+			std::cerr << "Successfully loaded segInfo." << std::endl;
+		}
 
 		ros::Time initialTime = motionData.rgb.begin()->first;
-		initialScene = std::make_shared<Scene>(computeSceneFromSensorHistorian(scenario, motionData, initialTime, scenario->worldFrame));
+		initialScene = computeSceneFromSensorHistorian(scenario, motionData, initialTime, scenario->worldFrame);
+//		initialScene->roi = initialScene->segInfo->roi;
 
+		std::cerr << "initialScene->segInfo->roi: " << initialScene->segInfo->roi.x << " " << initialScene->segInfo->roi.y << " " << initialScene->segInfo->roi.height << " " << initialScene->segInfo->roi.width << std::endl;
+		std::cerr << "initialScene->roi: " << initialScene->roi.x << " " << initialScene->roi.y << " " << initialScene->roi.height << " " << initialScene->roi.width << std::endl;
 
 		/////////////////////////////////////////////
 		//// Load initial particles
 		/////////////////////////////////////////////
-		for (int i=0; i<particleFilter->numParticles; ++i)
-		{
-			Particle p;
-			p.state = std::make_shared<Particle::ParticleData>(particleFilter->voxelRegion);
-			DataLog loader(logDir + "/particle_" + std::to_string(i) + "_" + worldname + ".bag", {}, rosbag::bagmode::Read);
-			loader.activeChannels.insert("particle");
-			loader.load<OccupancyData>("particle", *p.state);
-			particleFilter->particles.push_back(p);
-			particleFilter->particles[i].state->uniqueObjectLabels = getUniqueObjectLabels(particleFilter->particles[i].state->vertexState);
-			particleFilter->particles[i].state->parentScene = initialScene;
-			std::cerr << "Successfully loaded." << std::endl;
-		}
+		particleFilter->initializeParticles(initialScene);
+
+//		for (int i=0; i<particleFilter->numParticles; ++i)
+//		{
+//			Particle p;
+//			p.state = std::make_shared<Particle::ParticleData>(particleFilter->voxelRegion);
+//			DataLog loader(logDir + "/particle_" + std::to_string(i) + "_" + worldname + ".bag", {}, rosbag::bagmode::Read);
+//			loader.activeChannels.insert("particle");
+//			loader.load<OccupancyData>("particle", *p.state);
+//			particleFilter->particles.push_back(p);
+//			particleFilter->particles[i].state->uniqueObjectLabels = getUniqueObjectLabels(particleFilter->particles[i].state->vertexState);
+//			particleFilter->particles[i].state->parentScene = initialScene;
+//			std::cerr << "Successfully loaded." << std::endl;
+//		}
 		// Load motion data
 	}
 };
@@ -169,13 +185,15 @@ int main(int argc, char **argv)
 	/////////////////////////////////////////////
 	//// sample object motions (new)
 	/////////////////////////////////////////////
-	// TODO: Apply history/action to particles
-//	Particle outputParticle = particleFilter->applyActionModel(particle, fixture.motionData.cameraModel, worldTcamera,
-//	                                                           fixture.motionData, sparseTracker, denseTracker,10);
-//	auto pfnewmarker = mps::visualize(*outputParticle.state, header, rng);
-//	visualPub.publish(pfnewmarker);
-//	std::cerr << "Predicted state particle shown!" << std::endl;
-//	sleep(5);
+	fixture.particleFilter->computeAndApplyActionModel(fixture.motionData, fixture.sparseTracker, fixture.denseTracker);
+	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
+	{
+		std_msgs::Header header; header.frame_id = scenario->mapServer->getWorldFrame(); header.stamp = ros::Time::now();
+		auto pfMarkers = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
+		visualPub.publish(pfMarkers);
+		std::cerr << "New state particle " << i << " shown!" << std::endl;
+		sleep(2);
+	}
 
 	// TODO: Apply scene #2 measurement to particles
 

@@ -698,6 +698,8 @@ bool SceneProcessor::computeOcclusions(Scene& s)
 
 bool SceneProcessor::performSegmentation(const Scene& s, const std::shared_ptr<SegmentationInfo>& segHypo, OccupancyData& occupancy)
 {
+	MPS_ASSERT(s.roi.width == segHypo->objectness_segmentation->image.cols);
+	MPS_ASSERT(s.roi.height == segHypo->objectness_segmentation->image.rows);
 	occupancy.segments = segmentCloudsFromImage(s.pile_cloud, segHypo->objectness_segmentation->image, s.cameraModel, s.roi, &occupancy.labelToIndexLookup);
 
 	if (occupancy.segments.empty())

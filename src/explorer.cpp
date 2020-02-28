@@ -85,7 +85,7 @@ sensor_msgs::JointState::ConstPtr latestJoints;
 std::mutex joint_mtx;
 
 
-std::string worldname = "experiment_world_02_25";
+std::string worldname = "experiment_world_02_27";
 bool shouldLog = false;
 
 int mostAmbNode;
@@ -434,7 +434,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		historian->stopCapture();
 
 		/////////////////////////////////////////////
-		//// log historian->buffer & scene->segInfo & scene->roi
+		//// log historian->buffer & scene->segInfo
 		/////////////////////////////////////////////
 		if (shouldLog)
 		{
@@ -444,6 +444,13 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 				logger.activeChannels.insert("buffer");
 				logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
 				std::cerr << "Successfully logged buffer." << std::endl;
+			}
+			{
+				std::cerr << "start logging scene->segInfo" << std::endl;
+				DataLog logger(scenario->experiment->experiment_dir + "/segInfo_" + worldname + ".bag");
+				logger.activeChannels.insert("segInfo");
+				logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
+				std::cerr << "Successfully logged scene->segInfo." << std::endl;
 			}
 		}
 	}

@@ -115,6 +115,8 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	const image_geometry::PinholeCameraModel& cameraModel, const cv::Rect& roi,
 	boost::bimap<uint16_t, ObjectIndex>* labelToIndexLookup)
 {
+	std::cerr << "roi.width = " << roi.width << "; labels.cols = " << labels.cols << std::endl;
+	std::cerr << "roi.height = " << roi.height << "; labels.rows = " << labels.rows << std::endl;
 	MPS_ASSERT(roi.width == labels.cols);
 	MPS_ASSERT(roi.height == labels.rows);
 	using LabelT = uint16_t;
