@@ -158,6 +158,11 @@ std::map<std::string, std::shared_ptr<GazeboModel>> getWorldFileModels(const std
 	TiXmlDocument doc(gazeboWorldFilename);
 	doc.LoadFile();
 
+	#if DEBUG_MESH_LOADING
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	#endif
+
 	TiXmlElement* root = doc.RootElement();
 	if (!root)
 	{
@@ -322,13 +327,14 @@ std::map<std::string, std::shared_ptr<GazeboModel>> getWorldFileModels(const std
 			}
 
 			#if DEBUG_MESH_LOADING
+			std::uniform_real_distribution<float> uni(0.0, std::nextafter(1.0, std::numeric_limits<float>::max()));
 			visualization_msgs::Marker marker;
 			shapes::constructMarkerFromShape(shapePtr.get(), marker, true);
 			// Do some more marker stuff here
 			marker.color.a = 1.0;
-			marker.color.r=rand()/(float)RAND_MAX;
-			marker.color.g=rand()/(float)RAND_MAX;
-			marker.color.b=rand()/(float)RAND_MAX;
+			marker.color.r = uni(gen);
+			marker.color.g = uni(gen);
+			marker.color.b = uni(gen);
 			marker.pose = toMsg(modelTvisual);
 			marker.header.frame_id = "mocap_" + name; //"table_surface";
 			marker.header.stamp = ros::Time::now();

@@ -9,11 +9,12 @@
 #include <tf/transform_broadcaster.h>
 
 #include <Eigen/Geometry>
+#include <random>
 
 namespace mps
 {
 
-Eigen::Isometry3d randomTransform(const double tScale = 1.0);
+Eigen::Isometry3d randomTransform(std::mt19937& gen, const double tScale = 1.0);
 
 struct GazeboFrame
 {
@@ -48,7 +49,7 @@ public:
 	std::map<const GazeboFrame, tf::StampedTransform> linkPoses;
 	std::map<const GazeboFrame, tf::StampedTransform> markerOffsets;
 
-	GazeboMocap();
+	GazeboMocap(size_t randomSeed = 0);
 
 	bool getTransforms();
 	void sendTransforms(bool sendBaseFrame = false);

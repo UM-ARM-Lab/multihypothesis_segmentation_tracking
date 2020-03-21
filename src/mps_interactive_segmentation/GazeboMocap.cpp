@@ -12,15 +12,16 @@
 namespace mps
 {
 
-Eigen::Isometry3d randomTransform(const double tScale)
+Eigen::Isometry3d randomTransform(std::mt19937& gen, const double tScale)
 {
+	std::uniform_real_distribution<> uni(-1.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
 	Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
-	T.rotate(Eigen::Quaterniond(Eigen::Vector4d::Random()).normalized());
-	T.translation() = tScale * Eigen::Vector3d::Random();
+	T.rotate(Eigen::Quaterniond(Eigen::Vector4d::NullaryExpr([&](){return uni(gen);})).normalized());
+	T.translation() = tScale * Eigen::Vector3d::NullaryExpr([&](){return uni(gen);});
 	return T;
 }
 
-GazeboMocap::GazeboMocap()
+GazeboMocap::GazeboMocap(size_t randomSeed)
 {
 	nh = std::make_unique<ros::NodeHandle>();
 	tb = std::make_unique<tf::TransformBroadcaster>();
@@ -30,7 +31,8 @@ GazeboMocap::GazeboMocap()
 	worldStateClient.waitForExistence(ros::Duration(5));
 	modelStateClient.waitForExistence(ros::Duration(5));
 
-	tf::transformEigenToTF(randomTransform(), gazeboTmocap);
+	std::mt19937 gen(randomSeed);
+	tf::transformEigenToTF(randomTransform(gen), gazeboTmocap);
 	gazeboTmocap.frame_id_ = "world";
 	gazeboTmocap.child_frame_id_ = mocap_frame_id;
 }

@@ -12,10 +12,10 @@ int main(int argc, char** argv)
 
 	bool publish_base = pnh.param("publish_mocap_base", true);
 
-	unsigned int seed = (unsigned int) time(nullptr);
-	srand(seed);
+	std::random_device rd;
+	size_t seed = rd();
 
-	mps::GazeboMocap mocap;
+	mps::GazeboMocap mocap(seed);
 
 	std::vector<std::string> models = mocap.getModelNames();
 
