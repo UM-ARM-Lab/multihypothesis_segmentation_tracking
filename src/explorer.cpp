@@ -651,7 +651,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 
 
-//	const long invalidGoalID = rand();
+//	const long invalidGoalID = -1;
 //	ObjectIndex goalSegmentID{invalidGoalID};
 	{
 		if (!ros::ok()) { return; }
@@ -1152,8 +1152,8 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>("joint_states", 2, handleJointState, ros::VoidPtr(), sensor_queue.get());
 	ros::Subscriber joint_sub = nh.subscribe(joint_sub_options);
 
-	setIfMissing(pnh, "frame_id", "table_surface");
-	setIfMissing(pnh, "resolution", 0.010);
+	setIfMissing(pnh, "roi/frame_id", "table_surface");
+	setIfMissing(pnh, "roi/resolution", 0.010);
 	setIfMissing(pnh, "latch", false);
 	setIfMissing(pnh, "filter_ground", false);
 	setIfMissing(pnh, "filter_speckles", true);
@@ -1276,10 +1276,10 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	pnh.getParam("roi/max/x", scenario->maxExtent.x());
 	pnh.getParam("roi/max/y", scenario->maxExtent.y());
 	pnh.getParam("roi/max/z", scenario->maxExtent.z());
-	pnh.getParam("frame_id", scenario->worldFrame);
+	pnh.getParam("roi/frame_id", scenario->worldFrame);
 
 	double resolution = 0.010;
-	pnh.getParam("resolution", resolution);
+	pnh.getParam("roi/resolution", resolution);
 	mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution,
 	                                                            scenario->minExtent.head<3>().cast<double>(),
 	                                                            scenario->maxExtent.head<3>().cast<double>());

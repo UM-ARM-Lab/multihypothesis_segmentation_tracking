@@ -106,8 +106,8 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 	std::string sourceVideo, trackingVideo;
 	if (directory == " ") { sourceVideo = "source.avi"; trackingVideo = "tracking.avi"; }
 	else { sourceVideo = directory + "source.avi"; trackingVideo = directory + "tracking.avi"; }
-	cv::VideoWriter video(sourceVideo, CV_FOURCC('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(), true);
-	cv::VideoWriter tracking(trackingVideo, CV_FOURCC('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(),
+	cv::VideoWriter video(sourceVideo, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(), true);
+	cv::VideoWriter tracking(trackingVideo, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(),
 	                         true);
 
 //	auto detector = cv::AKAZE::create();
@@ -252,10 +252,10 @@ void Tracker::siftOnMask(const std::vector<ros::Time>& steps, const SensorHistor
 //	double fps = steps.size() / (tLast - tFirst).toSec();
 
 	cv::VideoWriter video("/home/kunhuang/Videos/source.avi",
-						CV_FOURCC('M', 'J', 'P', 'G'),
+						cv::VideoWriter::fourcc('M', 'J', 'P', 'G'),
 							1, buffer.rgb.at(tFirst)->image.size(), true);
 	cv::VideoWriter tracking("/home/kunhuang/Videos/tracking_" + std::to_string((int)label) + ".avi",
-							CV_FOURCC('M', 'J', 'P', 'G'), 1, buffer.rgb.at(tFirst)->image.size(),
+							cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 1, buffer.rgb.at(tFirst)->image.size(),
 	                         true);
 
 //	auto detector = cv::AKAZE::create();

@@ -1,8 +1,8 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.2)
 project(mps_voxels)
 
 ## Compile as C++14
-add_compile_options(-std=c++14)
+#add_compile_options(-std=c++14)
 
 ## No, really. Use C++14 (If a prior package sets c++11, sometimes that will be used instead of 14)
 set(CMAKE_CXX_STANDARD 14)
@@ -62,6 +62,10 @@ if (CMAKE_COMPILER_IS_GNUCC AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7 AND C
   link_libraries(cudaSift)
   add_definitions(-DHAS_CUDA_SIFT)
 endif()
+
+find_package(yaml-cpp REQUIRED)
+include_directories(SYSTEM ${YAML_CPP_INCLUDE_DIR})
+link_libraries(${YAML_CPP_LIBRARIES})
 
 find_package(OCTOMAP REQUIRED)
 include_directories(SYSTEM ${OCTOMAP_INCLUDE_DIRS})

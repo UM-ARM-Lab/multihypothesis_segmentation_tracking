@@ -14,6 +14,10 @@
 #include <set>
 #include <random>
 
+#ifndef CV_OVERRIDE
+#  define CV_OVERRIDE override
+#endif
+
 namespace mps
 {
 

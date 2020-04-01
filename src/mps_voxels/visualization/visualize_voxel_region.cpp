@@ -37,8 +37,7 @@ visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
                                           const std_msgs::Header& header,
                                           std::default_random_engine& re)
 {
-	visualization_msgs::MarkerArray vertexLabelVis;
-	vertexLabelVis.markers.resize(1);
+	visualization_msgs::Marker m;
 	Eigen::Vector3d offset(region.resolution * 0.5, region.resolution * 0.5, region.resolution * 0.5);
 
 	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
@@ -55,7 +54,7 @@ visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
 		cubeCenter.y = coord[1];
 		cubeCenter.z = coord[2];
 
-		vertexLabelVis.markers[0].points.push_back(cubeCenter);
+		m.points.push_back(cubeCenter);
 
 		// Colors
 		std_msgs::ColorRGBA color;
@@ -73,26 +72,29 @@ visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
 			color.a = 1.0;
 			colormap.emplace(labels[i], color);
 		}
-		vertexLabelVis.markers[0].colors.push_back(color);
+		m.colors.push_back(color);
 	}
 
-	vertexLabelVis.markers[0].header = header;
-	vertexLabelVis.markers[0].ns = "voxel_state";
-	vertexLabelVis.markers[0].id = 0;
-	vertexLabelVis.markers[0].type = visualization_msgs::Marker::CUBE_LIST;
-	vertexLabelVis.markers[0].scale.x = region.resolution;
-	vertexLabelVis.markers[0].scale.y = region.resolution;
-	vertexLabelVis.markers[0].scale.z = region.resolution;
-	vertexLabelVis.markers[0].color.r = 0;
-	vertexLabelVis.markers[0].color.g = 0.2;
-	vertexLabelVis.markers[0].color.b = 1;
-	vertexLabelVis.markers[0].color.a = 1;
+	m.header = header;
+	m.ns = "voxel_state";
+	m.id = 0;
+	m.type = visualization_msgs::Marker::CUBE_LIST;
+	m.scale.x = region.resolution;
+	m.scale.y = region.resolution;
+	m.scale.z = region.resolution;
+	m.color.r = 0;
+	m.color.g = 0.2;
+	m.color.b = 1;
+	m.color.a = 1;
+	m.pose.orientation.w = 1;
 
-	if (vertexLabelVis.markers[0].points.empty())
-		vertexLabelVis.markers[0].action = visualization_msgs::Marker::DELETE;
+	if (m.points.empty())
+		m.action = visualization_msgs::Marker::DELETE;
 	else
-		vertexLabelVis.markers[0].action = visualization_msgs::Marker::ADD;
+		m.action = visualization_msgs::Marker::ADD;
 
+	visualization_msgs::MarkerArray vertexLabelVis;
+	vertexLabelVis.markers.push_back(m);
 	return vertexLabelVis;
 }
 
