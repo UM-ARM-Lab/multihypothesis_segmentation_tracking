@@ -82,6 +82,20 @@ ros_message_conversion<cv::Mat>::fromMessage(const sensor_msgs::Image& t)
 	return cv_bridge::toCvCopy(t, t.encoding)->image;
 }
 
+sensor_msgs::CameraInfo
+ros_message_conversion<image_geometry::PinholeCameraModel>::toMessage(const image_geometry::PinholeCameraModel& t, const std::nullptr_t)
+{
+	return t.cameraInfo();
+}
+
+image_geometry::PinholeCameraModel
+ros_message_conversion<image_geometry::PinholeCameraModel>::fromMessage(const sensor_msgs::CameraInfo& t)
+{
+	image_geometry::PinholeCameraModel msg;
+	msg.fromCameraInfo(t);
+	return msg;
+}
+
 template <>
 void DataLog::log<image_geometry::PinholeCameraModel>(const std::string& channel, const image_geometry::PinholeCameraModel& msg)
 {
