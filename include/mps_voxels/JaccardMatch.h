@@ -47,7 +47,42 @@ public:
 	using Match = std::pair<double, boost::bimap<LabelT, LabelT>>;
 	using LabelBounds = std::map<LabelT, AABB>;
 	Match match;
+
 	JaccardMatch(const cv::Mat& labels1, const cv::Mat& labels2);
+
+	// Intermediate calculations
+	LabelBounds boxes1, boxes2;
+	Eigen::MatrixXi intersection;
+	Eigen::MatrixXd IOU;
+
+	boost::bimap<LabelT, int> lblIndex1;
+	boost::bimap<LabelT, int> lblIndex2;
+
+	std::map<LabelT, int> iSizes;
+	std::map<LabelT, int> jSizes;
+
+	double symmetricCover() const;
+};
+
+}
+
+#include "mps_voxels/OccupancyData.h"
+#include <Eigen/Geometry>
+
+namespace mps
+{
+
+// TODO: Merge these
+
+class JaccardMatch3D
+{
+public:
+	using LabelT = VoxelRegion::VertexLabels::value_type;
+	using Match = std::pair<double, boost::bimap<LabelT, LabelT>>;
+	using AABB = Eigen::AlignedBox3f;
+	using LabelBounds = std::map<LabelT, AABB>;
+	Match match;
+	JaccardMatch3D(const OccupancyData& labels1, const OccupancyData& labels2);
 
 	// Intermediate calculations
 	LabelBounds boxes1, boxes2;
