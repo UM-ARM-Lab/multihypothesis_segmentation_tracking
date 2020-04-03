@@ -63,6 +63,10 @@ if (CMAKE_COMPILER_IS_GNUCC AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7 AND C
   add_definitions(-DHAS_CUDA_SIFT)
 endif()
 
+find_package(yaml-cpp REQUIRED)
+include_directories(SYSTEM ${YAML_CPP_INCLUDE_DIR})
+link_libraries(${YAML_CPP_LIBRARIES})
+
 find_package(OCTOMAP REQUIRED)
 include_directories(SYSTEM ${OCTOMAP_INCLUDE_DIRS})
 link_libraries(${OCTOMAP_LIBRARIES})

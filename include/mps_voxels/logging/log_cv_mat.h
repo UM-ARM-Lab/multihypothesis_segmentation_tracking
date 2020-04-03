@@ -30,6 +30,7 @@
 #ifndef SRC_LOG_CV_MAT_H
 #define SRC_LOG_CV_MAT_H
 
+#include "mps_voxels/logging/conversion.hpp"
 #include "mps_voxels/logging/DataLog.h"
 
 #include <cv_bridge/cv_bridge.h>
@@ -43,50 +44,9 @@ namespace mps
 
 std::string cvType2Str(int type);
 
-template <typename T>
-struct ros_message_conversion {};
+MESSAGE_CONVERSION_BOILERPLATE_AUX(cv::Mat, sensor_msgs::Image, std_msgs::Header)
 
-template <typename T>
-struct ros_message_type_of {};
-
-/**
- * @tparam T Main type to be converted to message
- * @tparam Aux Auxiliary type containing any extra info (particularly headers)
- * @param t Object to convert
- * @param a Aux data object (defaults to null pointer)
- * @return
- */
-template <typename T, typename Aux = std::nullptr_t>
-auto toMessage(T t, Aux a = nullptr)
-{
-	return ros_message_conversion<std::remove_cv_t<std::remove_reference_t<T>>>::toMessage(t, a);
-}
-
-template <typename T>
-auto fromMessage(T t)
-{
-	return ros_message_conversion<typename ros_message_type_of<std::remove_cv_t<std::remove_reference_t<T>>>::CppType>::fromMessage(t);
-}
-
-
-template<>
-struct ros_message_type_of<sensor_msgs::Image> { using CppType = cv::Mat; };
-
-template<>
-struct ros_message_conversion<cv::Mat>
-{
-	using MsgType = sensor_msgs::Image;
-	using CppType = cv::Mat;
-
-	static
-	MsgType toMessage(const CppType& t, const std::nullptr_t);
-
-	static
-	MsgType toMessage(const CppType& t, const std_msgs::Header& h);
-
-	static
-	CppType fromMessage(const MsgType& t);
-};
+MESSAGE_CONVERSION_BOILERPLATE(image_geometry::PinholeCameraModel, sensor_msgs::CameraInfo)
 
 template <>
 void DataLog::log<image_geometry::PinholeCameraModel>(const std::string& channel, const image_geometry::PinholeCameraModel& msg);
