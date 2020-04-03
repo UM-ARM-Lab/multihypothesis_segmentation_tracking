@@ -14,7 +14,7 @@ void
 getHSVMask(const cv::Mat& img, cv::Mat& mask, const cv::Scalar& minHSV, const cv::Scalar& maxHSV, const int morphSize)
 {
 	cv::Mat imgHSV, morphKernel;
-	cv::cvtColor(img, imgHSV, CV_BGR2HSV);
+	cv::cvtColor(img, imgHSV, cv::COLOR_BGR2HSV);
 	cv::inRange(imgHSV, minHSV, maxHSV, mask);
 
 	morphKernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(morphSize, morphSize));

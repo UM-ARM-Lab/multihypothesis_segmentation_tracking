@@ -1208,7 +1208,7 @@ int main(int argc, char* argv[])
 //					cv::waitKey(1);
 //				}
 //
-//				cv::VideoWriter tracking("bundled_pair.avi", CV_FOURCC('M', 'J', 'P', 'G'), 1, nativeSize, true);
+//				cv::VideoWriter tracking("bundled_pair.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 1, nativeSize, true);
 //				for (const auto& pair : video)
 //					tracking.write(pair.second);
 //				tracking.release();
@@ -1518,7 +1518,7 @@ int main(int argc, char* argv[])
 				}
 
 				const double alpha = 0.75;
-				cv::VideoWriter tracking("clustered_"+std::to_string(numObjs)+".avi", CV_FOURCC('M', 'J', 'P', 'G'), 1, nativeSize, true);
+				cv::VideoWriter tracking("clustered_"+std::to_string(numObjs)+".avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), 1, nativeSize, true);
 				for (const auto& pair : video)
 				{
 					tracking.write(alpha*pair.second+(1.0-alpha)*scenes.at(pair.first)->cv_rgb_ptr->image);
