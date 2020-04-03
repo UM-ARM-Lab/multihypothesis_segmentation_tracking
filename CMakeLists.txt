@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(mps_interactive_segmentation)
 
-add_compile_options(-std=c++14)
+#add_compile_options(-std=c++14)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 #set(CMAKE_BUILD_TYPE Debug)
@@ -32,6 +34,7 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   moveit_core
   mps_msgs
+  mps_voxels
   roscpp
   roslib
   tf_conversions

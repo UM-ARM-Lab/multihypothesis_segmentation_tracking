@@ -7,6 +7,10 @@
 #include "mps_interactive_segmentation/paths.h"
 #include "mps_interactive_segmentation/loading.h"
 
+#include <mps_voxels/VoxelRegion.h>
+#include <mps_voxels/parameters/VoxelRegionBuilder.hpp>
+#include <mps_voxels/visualization/visualize_voxel_region.h>
+
 #include "geometric_shapes/shapes.h"
 
 #include <actionlib/server/simple_action_server.h>
@@ -36,7 +40,9 @@
 #include <iterator>
 #include <mutex>
 
+#ifndef DEBUG_MESH_LOADING
 #define DEBUG_MESH_LOADING false
+#endif
 
 #define CV_VERSION_AT_LEAST(x,y,z) (CV_VERSION_MAJOR>x || (CV_VERSION_MAJOR>=x && \
                                    (CV_VERSION_MINOR>y || (CV_VERSION_MINOR>=y && \
@@ -58,6 +64,7 @@ PointT toPoint3D(const float uIdx, const float vIdx, const float depthMeters, co
 	return pt;
 }
 
+// TODO: colormap or mt ref
 cv::Mat colorByLabel(const cv::Mat& input)
 {
 	double min;
@@ -92,15 +99,18 @@ struct GazeboModelState
 class Segmenter
 {
 public:
+	std::default_random_engine re;
 	std::unique_ptr<ros::Subscriber> cam_sub;
 	image_geometry::PinholeCameraModel cameraModel;
 	std::string worldFrame = "table_surface";
+	std::string tableFrame = "table_surface";
 	std::string cameraFrame;
 	std::unique_ptr<tf::TransformListener> listener;
 	std::unique_ptr<tf::TransformBroadcaster> broadcaster;
 	std::unique_ptr<GTServer> actionServer;
 
-	std::unique_ptr<image_transport::Publisher> segmentationPub;
+	std::unique_ptr<image_transport::Publisher> imageSegmentationPub;
+	std::unique_ptr<ros::Publisher> voxelSegmentationPub;
 
 	std::mutex stateMtx;
 	std::vector<std::shared_ptr<GazeboModel>> models;
@@ -108,12 +118,16 @@ public:
 
 	Segmenter(ros::NodeHandle& nh, std::vector<std::shared_ptr<GazeboModel>> shapeModels_) : models(std::move(shapeModels_))
 	{
+		std::random_device rd;
+		re = std::default_random_engine(rd());
+
 		listener = std::make_unique<tf::TransformListener>(ros::Duration(60.0));
 		broadcaster = std::make_unique<tf::TransformBroadcaster>();
 		cam_sub = std::make_unique<ros::Subscriber>(nh.subscribe<sensor_msgs::CameraInfo>("/kinect2_victor_head/hd/camera_info", 1, boost::bind(&Segmenter::cam_cb, this, _1)));
 
 		image_transport::ImageTransport it(ros::NodeHandle("~"));
-		segmentationPub = std::make_unique<image_transport::Publisher>(it.advertise("segmentation", 1));
+		imageSegmentationPub = std::make_unique<image_transport::Publisher>(it.advertise("image_segmentation", 1));
+		voxelSegmentationPub = std::make_unique<ros::Publisher>(nh.advertise<visualization_msgs::MarkerArray>("voxel_segmentation", 1, true));
 
 		actionServer = std::make_unique<GTServer>(nh, "gazebo_segmentation", boost::bind(&Segmenter::execute, this, _1), false);
 //		actionServer->start();
@@ -127,7 +141,7 @@ public:
 //		cameraModel.rawRoi().y = 0;
 	}
 
-	cv::Mat segment()
+	cv::Mat segmentUVD()
 	{
 		if (cameraFrame.empty())
 		{
@@ -300,15 +314,89 @@ public:
 		labelColorsMap.setTo(0, 0 == labels);
 //		labelColorsMap = alpha*labelColorsMap + (1.0-alpha)*scene->cv_rgb_cropped.image;
 
-		if (segmentationPub->getNumSubscribers() > 0)
+		if (imageSegmentationPub->getNumSubscribers() > 0)
 		{
 			std_msgs::Header h; h.frame_id = cameraFrame; h.stamp = ros::Time::now();
-			segmentationPub->publish(cv_bridge::CvImage(h, "bgr8", labelColorsMap).toImageMsg());
+			imageSegmentationPub->publish(cv_bridge::CvImage(h, "bgr8", labelColorsMap).toImageMsg());
 		}
 
 //		cv::waitKey(1);
 //		cv::imshow("segmentation", labelColorsMap);
 //		cv::waitKey(0);
+
+		return labels;
+	}
+
+	mps::VoxelRegion::VertexLabels segmentXYZ(const mps::VoxelRegion& region)
+	{
+//		if (cameraFrame.empty())
+//		{
+//			ROS_INFO_STREAM("No camera seen yet.");
+//			return cv::Mat();
+//		}
+//
+		tf::StampedTransform tablePose;
+		if (!listener->waitForTransform(worldFrame, tableFrame, ros::Time(0), ros::Duration(5.0)))
+		{
+			ROS_WARN_STREAM("Failed to look up transform between '" << worldFrame << "' and '" << tableFrame << "'.");
+			return cv::Mat();
+		}
+		listener->lookupTransform(worldFrame, tableFrame, ros::Time(0), tablePose);
+
+		Eigen::Isometry3d worldTtable;
+		tf::transformTFToEigen(tablePose, worldTtable);
+//
+//		auto roi = cameraModel.rectifiedRoi();
+//
+//		using LabelT = uint16_t;
+//		using DepthT = double;
+//		cv::Mat labels = cv::Mat::zeros(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_16U);
+//		cv::Mat depthBuf(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_64F, std::numeric_limits<DepthT>::max());
+
+		std::lock_guard<std::mutex> lock(stateMtx);
+		if (states.size() != models.size())
+		{
+			throw std::logic_error("Model/State size mismatch!");
+		}
+
+		mps::VoxelRegion::VertexLabels labels(region.num_vertices(), mps::VoxelRegion::FREE_SPACE);
+
+#pragma omp parallel for
+		for (size_t i = 0; i < region.m_num_vertices; ++i)
+		{
+			const Eigen::Vector3d X_world = worldTtable * region.coordinate_of(region.vertex_at(i));
+
+//			Eigen::Isometry3d worldTx = Eigen::Isometry3d::Identity(); worldTx.translation() = X_world;
+//			tf::Transform temp;
+//			tf::poseEigenToTF(worldTx, temp);
+//			broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), worldFrame, "samplePoint"));
+//			ros::spinOnce(); ros::Duration(0.1).sleep();
+
+			for (size_t m = 0; m < models.size(); ++m)
+			{
+				const GazeboModel& model = *models[m];
+				const GazeboModelState& state = states[m];
+
+				const Eigen::Isometry3d& worldTshape = state.pose/* * body_pair.second->getPose()*/;
+				Eigen::Isometry3d shapeTworld = worldTshape.inverse(Eigen::Isometry);
+
+				const Eigen::Vector3d X_model = shapeTworld * X_world;
+
+				if (mps::pointIntersectsModel(X_model, model))
+				{
+					labels[i] = m + 1;
+					break;
+				}
+			}
+		}
+
+
+//		if (voxelSegmentationPub->getNumSubscribers() > 0)
+		{
+			std_msgs::Header h; h.frame_id = tableFrame; h.stamp = ros::Time::now();
+			auto viz = mps::visualize(region, labels, h, re);
+			voxelSegmentationPub->publish(viz);
+		}
 
 		return labels;
 	}
@@ -334,7 +422,7 @@ public:
 			return;
 		}
 
-		cv::Mat labels = segment();
+		cv::Mat labels = segmentUVD();
 
 		if (labels.empty())
 		{
@@ -359,13 +447,11 @@ public:
 
 int main(int argc, char** argv)
 {
+	mps::VoxelRegion region = mps::VoxelRegionBuilder::build(YAML::Load("{roi: {min: {x: -0.4, y: -0.6, z: -0.020}, max: {x: 0.4, y: 0.6, z: 0.5}, resolution: 0.01}}"));
+
     ros::init(argc, argv, "gazebo_segmentation_gt");
     ros::NodeHandle pnh("~");
 
-#if DEBUG_MESH_LOADING
-	ros::Publisher debugPub = pnh.advertise<visualization_msgs::MarkerArray>("debug_shapes", 10, true);
-	visualization_msgs::MarkerArray debugShapes;
-#endif
 
 //	cv::namedWindow("segmentation", /*cv::WINDOW_AUTOSIZE | cv::WINDOW_KEEPRATIO | */cv::WINDOW_GUI_EXPANDED);
 
@@ -422,6 +508,7 @@ int main(int argc, char** argv)
 	Segmenter seg(pnh, tmpModels);
     seg.worldFrame = mocap.gazeboTmocap.frame_id_;
 
+
     // Wait for camera
     ros::Duration(1.0).sleep();
     ros::spinOnce();
@@ -435,34 +522,34 @@ int main(int argc, char** argv)
 
         mocap.getTransforms();
 //        mocap.sendTransforms(false);
-
-	    std::lock_guard<std::mutex> lock(seg.stateMtx);
-		seg.states.clear();
-	    for (const auto& shape : shapeModels)
 	    {
-	    	// TODO: Skip adding this shape based on the plugin camera info in world file
+		    std::lock_guard<std::mutex> lock(seg.stateMtx);
+		    seg.states.clear();
+		    for (const auto& shape : shapeModels)
+		    {
+			    // TODO: Skip adding this shape based on the plugin camera info in world file
 //	    	if (shape.name == "kinect2_victor_head")
 //		    {
 //	    		continue;
 //		    }
 
-		    for (const auto& pair : shape.second->bodies)
-		    {
-			    const tf::StampedTransform& stf = mocap.linkPoses.at({shape.second->name, pair.first});
+			    for (const auto& pair : shape.second->bodies)
+			    {
+				    const tf::StampedTransform& stf = mocap.linkPoses.at({shape.second->name, pair.first});
 //			    const tf::StampedTransform& stf = mocap.linkPoses.at({shape.second->name, "link"});
 
-			    Eigen::Isometry3d T;
-			    tf::transformTFToEigen(stf, T);
-			    seg.states.push_back({T});
+				    Eigen::Isometry3d T;
+				    tf::transformTFToEigen(stf, T);
+				    seg.states.push_back({T});
 
 //			    std::cerr << T.matrix() << std::endl;
-		    }
+			    }
 
+		    }
 	    }
 
-#if DEBUG_MESH_LOADING
-	    debugPub.publish(debugShapes);
-#endif
+
+	    seg.segmentXYZ(region);
     }
 
     return 0;

@@ -45,6 +45,24 @@
 namespace fs = boost::filesystem;
 
 
+//#ifndef DEBUG_MESH_LOADING
+#define DEBUG_MESH_LOADING true
+//#endif
+
+//#ifndef USE_CONVEX_DECOMPOSITION
+#define USE_CONVEX_DECOMPOSITION false
+//#endif
+
+#if DEBUG_MESH_LOADING
+#include <visualization_msgs/MarkerArray.h>
+#include <random>
+#endif
+
+#if USE_CONVEX_DECOMPOSITION
+#include <VHACD.h>
+#endif
+
+
 namespace mps
 {
 
@@ -161,6 +179,15 @@ std::map<std::string, std::shared_ptr<GazeboModel>> getWorldFileModels(const std
 	#if DEBUG_MESH_LOADING
 	std::random_device rd;
 	std::mt19937 gen(rd());
+	std::uniform_real_distribution<float> uni(0.0, std::nextafter(1.0, std::numeric_limits<float>::max()));
+	static ros::NodeHandle pnh("~");
+	static ros::Publisher debugPub = pnh.advertise<visualization_msgs::MarkerArray>("debug_shapes", 10, true);
+	sleep(3);
+	visualization_msgs::MarkerArray debugShapes;
+	#endif
+
+	#if USE_CONVEX_DECOMPOSITION
+	VHACD::IVHACD* interfaceVHACD = VHACD::CreateVHACD();
 	#endif
 
 	TiXmlElement* root = doc.RootElement();
@@ -279,25 +306,62 @@ std::map<std::string, std::shared_ptr<GazeboModel>> getWorldFileModels(const std
 				std::cerr << "Scaling: '" << model_path << "': " << unitScale << std::endl;
 
 				shapes::Mesh* m = shapes::createMeshFromResource("file://" + model_path);
-				// Apply unit scaling
-				for (unsigned i = 0; i < 3 * m->vertex_count; ++i)
-				{
-					m->vertices[i] *= unitScale;
-				}
 
-				// Apply state scaling
+				// Apply unit & state scaling
 				for (unsigned i = 0; i <  m->vertex_count; ++i)
 				{
-					m->vertices[3 * i] *= modScale[0];
-					m->vertices[3 * i + 1] *= modScale[1];
-					m->vertices[3 * i + 2] *= modScale[2];
+					m->vertices[3 * i]     *= unitScale * modScale[0];
+					m->vertices[3 * i + 1] *= unitScale * modScale[1];
+					m->vertices[3 * i + 2] *= unitScale * modScale[2];
 				}
 
 				shapePtr = shapes::ShapePtr(m);
 
+//				m->mergeVertices(1e-6);
 				m->computeTriangleNormals();
 				m->computeVertexNormals();
 				std::cerr << "Vertices: " << m->vertex_count << ", Faces: " << m->triangle_count << std::endl;
+
+				#if USE_CONVEX_DECOMPOSITION
+				interfaceVHACD->Clean();
+				VHACD::IVHACD::Parameters params;
+				params.m_minVolumePerCH = 1e-9;
+				static_assert(std::is_same<uint32_t*, decltype(shapes::Mesh::triangles)>::value, "Triangle type mismatch");
+				interfaceVHACD->Compute(m->vertices, m->vertex_count, m->triangles, m->triangle_count, params);
+				for (size_t h = 0; h < interfaceVHACD->GetNConvexHulls(); ++h)
+				{
+					VHACD::IVHACD::ConvexHull hull;
+					interfaceVHACD->GetConvexHull(h, hull);
+
+					// TODO: Re-center about 0
+
+					auto localShape = std::make_shared<shapes::Mesh>();//hull.m_nPoints, hull.m_nTriangles);
+					memcpy(localShape->vertices, hull.m_points, sizeof(double) * hull.m_nPoints * 3);
+					memcpy(localShape->triangles, hull.m_triangles, sizeof(uint32_t) * hull.m_nTriangles * 3);
+					localShape->print(std::cerr);
+
+					localShape->computeTriangleNormals();
+					localShape->computeVertexNormals();
+					std::cerr << "Vertices: " << localShape->vertex_count << ", Faces: " << localShape->triangle_count << std::endl;
+
+					#if DEBUG_MESH_LOADING
+					visualization_msgs::Marker marker;
+					shapes::constructMarkerFromShape(localShape.get(), marker, true);
+					// Do some more marker stuff here
+					marker.color.a = 1.0;
+					marker.color.r = uni(gen);
+					marker.color.g = uni(gen);
+					marker.color.b = uni(gen);
+					marker.pose = toMsg(modelTvisual);
+					marker.header.frame_id = "mocap_" + name; //"table_surface";
+					marker.header.stamp = ros::Time::now();
+					marker.ns = name;
+					marker.id = 2 + h;
+					marker.frame_locked = true;
+					debugShapes.markers.push_back(marker);
+					#endif
+				}
+				#endif
 
 				shapes::ShapeMsg mesh;
 				constructMsgFromShape(m, mesh);
@@ -327,7 +391,6 @@ std::map<std::string, std::shared_ptr<GazeboModel>> getWorldFileModels(const std
 			}
 
 			#if DEBUG_MESH_LOADING
-			std::uniform_real_distribution<float> uni(0.0, std::nextafter(1.0, std::numeric_limits<float>::max()));
 			visualization_msgs::Marker marker;
 			shapes::constructMarkerFromShape(shapePtr.get(), marker, true);
 			// Do some more marker stuff here
@@ -357,6 +420,10 @@ std::map<std::string, std::shared_ptr<GazeboModel>> getWorldFileModels(const std
 		if (!mod->shapes.empty())
 			shapeModels.insert({name, mod});
 	}
+	#if DEBUG_MESH_LOADING
+	debugPub.publish(debugShapes);
+	std::cerr << "Published debugging." << std::endl;
+	#endif
 	return shapeModels;
 }
 

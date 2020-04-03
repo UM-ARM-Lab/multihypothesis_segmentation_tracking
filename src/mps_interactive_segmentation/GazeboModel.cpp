@@ -21,6 +21,15 @@ static inline double distanceSQR(const Eigen::Vector3d& p, const Eigen::Vector3d
 	return a.squaredNorm() - d * d;
 }
 
+inline
+bool pointIntersectsSphere(const bodies::BoundingSphere& sphere,
+                           const Eigen::Vector3d& pt)
+{
+	double radius2 = sphere.radius * sphere.radius;
+	double dist2 = (sphere.center - pt).squaredNorm();
+	return dist2 <= radius2;
+}
+
 bool rayIntersectsSphere(const bodies::BoundingSphere& sphere,
                          const Eigen::Vector3d& origin, const Eigen::Vector3d& dir,
                          EigenSTL::vector_Vector3d* intersections, unsigned int count)
@@ -187,6 +196,22 @@ bool rayIntersectsModel(const Eigen::Vector3d& rayOrigin_model,
 	{
 		return false;
 	}
+}
+
+bool pointIntersectsModel(const Eigen::Vector3d& point_model,
+                          const GazeboModel& model)
+{
+	if (pointIntersectsSphere(model.bSphere, point_model))
+	{
+		for (const auto& body_pair : model.bodies)
+		{
+			if (body_pair.second->containsPoint(point_model))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
 }
 
 void GazeboModel::computeBoundingSphere()

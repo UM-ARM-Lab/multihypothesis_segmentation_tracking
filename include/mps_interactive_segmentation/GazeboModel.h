@@ -38,6 +38,9 @@ bool rayIntersectsModel(const Eigen::Vector3d& rayOrigin_model,
                         const GazeboModel& m,
                         EigenSTL::vector_Vector3d& intersections);
 
+bool pointIntersectsModel(const Eigen::Vector3d& point_model,
+                          const GazeboModel& model);
+
 }
 
 #endif //SRC_GAZEBOMODEL_H
