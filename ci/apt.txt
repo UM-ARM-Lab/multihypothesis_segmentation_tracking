@@ -1,3 +1,4 @@
+lsb-release
 ssh
 git
 python-pip

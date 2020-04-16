@@ -6,8 +6,8 @@
 #-----------------------------------------------------
 
 # Begin with a base build
-ARG ROS_VERSION=kinetic
-ARG CUDA_VERSION=9.1-devel-ubuntu16.04
+ARG ROS_VERSION=melodic
+ARG CUDA_VERSION=10.2-cudnn7-devel-ubuntu18.04
 ARG PACKAGE_NAME=mps_voxels
 FROM ros:${ROS_VERSION} as getter
 
