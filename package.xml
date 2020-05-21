@@ -56,6 +56,7 @@
   <depend>image_transport</depend>
   <depend>moveit_core</depend>
   <depend>mps_msgs</depend>
+  <depend>mps_voxels</depend>
   <depend>roscpp</depend>
   <depend>roslib</depend>
   <depend>tf_conversions</depend>
