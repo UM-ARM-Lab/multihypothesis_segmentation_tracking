@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.2)
+cmake_minimum_required(VERSION 3.8)
 project(mps_voxels)
 
 ## Compile as C++14
@@ -63,7 +63,10 @@ if (CMAKE_COMPILER_IS_GNUCC AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7 AND C
   add_definitions(-DHAS_CUDA_SIFT)
 endif()
 
-find_package(yaml-cpp REQUIRED)
+#find_package(yaml-cpp REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(YAML_CPP REQUIRED yaml-cpp)
+#message(WARNING "YAML-CPP: ${YAML_CPP_INCLUDE_DIR}")
 include_directories(SYSTEM ${YAML_CPP_INCLUDE_DIR})
 link_libraries(${YAML_CPP_LIBRARIES})
 
@@ -111,7 +114,6 @@ set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCGAL_DISABLE_ROUNDING_MATH_CHECK")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCGAL_NO_ASSERTIONS")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
-
 
 macro(use_strict_compile_flags)
   set(BUILD_FLAGS "-Wshadow -Wall -Wextra -Wpedantic -Werror=return-type")
@@ -312,6 +314,7 @@ target_link_libraries(${PROJECT_NAME}
   ${PCL_LIBRARIES}
   ${PCL_IO_LIBRARIES}
   ${Boost_LIBRARIES}
+  ${YAML_CPP_LIBRARIES}
 )
 
 ## Add cmake target dependencies of the library
