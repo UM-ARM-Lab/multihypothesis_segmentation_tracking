@@ -576,6 +576,12 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	}
 
 	{
+		if (particleFilter->particles.empty())
+		{
+			ROS_ERROR_STREAM("No particles generated!!");
+			return;
+		}
+
 		double bestWeight = -std::numeric_limits<double>::infinity();
 		int bestParticle = -1;
 		for (size_t p = 0; p < particleFilter->particles.size(); ++p)
@@ -1152,6 +1158,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>("joint_states", 2, handleJointState, ros::VoidPtr(), sensor_queue.get());
 	ros::Subscriber joint_sub = nh.subscribe(joint_sub_options);
 
+	setIfMissing(pnh, "frame_id", "table_surface");
 	setIfMissing(pnh, "roi/frame_id", "table_surface");
 	setIfMissing(pnh, "roi/resolution", 0.010);
 	setIfMissing(pnh, "latch", false);

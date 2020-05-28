@@ -155,7 +155,7 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	}
 
 	const int nNeighbors = 200;
-	const double percentThreshold = 0.04;
+	const double percentThreshold = 0.004;
 	const int sizeThreshold = 25;
 
 	for (auto& segment : segment_clouds)
@@ -191,7 +191,8 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 				MPS_ASSERT(res.second);
 			}
 		}
-		else { std::cerr << "Rejected object " << pair.first << ": " << percentFilled * 100.0 << "%." << std::endl; }
+		else { ROS_INFO_STREAM("Rejected object " << pair.first << ": " << percentFilled * 100.0 << "%. (" << pair.second->size() << " pts)"); }
+
 	}
 
 	return retVal;
