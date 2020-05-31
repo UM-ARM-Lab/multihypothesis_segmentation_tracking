@@ -105,14 +105,18 @@ cv::Mat colorByLabel(const cv::Mat& input)
 		input.convertTo(labels, CV_8UC1);
 	}
 
-	cv::Mat colormap(256, 1, CV_8UC3);
-	cv::randu(colormap, 0, 256);
 
 	cv::Mat output;
 #if CV_VERSION_AT_LEAST(3, 3, 0)
+	cv::Mat colormap(256, 1, CV_8UC3);
+	cv::randu(colormap, 0, 256);
 	cv::applyColorMap(labels, output, colormap);
 #else
-	cv::LUT(labels, colormap, output);
+	if (max < 255)
+	{
+		cv::normalize(labels, labels, 255, 0, cv::NORM_MINMAX);
+	}
+	cv::applyColorMap(labels, output, cv::COLORMAP_HSV);
 #endif
 
 	return output;
@@ -120,6 +124,7 @@ cv::Mat colorByLabel(const cv::Mat& input)
 
 cv::Mat colorByLabel(const cv::Mat& input, const Colormap& colormap)
 {
+	assert(input.type() == CV_16UC1);
 	using ColorPixel = cv::Point3_<uint8_t>;
 	cv::Mat output(input.size(), CV_8UC3);
 	output.forEach<ColorPixel>([&](ColorPixel& px, const int* pos) -> void
