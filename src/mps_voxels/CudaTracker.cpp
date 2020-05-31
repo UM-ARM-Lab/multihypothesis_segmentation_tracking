@@ -45,7 +45,7 @@ void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	const ros::Time& tFirst = steps.front();
 	const ros::Time& tLast = steps.back();
 
-	double fps = steps.size() / (tLast - tFirst).toSec();
+	double fps = std::max(1.0, steps.size() / (tLast - tFirst).toSec());
 	cv::VideoWriter video("source.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(), true);
 	cv::VideoWriter tracking("tracking.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(),
 	                         true);
