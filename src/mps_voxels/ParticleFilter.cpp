@@ -57,7 +57,7 @@ ParticleFilter::initializeParticles(
 			return false;
 		}
 
-		particle.state->vertexState = voxelRegion->objectsToSubRegionVoxelLabel(particle.state->objects, scene->minExtent.head<3>().cast<double>());
+		particle.state->vertexState = voxelRegion->objectsToSubRegionVoxelLabel(particle.state->objects, scene->minExtent.head<3>());
 		particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
 		particle.state->parentScene = scene;
 

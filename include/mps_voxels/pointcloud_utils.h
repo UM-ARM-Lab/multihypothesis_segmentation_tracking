@@ -41,9 +41,9 @@ pcl::PointCloud<PointT>::Ptr filterSmallClusters(
 std::vector<pcl::PointCloud<PointT>::Ptr> segment(
 	pcl::PointCloud<PointT>::Ptr& cloud);
 
-void getAABB(const pcl::PointCloud<PointT>& members, Eigen::Vector3f& min, Eigen::Vector3f& max);
+void getAABB(const pcl::PointCloud<PointT>& members, Eigen::Vector3d& min, Eigen::Vector3d& max);
 
-void getBoundingCube(const pcl::PointCloud<PointT>& members, Eigen::Vector3f& min, Eigen::Vector3f& max);
+void getBoundingCube(const pcl::PointCloud<PointT>& members, Eigen::Vector3d& min, Eigen::Vector3d& max);
 
 }
 

@@ -31,7 +31,7 @@ std::shared_ptr<shapes::Mesh> ZAMBB(const PointContainerT& points);
 
 std::shared_ptr<shapes::Mesh> approximateShape(const octomap::OcTree* tree);
 
-void getAABB(const shapes::Mesh& shape, Eigen::Vector3f& min, Eigen::Vector3f& max);
+void getAABB(const shapes::Mesh& shape, Eigen::Vector3d& min, Eigen::Vector3d& max);
 
 }
 

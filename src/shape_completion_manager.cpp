@@ -95,7 +95,7 @@ void cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloudMsg)
 	for (const pcl::PointCloud<PointT>::Ptr& cluster_cloud : segments)
 	{
 		// Compute bounding box
-		Eigen::Vector3f min, max;
+		Eigen::Vector3d min, max;
 		getBoundingCube(*cluster_cloud, min, max);
 
 		std::shared_ptr<om::OcTree> subtree(octree->create());

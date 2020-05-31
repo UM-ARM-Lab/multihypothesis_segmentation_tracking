@@ -28,10 +28,10 @@ std::shared_ptr<shapes::Mesh> approximateShape(const octomap::OcTree* tree)
 	return hull;
 }
 
-void getAABB(const shapes::Mesh& shape, Eigen::Vector3f& min, Eigen::Vector3f& max)
+void getAABB(const shapes::Mesh& shape, Eigen::Vector3d& min, Eigen::Vector3d& max)
 {
-	min = Eigen::Vector3f::Constant(std::numeric_limits<float>::infinity());
-	max = Eigen::Vector3f::Constant(-std::numeric_limits<float>::infinity());
+	min = Eigen::Vector3d::Constant(std::numeric_limits<double>::infinity());
+	max = Eigen::Vector3d::Constant(-std::numeric_limits<double>::infinity());
 //	const int DIM = 3;
 //	for (int d=0; d < DIM; ++d)
 //	{
@@ -43,8 +43,8 @@ void getAABB(const shapes::Mesh& shape, Eigen::Vector3f& min, Eigen::Vector3f& m
 	for (unsigned i = 0; i < shape.vertex_count; ++i)
 	{
 		Eigen::Map<Eigen::Vector3d> vertex(shape.vertices + (3*i));
-		min = min.cwiseMin(vertex.cast<float>());
-		max = max.cwiseMax(vertex.cast<float>());
+		min = min.cwiseMin(vertex);
+		max = max.cwiseMax(vertex);
 //		for (int d=0; d < DIM; ++d)
 //		{
 //			min[d] = std::min(min[d], static_cast<float>(vertex[d]));

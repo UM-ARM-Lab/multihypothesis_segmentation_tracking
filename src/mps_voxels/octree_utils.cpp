@@ -128,8 +128,8 @@ VoxelCompleter::VoxelCompleter(ros::NodeHandle& nh)
 }
 
 void VoxelCompleter::completeShape(
-	const Eigen::Vector3f& min,
-	const Eigen::Vector3f& max,
+	const Eigen::Vector3d& min,
+	const Eigen::Vector3d& max,
 	const Eigen::Affine3f& worldTcamera,
 	octomap::OcTree* octree,
 	octomap::OcTree* subtree,
@@ -307,8 +307,8 @@ std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOccl
 	octomap::OcTree* octree,
 	const image_geometry::PinholeCameraModel& cameraModel,
 	const Eigen::Affine3d& cameraTtable,
-	const Eigen::Vector3f& minExtent,
-	const Eigen::Vector3f& maxExtent)
+	const Eigen::Vector3d& minExtent,
+	const Eigen::Vector3d& maxExtent)
 {
 //	std::vector<Eigen::Vector3f>
 	octomap::point3d_collection occluded_pts;

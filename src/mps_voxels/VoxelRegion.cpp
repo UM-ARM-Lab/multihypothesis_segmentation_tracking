@@ -506,18 +506,18 @@ mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, s
 	mps::VoxelRegion::VertexLabels res(vox.num_vertices(), VoxelRegion::FREE_SPACE);
 
 	int label = 0;
-	for (auto& pair : objects)
+	for (const auto& pair : objects)
 	{
-		auto obj = pair.second.get();
+		auto* obj = pair.second.get();
 		assert(obj);
-		mps::VoxelRegion::vertex_descriptor objDims = roiToGrid(obj->occupancy.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>());
-		mps::VoxelRegion objVS(objDims, obj->occupancy->getResolution(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>());
-		mps::VoxelRegion::vertex_descriptor objMin = coordToGrid(obj->occupancy.get(), roiMinExtent, obj->minExtent.cast<double>());
+		mps::VoxelRegion::vertex_descriptor objDims = roiToGrid(obj->occupancy.get(), obj->minExtent, obj->maxExtent);
+		mps::VoxelRegion objVS(objDims, obj->occupancy->getResolution(), obj->minExtent, obj->maxExtent);
+		mps::VoxelRegion::vertex_descriptor objMin = coordToGrid(obj->occupancy.get(), roiMinExtent, obj->minExtent);
 
 		for (mps::VoxelRegion::vertices_size_type v = 0; v < objVS.num_vertices(); ++v)
 		{
 			auto query = objVS.vertex_at(v);
-			if ( isOccupied(obj->occupancy.get(), obj->minExtent.cast<double>(), query) )
+			if ( isOccupied(obj->occupancy.get(), obj->minExtent, query) )
 			{
 				mps::VoxelRegion::vertex_descriptor target;
 				target[0] = query[0] + objMin[0];
@@ -541,18 +541,18 @@ VoxelRegion::objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::uniqu
 	mps::VoxelRegion::VertexLabels res(num_vertices(), VoxelRegion::FREE_SPACE);
 	mps::VoxelRegion::vertex_descriptor subRegionMinVD = coordToVertexDesc(resolution, regionMin, subRegionMinExtent);
 
-	for (auto& pair : objects)
+	for (const auto& pair : objects)
 	{
 		const auto* obj = pair.second.get();
 		assert(obj);
-		mps::VoxelRegion::vertex_descriptor objDims = roiToGrid(obj->occupancy.get(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>());
-		mps::VoxelRegion objVS(objDims, obj->occupancy->getResolution(), obj->minExtent.cast<double>(), obj->maxExtent.cast<double>());
-		mps::VoxelRegion::vertex_descriptor objMin = coordToGrid(obj->occupancy.get(), subRegionMinExtent, obj->minExtent.cast<double>());
+		mps::VoxelRegion::vertex_descriptor objDims = roiToGrid(obj->occupancy.get(), obj->minExtent, obj->maxExtent);
+		mps::VoxelRegion objVS(objDims, obj->occupancy->getResolution(), obj->minExtent, obj->maxExtent);
+		mps::VoxelRegion::vertex_descriptor objMin = coordToGrid(obj->occupancy.get(), subRegionMinExtent, obj->minExtent);
 
 		for (mps::VoxelRegion::vertices_size_type v = 0; v < objVS.num_vertices(); ++v)
 		{
 			auto query = objVS.vertex_at(v);
-			if ( isOccupied(obj->occupancy.get(), obj->minExtent.cast<double>(), query) )
+			if ( isOccupied(obj->occupancy.get(), obj->minExtent, query) )
 			{
 				mps::VoxelRegion::vertex_descriptor target;
 				target[0] = query[0] + objMin[0] + subRegionMinVD[0];

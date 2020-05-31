@@ -1166,12 +1166,12 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	setIfMissing(pnh, "filter_speckles", true);
 	setIfMissing(pnh, "publish_free_space", false);
 
-	setIfMissing(pnh, "roi/min/x", -0.4f);
-	setIfMissing(pnh, "roi/min/y", -0.6f);
-	setIfMissing(pnh, "roi/min/z", -0.020f);
-	setIfMissing(pnh, "roi/max/x",  0.4f);
-	setIfMissing(pnh, "roi/max/y",  0.6f);
-	setIfMissing(pnh, "roi/max/z",  0.5f);
+	setIfMissing(pnh, "roi/min/x", -0.4);
+	setIfMissing(pnh, "roi/min/y", -0.6);
+	setIfMissing(pnh, "roi/min/z", -0.020);
+	setIfMissing(pnh, "roi/max/x",  0.4);
+	setIfMissing(pnh, "roi/max/y",  0.6);
+	setIfMissing(pnh, "roi/max/z",  0.5);
 
 	setIfMissing(pnh, "sensor_model/max_range", 8.0);
 	setIfMissing(pnh, "planning_samples", 10);
@@ -1275,8 +1275,8 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	scenario->segmentationClient = segmentationClient;
 	scenario->experiment = experiment;
 
-	scenario->minExtent = Eigen::Vector4f::Ones();
-	scenario->maxExtent = Eigen::Vector4f::Ones();
+	scenario->minExtent = Eigen::Vector4d::Ones();
+	scenario->maxExtent = Eigen::Vector4d::Ones();
 	pnh.getParam("roi/min/x", scenario->minExtent.x());
 	pnh.getParam("roi/min/y", scenario->minExtent.y());
 	pnh.getParam("roi/min/z", scenario->minExtent.z());
@@ -1288,11 +1288,11 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	double resolution = 0.010;
 	pnh.getParam("roi/resolution", resolution);
 	mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution,
-	                                                            scenario->minExtent.head<3>().cast<double>(),
-	                                                            scenario->maxExtent.head<3>().cast<double>());
+	                                                            scenario->minExtent.head<3>(),
+	                                                            scenario->maxExtent.head<3>());
 	particleFilter = std::make_unique<ParticleFilter>(scenario, dims, resolution,
-	                                                  scenario->minExtent.head<3>().cast<double>(),
-	                                                  scenario->maxExtent.head<3>().cast<double>(), 5);
+	                                                  scenario->minExtent.head<3>(),
+	                                                  scenario->maxExtent.head<3>(), 5);
 
 	Tracker::TrackingOptions opts;
 	opts.roi.minExtent = {scenario->minExtent.x(), scenario->minExtent.y(), scenario->minExtent.z()};

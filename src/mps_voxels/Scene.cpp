@@ -148,8 +148,8 @@ std::shared_ptr<Scenario> scenarioFactory(ros::NodeHandle& nh, ros::NodeHandle& 
 	scenario->listener = std::make_shared<tf2_ros::TransformListener>(scenario->transformBuffer);//listener.get();
 	scenario->transformBuffer.setUsingDedicatedThread(true);
 
-	scenario->minExtent = Eigen::Vector4f::Ones();
-	scenario->maxExtent = Eigen::Vector4f::Ones();
+	scenario->minExtent = Eigen::Vector4d::Ones();
+	scenario->maxExtent = Eigen::Vector4d::Ones();
 
 
 	pnh.getParam("roi/min/x", scenario->minExtent.x());
@@ -309,7 +309,7 @@ bool SceneProcessor::loadAndFilterScene(Scene& s, const tf2_ros::Buffer& transfo
 	/////////////////////////////////////////////////////////////////
 	// Crop to bounding box
 	/////////////////////////////////////////////////////////////////
-	s.cropped_cloud = cropInCameraFrame(s.cloud, s.minExtent, s.maxExtent, s.worldTcamera);
+	s.cropped_cloud = cropInCameraFrame(s.cloud, s.minExtent.cast<float>(), s.maxExtent.cast<float>(), s.worldTcamera);
 	if (s.cropped_cloud->empty())
 	{
 		ROS_WARN("Filtered cloud contains no points.");
@@ -636,7 +636,7 @@ bool SceneProcessor::computeOcclusions(Scene& s)
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	{
 		// Recompute bounding box
-		Eigen::Vector3f min, max;
+		Eigen::Vector3d min, max;
 		pcl::PointCloud<PointT>::Ptr transformed_cloud (new pcl::PointCloud<PointT>());
 		// You can either apply transform_1 or transform_2; they are the same
 		pcl::transformPointCloud (*s.cropped_cloud, *transformed_cloud, Eigen::Affine3d(s.worldTcamera));
@@ -739,12 +739,12 @@ bool SceneProcessor::buildObjects(const Scene& s, OccupancyData& occupancy)
 		assert(!segment_cloud->empty());
 
 		// Compute bounding box
-		Eigen::Vector3f min, max;
+		Eigen::Vector3d min, max;
 		getBoundingCube(*segment_cloud, min, max);
 		double edge_length = max.x()-min.x(); // all edge of cube are same size
 		double inflation = edge_length/5.0;
-		min -= inflation*Eigen::Vector3f::Ones();
-		max += inflation*Eigen::Vector3f::Ones();
+		min -= inflation*Eigen::Vector3d::Ones();
+		max += inflation*Eigen::Vector3d::Ones();
 
 		std::shared_ptr<octomap::OcTree> subtree(s.sceneOctree->create());
 		subtree->setProbMiss(0.05);
