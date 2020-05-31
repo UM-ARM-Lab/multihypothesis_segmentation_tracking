@@ -133,9 +133,24 @@ JaccardMatch3D::LabelBounds
 getBBoxes(const OccupancyData& labels)
 {
 	JaccardMatch3D::LabelBounds boxes;
-	for (const auto& kv : labels.objects)
+	if (!labels.objects.empty())
 	{
-		boxes.emplace(kv.first.id, JaccardMatch3D::AABB(kv.second->minExtent, kv.second->maxExtent));
+		for (const auto& kv : labels.objects)
+		{
+			boxes.emplace(kv.first.id, JaccardMatch3D::AABB(kv.second->minExtent, kv.second->maxExtent));
+		}
+	}
+	else
+	{
+		for (size_t i = 0; i < labels.voxelRegion->num_vertices(); ++i)
+		{
+			const auto val = labels.vertexState[i];
+			if (val != mps::VoxelRegion::FREE_SPACE)
+			{
+				const auto coord = labels.voxelRegion->coordinate_of(labels.voxelRegion->vertex_at(i));
+				boxes[val].extend(coord);
+			}
+		}
 	}
 	return boxes;
 }
