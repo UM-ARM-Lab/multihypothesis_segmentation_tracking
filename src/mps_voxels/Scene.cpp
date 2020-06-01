@@ -496,8 +496,8 @@ bool SceneProcessor::loadAndFilterScene(Scene& s, const tf2_ros::Buffer& transfo
 	/////////////////////////////////////////////////////////////////
 	/// Generate an ROI from the cropped, filtered s.cloud
 	/////////////////////////////////////////////////////////////////
-//	s.pile_cloud = filterPlane(non_self_cloud, 0.02, s.worldTcamera.linear().col(2).cast<float>());
-	s.pile_cloud = filterPlane(s.cropped_cloud, 0.02, s.worldTcamera.linear().col(2).cast<float>());
+	s.pile_cloud = filterPlane(non_self_cloud, 0.02, s.worldTcamera.linear().col(2).cast<float>());
+//	s.pile_cloud = filterPlane(s.cropped_cloud, 0.02, s.worldTcamera.linear().col(2).cast<float>());
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 //	s.pile_cloud = filterSmallClusters(s.pile_cloud, 1000, 0.005); // sqrt(s.cloud->size())/50
 //	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
