@@ -529,12 +529,21 @@ bool SceneProcessor::loadAndFilterScene(Scene& s, const tf2_ros::Buffer& transfo
 		}
 
 		s.roi = cv::boundingRect(pile_points);
-		const int buffer = 50; //25
-		if (buffer < s.roi.x) { s.roi.x -= buffer; s.roi.width += buffer; }
-		if (s.roi.x+s.roi.width < static_cast<int>(s.cameraModel.cameraInfo().width)-buffer) { s.roi.width += buffer; }
-		if (buffer < s.roi.y) { s.roi.y -= buffer; s.roi.height += buffer; }
-		if (s.roi.y+s.roi.height < static_cast<int>(s.cameraModel.cameraInfo().height)-buffer) { s.roi.height += buffer; }
 
+		// Dilate by buffer
+		const int buffer = 50; //25
+		s.roi.x -= buffer;
+		s.roi.width += 2*buffer;
+		s.roi.y -= buffer;
+		s.roi.height += 2*buffer;
+
+		// Trim to image range
+		s.roi.x = std::max(0, s.roi.x);
+		s.roi.y = std::max(0, s.roi.y);
+		s.roi.width = std::min(static_cast<int>(s.cameraModel.cameraInfo().width-s.roi.x), s.roi.width);
+		s.roi.height = std::min(static_cast<int>(s.cameraModel.cameraInfo().height-s.roi.y), s.roi.height);
+
+		// Crop the images
 		cv::Mat rgb_cropped(s.cv_rgb_ptr->image, s.roi);
 		cv::Mat depth_cropped(s.cv_depth_ptr->image, s.roi);
 		s.cv_rgb_cropped = cv_bridge::CvImage(s.cv_rgb_ptr->header, s.cv_rgb_ptr->encoding, rgb_cropped);
