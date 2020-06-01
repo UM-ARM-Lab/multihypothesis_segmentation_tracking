@@ -49,7 +49,7 @@ public:
 	std::string m_worldFrameId; // the map frame
 	std::unique_ptr<OcTreeT> m_octree;
 
-	LocalOctreeServer(const ros::NodeHandle& private_nh_);
+	LocalOctreeServer(const double res, const std::string& worldFrameId);
 
 	void insertCloud(const pcl::PointCloud<PointT>::Ptr& cloud, const Eigen::Affine3d& worldTcamera);
 

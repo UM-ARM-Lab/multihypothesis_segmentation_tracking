@@ -97,12 +97,12 @@ std::shared_ptr<Scenario> scenarioFactory(ros::NodeHandle& nh, ros::NodeHandle& 
 	setIfMissing(pnh, "filter_speckles", true);
 	setIfMissing(pnh, "publish_free_space", false);
 
-	setIfMissing(pnh, "roi/min/x", -0.4f);
-	setIfMissing(pnh, "roi/min/y", -0.6f);
-	setIfMissing(pnh, "roi/min/z", -0.020f);
-	setIfMissing(pnh, "roi/max/x",  0.4f);
-	setIfMissing(pnh, "roi/max/y",  0.6f);
-	setIfMissing(pnh, "roi/max/z",  0.5f);
+	setIfMissing(pnh, "roi/min/x", -0.4);
+	setIfMissing(pnh, "roi/min/y", -0.6);
+	setIfMissing(pnh, "roi/min/z", -0.020);
+	setIfMissing(pnh, "roi/max/x",  0.4);
+	setIfMissing(pnh, "roi/max/y",  0.6);
+	setIfMissing(pnh, "roi/max/z",  0.5);
 
 	setIfMissing(pnh, "sensor_model/max_range", 8.0);
 	setIfMissing(pnh, "planning_samples", 25);
@@ -151,20 +151,21 @@ std::shared_ptr<Scenario> scenarioFactory(ros::NodeHandle& nh, ros::NodeHandle& 
 	scenario->minExtent = Eigen::Vector4d::Ones();
 	scenario->maxExtent = Eigen::Vector4d::Ones();
 
-
-	pnh.getParam("roi/min/x", scenario->minExtent.x());
-	pnh.getParam("roi/min/y", scenario->minExtent.y());
-	pnh.getParam("roi/min/z", scenario->minExtent.z());
-	pnh.getParam("roi/max/x", scenario->maxExtent.x());
-	pnh.getParam("roi/max/y", scenario->maxExtent.y());
-	pnh.getParam("roi/max/z", scenario->maxExtent.z());
-	pnh.getParam("frame_id", scenario->worldFrame);
+	double resolution = NAN;
+	gotParam = pnh.getParam("roi/resolution", resolution); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/min/x", scenario->minExtent.x()); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/min/y", scenario->minExtent.y()); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/min/z", scenario->minExtent.z()); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/max/x", scenario->maxExtent.x()); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/max/y", scenario->maxExtent.y()); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/max/z", scenario->maxExtent.z()); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/frame_id", scenario->worldFrame); MPS_ASSERT(gotParam);
 
 	auto homeState = std::make_shared<robot_state::RobotState>(robotModel);
 	homeState->setToDefaultValues();
 	scenario->homeState = homeState;
 
-	scenario->mapServer = std::make_shared<LocalOctreeServer>(pnh);
+	scenario->mapServer = std::make_shared<LocalOctreeServer>(resolution, scenario->worldFrame);
 
 
 	// Sanity checks

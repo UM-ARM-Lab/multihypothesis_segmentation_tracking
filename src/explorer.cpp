@@ -1234,7 +1234,6 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	gripperRPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/right_arm/gripper_command", 1, false);
 	displayPub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, false);
 	pcPub = pnh.advertise<pcl::PointCloud<PointT>>("segment_clouds", 1, true);
-	mapServer = std::make_shared<LocalOctreeServer>(pnh);
 	ros::Duration(1.0).sleep();
 	completionClient = std::make_shared<VoxelCompleter>(nh);
 	segmentationClient = std::make_shared<RGBDSegmenter>(nh);
@@ -1267,16 +1266,10 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	selfModels.erase("victor_left_arm_link_0");
 	selfModels.erase("victor_right_arm_link_0");
 
-	scenario->listener = std::make_shared<tf2_ros::TransformListener>(scenario->transformBuffer);//listener.get();
-	scenario->transformBuffer.setUsingDedicatedThread(true);
-	scenario->broadcaster = broadcaster.get();
-	scenario->mapServer = mapServer;
-	scenario->completionClient = completionClient;
-	scenario->segmentationClient = segmentationClient;
-	scenario->experiment = experiment;
-
+	double resolution = NAN;
 	scenario->minExtent = Eigen::Vector4d::Ones();
 	scenario->maxExtent = Eigen::Vector4d::Ones();
+	pnh.getParam("roi/resolution", resolution);
 	pnh.getParam("roi/min/x", scenario->minExtent.x());
 	pnh.getParam("roi/min/y", scenario->minExtent.y());
 	pnh.getParam("roi/min/z", scenario->minExtent.z());
@@ -1285,8 +1278,16 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	pnh.getParam("roi/max/z", scenario->maxExtent.z());
 	pnh.getParam("roi/frame_id", scenario->worldFrame);
 
-	double resolution = 0.010;
-	pnh.getParam("roi/resolution", resolution);
+	mapServer = std::make_shared<LocalOctreeServer>(resolution, scenario->worldFrame);
+
+	scenario->listener = std::make_shared<tf2_ros::TransformListener>(scenario->transformBuffer);//listener.get();
+	scenario->transformBuffer.setUsingDedicatedThread(true);
+	scenario->broadcaster = broadcaster.get();
+	scenario->mapServer = mapServer;
+	scenario->completionClient = completionClient;
+	scenario->segmentationClient = segmentationClient;
+	scenario->experiment = experiment;
+
 	mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution,
 	                                                            scenario->minExtent.head<3>(),
 	                                                            scenario->maxExtent.head<3>());

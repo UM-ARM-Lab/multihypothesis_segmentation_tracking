@@ -204,17 +204,12 @@ void insertCloudInOctree(const pcl::PointCloud<PointT>::Ptr& cloud, const Eigen:
 	MPS_ASSERT(tree->size() > 0);
 }
 
-LocalOctreeServer::LocalOctreeServer(const ros::NodeHandle& private_nh_)
-	: m_res(0.05),
-	  m_worldFrameId("/map"),
-	  m_octree(nullptr)
+LocalOctreeServer::LocalOctreeServer(const double res, const std::string& worldFrameId)
+	: m_res(res),
+	  m_worldFrameId(worldFrameId),
+	  m_octree(std::make_unique<OcTreeT>(m_res))
 {
-	private_nh_.param("resolution", m_res, m_res);
-	private_nh_.param("frame_id", m_worldFrameId, m_worldFrameId);
-
-	m_octree = std::make_unique<OcTreeT>(m_res);
-
-
+	// NB: We don't set min/max here to the ROI because the raycasting procedure for free space crops sensor points
 	Eigen::Vector3d min, max;
 	m_octree->getMetricMin(min.x(), min.y(), min.z());
 	m_octree->getMetricMax(max.x(), max.y(), max.z());
