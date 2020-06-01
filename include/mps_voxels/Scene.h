@@ -73,7 +73,7 @@ public:
 	std::vector<std::pair<std::shared_ptr<shapes::Shape>, Pose>> staticObstacles;
 
 	// Maximum extents of "tabletop"
-	Eigen::Vector4f minExtent, maxExtent;
+	Eigen::Vector4d minExtent, maxExtent;
 
 	// Frame name of tabletop
 	std::string worldFrame;
@@ -114,7 +114,7 @@ public:
 	std::string cameraFrame;
 
 	// Maximum extent of active region of interest on tabletop
-	Eigen::Vector4f minExtent, maxExtent;
+	Eigen::Vector4d minExtent, maxExtent;
 
 	pcl::PointCloud<PointT>::Ptr cloud;
 	pcl::PointCloud<PointT>::Ptr cropped_cloud;

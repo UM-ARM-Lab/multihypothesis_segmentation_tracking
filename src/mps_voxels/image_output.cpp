@@ -53,7 +53,7 @@ public:
 		auto iter = imagePubs.find(channel);
 		if (iter == imagePubs.end())
 		{
-			auto res = imagePubs.emplace(channel, std::make_unique<image_transport::Publisher>(it.advertise(channel, 1)));
+			auto res = imagePubs.emplace(channel, std::make_unique<image_transport::Publisher>(it.advertise(channel, 1, true)));
 			return res.first->second.get();
 		}
 		else

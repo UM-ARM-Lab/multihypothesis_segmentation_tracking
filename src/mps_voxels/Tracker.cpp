@@ -102,7 +102,7 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 	const ros::Time& tFirst = steps.front();
 	const ros::Time& tLast = steps.back();
 
-	double fps = 1.0;// steps.size() / (tLast - tFirst).toSec();
+	double fps = std::max(1.0, steps.size() / (tLast - tFirst).toSec());
 	std::string sourceVideo, trackingVideo;
 	if (directory == " ") { sourceVideo = "source.avi"; trackingVideo = "tracking.avi"; }
 	else { sourceVideo = directory + "source.avi"; trackingVideo = directory + "tracking.avi"; }

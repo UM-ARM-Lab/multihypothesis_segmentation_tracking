@@ -46,6 +46,11 @@ DataLog::DataLog(const std::string& filename, const ChannelSet& channels, const 
 	{
 		throw std::runtime_error("Attempting to read from nonexistant file '" + path + "'.");
 	}
+	auto dir = fs::path(path).parent_path();
+	if (!fs::exists(dir))
+	{
+		fs::create_directory(dir);
+	}
 	bag = std::make_unique<rosbag::Bag>(path, mode);
 
 	activeChannels = channels;

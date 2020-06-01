@@ -79,7 +79,7 @@ class JaccardMatch3D
 public:
 	using LabelT = VoxelRegion::VertexLabels::value_type;
 	using Match = std::pair<double, boost::bimap<LabelT, LabelT>>;
-	using AABB = Eigen::AlignedBox3f;
+	using AABB = Eigen::AlignedBox3d;
 	using LabelBounds = std::map<LabelT, AABB>;
 	Match match;
 	JaccardMatch3D(const OccupancyData& labels1, const OccupancyData& labels2);

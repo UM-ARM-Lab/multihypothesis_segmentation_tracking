@@ -111,8 +111,8 @@ OccupancyData::OccupancyData(const std::shared_ptr<const Scene>& scene,
 		subtree->setProbHit(0.95);
 		setBBox(scene->minExtent, scene->maxExtent, subtree.get());
 		auto res = objects.emplace(id, std::make_unique<Object>(id, subtree));
-		res.first->second->minExtent = Eigen::Vector3f::Constant(std::numeric_limits<float>::max());
-		res.first->second->maxExtent = Eigen::Vector3f::Constant(std::numeric_limits<float>::lowest());
+		res.first->second->minExtent = Eigen::Vector3d::Constant(std::numeric_limits<double>::max());
+		res.first->second->maxExtent = Eigen::Vector3d::Constant(std::numeric_limits<double>::lowest());
 	}
 
 	// Populate the object representation
@@ -121,7 +121,7 @@ OccupancyData::OccupancyData(const std::shared_ptr<const Scene>& scene,
 		const auto label = vertexState[v];
 		if (label == VoxelRegion::FREE_SPACE) { continue; }
 		const auto descriptor = voxelRegion->vertex_at(v);
-		const auto coordinate = voxelRegion->coordinate_of(descriptor).cast<float>();
+		const auto coordinate = voxelRegion->coordinate_of(descriptor);
 
 		ObjectIndex objID(label);
 		auto& obj = objects.at(objID);
@@ -190,7 +190,7 @@ cv::Mat rayCastOccupancy(const OccupancyData& state, const image_geometry::Pinho
 			{
 				// Check AABB intersection
 				const auto& obj = pair.second; // particle.state->objects.at(pair.first);
-				bool mightHit = fast_ray_box_intersection(r0_world, rnInv_world, obj->minExtent, obj->maxExtent);
+				bool mightHit = fast_ray_box_intersection(r0_world, rnInv_world, obj->minExtent.cast<float>(), obj->maxExtent.cast<float>());
 				if (!mightHit) { continue; }
 
 				octomap::point3d intsectPoint;
