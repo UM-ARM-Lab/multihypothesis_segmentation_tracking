@@ -119,6 +119,7 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	std::cerr << "roi.height = " << roi.height << "; labels.rows = " << labels.rows << std::endl;
 	MPS_ASSERT(roi.width == labels.cols);
 	MPS_ASSERT(roi.height == labels.rows);
+	std::cerr << "cloud size = " << cloud->size() << std::endl;
 	using LabelT = uint16_t;
 	const LabelT BUFFER_VALUE = std::numeric_limits<LabelT>::max();
 	std::set<LabelT> uniqueLabels = unique(labels);
@@ -191,7 +192,7 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 				MPS_ASSERT(res.second);
 			}
 		}
-		else { std::cerr << "Rejected object " << pair.first << ": " << percentFilled * 100.0 << "%." << std::endl; }
+		else { std::cerr << "Rejected object " << pair.first << ": " << percentFilled * 100.0 << "%, " << static_cast<int>(pair.second->size()) << std::endl; }
 	}
 
 	return retVal;

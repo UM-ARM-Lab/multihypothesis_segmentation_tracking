@@ -44,6 +44,9 @@ ParticleFilter::initializeParticles(
 		particle.state = std::make_shared<OccupancyData>(voxelRegion);
 		particle.state->segInfo = std::make_shared<SegmentationInfo>(sample.second.segmentation);
 		particle.weight = sample.first;
+		// Visualization:
+		IMSHOW("segmentation", colorByLabel(particle.state->segInfo->objectness_segmentation->image));
+
 		bool execSegmentation = SceneProcessor::performSegmentation(*scene, particle.state->segInfo, *particle.state);
 		if (!execSegmentation)
 		{

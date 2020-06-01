@@ -496,7 +496,8 @@ bool SceneProcessor::loadAndFilterScene(Scene& s, const tf2_ros::Buffer& transfo
 	/////////////////////////////////////////////////////////////////
 	/// Generate an ROI from the cropped, filtered s.cloud
 	/////////////////////////////////////////////////////////////////
-	s.pile_cloud = filterPlane(non_self_cloud, 0.02, s.worldTcamera.linear().col(2).cast<float>());
+//	s.pile_cloud = filterPlane(non_self_cloud, 0.02, s.worldTcamera.linear().col(2).cast<float>());
+	s.pile_cloud = filterPlane(s.cropped_cloud, 0.02, s.worldTcamera.linear().col(2).cast<float>());
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 //	s.pile_cloud = filterSmallClusters(s.pile_cloud, 1000, 0.005); // sqrt(s.cloud->size())/50
 //	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
@@ -504,7 +505,7 @@ bool SceneProcessor::loadAndFilterScene(Scene& s, const tf2_ros::Buffer& transfo
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 	if (s.pile_cloud->empty())
 	{
-		ROS_ERROR_STREAM("No points in pile s.cloud.");
+		ROS_ERROR_STREAM("No points in s.pile_cloud.");
 		return false;
 	}
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
@@ -700,6 +701,7 @@ bool SceneProcessor::performSegmentation(const Scene& s, const std::shared_ptr<S
 {
 	MPS_ASSERT(s.roi.width == segHypo->objectness_segmentation->image.cols);
 	MPS_ASSERT(s.roi.height == segHypo->objectness_segmentation->image.rows);
+	std::cerr << "pile_cloud size = " << s.pile_cloud->size() << std::endl;
 	occupancy.segments = segmentCloudsFromImage(s.pile_cloud, segHypo->objectness_segmentation->image, s.cameraModel, s.roi, &occupancy.labelToIndexLookup);
 
 	if (occupancy.segments.empty())
