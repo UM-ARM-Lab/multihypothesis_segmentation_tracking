@@ -97,12 +97,12 @@ std::shared_ptr<Scenario> scenarioFactory(ros::NodeHandle& nh, ros::NodeHandle& 
 	setIfMissing(pnh, "filter_speckles", true);
 	setIfMissing(pnh, "publish_free_space", false);
 
-	setIfMissing(pnh, "roi/min/x", -0.4f);
-	setIfMissing(pnh, "roi/min/y", -0.6f);
-	setIfMissing(pnh, "roi/min/z", -0.020f);
-	setIfMissing(pnh, "roi/max/x",  0.4f);
-	setIfMissing(pnh, "roi/max/y",  0.6f);
-	setIfMissing(pnh, "roi/max/z",  0.5f);
+	setIfMissing(pnh, "roi/min/x", -0.4);
+	setIfMissing(pnh, "roi/min/y", -0.6);
+	setIfMissing(pnh, "roi/min/z", -0.020);
+	setIfMissing(pnh, "roi/max/x",  0.4);
+	setIfMissing(pnh, "roi/max/y",  0.6);
+	setIfMissing(pnh, "roi/max/z",  0.5);
 
 	setIfMissing(pnh, "sensor_model/max_range", 8.0);
 	setIfMissing(pnh, "planning_samples", 25);
@@ -151,20 +151,21 @@ std::shared_ptr<Scenario> scenarioFactory(ros::NodeHandle& nh, ros::NodeHandle& 
 	scenario->minExtent = Eigen::Vector4d::Ones();
 	scenario->maxExtent = Eigen::Vector4d::Ones();
 
-
-	pnh.getParam("roi/min/x", scenario->minExtent.x());
-	pnh.getParam("roi/min/y", scenario->minExtent.y());
-	pnh.getParam("roi/min/z", scenario->minExtent.z());
-	pnh.getParam("roi/max/x", scenario->maxExtent.x());
-	pnh.getParam("roi/max/y", scenario->maxExtent.y());
-	pnh.getParam("roi/max/z", scenario->maxExtent.z());
-	pnh.getParam("frame_id", scenario->worldFrame);
+	double resolution = NAN;
+	gotParam = pnh.getParam("roi/resolution", resolution); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/min/x", scenario->minExtent.x()); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/min/y", scenario->minExtent.y()); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/min/z", scenario->minExtent.z()); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/max/x", scenario->maxExtent.x()); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/max/y", scenario->maxExtent.y()); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/max/z", scenario->maxExtent.z()); MPS_ASSERT(gotParam);
+	gotParam = pnh.getParam("roi/frame_id", scenario->worldFrame); MPS_ASSERT(gotParam);
 
 	auto homeState = std::make_shared<robot_state::RobotState>(robotModel);
 	homeState->setToDefaultValues();
 	scenario->homeState = homeState;
 
-	scenario->mapServer = std::make_shared<LocalOctreeServer>(pnh);
+	scenario->mapServer = std::make_shared<LocalOctreeServer>(resolution, scenario->worldFrame);
 
 
 	// Sanity checks
@@ -529,12 +530,21 @@ bool SceneProcessor::loadAndFilterScene(Scene& s, const tf2_ros::Buffer& transfo
 		}
 
 		s.roi = cv::boundingRect(pile_points);
-		const int buffer = 50; //25
-		if (buffer < s.roi.x) { s.roi.x -= buffer; s.roi.width += buffer; }
-		if (s.roi.x+s.roi.width < static_cast<int>(s.cameraModel.cameraInfo().width)-buffer) { s.roi.width += buffer; }
-		if (buffer < s.roi.y) { s.roi.y -= buffer; s.roi.height += buffer; }
-		if (s.roi.y+s.roi.height < static_cast<int>(s.cameraModel.cameraInfo().height)-buffer) { s.roi.height += buffer; }
 
+		// Dilate by buffer
+		const int buffer = 50; //25
+		s.roi.x -= buffer;
+		s.roi.width += 2*buffer;
+		s.roi.y -= buffer;
+		s.roi.height += 2*buffer;
+
+		// Trim to image range
+		s.roi.x = std::max(0, s.roi.x);
+		s.roi.y = std::max(0, s.roi.y);
+		s.roi.width = std::min(static_cast<int>(s.cameraModel.cameraInfo().width-s.roi.x), s.roi.width);
+		s.roi.height = std::min(static_cast<int>(s.cameraModel.cameraInfo().height-s.roi.y), s.roi.height);
+
+		// Crop the images
 		cv::Mat rgb_cropped(s.cv_rgb_ptr->image, s.roi);
 		cv::Mat depth_cropped(s.cv_depth_ptr->image, s.roi);
 		s.cv_rgb_cropped = cv_bridge::CvImage(s.cv_rgb_ptr->header, s.cv_rgb_ptr->encoding, rgb_cropped);

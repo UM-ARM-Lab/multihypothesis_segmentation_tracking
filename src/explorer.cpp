@@ -82,8 +82,7 @@ using namespace mps;
 sensor_msgs::JointState::ConstPtr latestJoints;
 std::mutex joint_mtx;
 
-const bool shouldLog = false;
-const std::string worldname = "experiment_world_02_25";
+const bool shouldLog = true;
 
 void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 {
@@ -436,32 +435,6 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		}
 	} // end of these sequence of actions
 
-	if (compositeAction->primaryAction >= 0)
-	{
-		std::cerr << "Start Historian!" << std::endl;
-		historian->stopCapture();
-
-		/////////////////////////////////////////////
-		//// log historian->buffer & scene->segInfo
-		/////////////////////////////////////////////
-		if (shouldLog)
-		{
-			{
-				std::cerr << "start logging historian->buffer" << std::endl;
-				DataLog logger(scenario->experiment->experiment_dir + "/buffer_" + worldname + ".bag");
-				logger.activeChannels.insert("buffer");
-				logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
-				std::cerr << "Successfully logged buffer." << std::endl;
-			}
-			{
-				std::cerr << "start logging scene->segInfo" << std::endl;
-				DataLog logger(scenario->experiment->experiment_dir + "/segInfo_" + worldname + ".bag");
-				logger.activeChannels.insert("segInfo");
-				logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
-				std::cerr << "Successfully logged scene->segInfo." << std::endl;
-			}
-		}
-	}
 	return true;
 }
 
@@ -597,14 +570,15 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	if (shouldLog)
 	{
+		static int iter = 0;
 		for (int i = 0; i<particleFilter->numParticles; ++i)
 		{
-			std::cerr << "start logging particle " << i << std::endl;
-			DataLog logger(scenario->experiment->experiment_dir + "/particle_" + std::to_string(i) + "_" + worldname + ".bag");
+			DataLog logger(scenario->experiment->experiment_dir + "/particle_" + std::to_string(iter) + "_" + std::to_string(i) + ".bag");
 			logger.activeChannels.insert("particle");
 			logger.log<OccupancyData>("particle", *particleFilter->particles[i].state);
-			std::cerr << "Successfully logged particle " << i << std::endl;
+			ROS_INFO_STREAM("Logged particle " << i);
 		}
+		++iter;
 	}
 
 	if (scenario->shouldVisualize("particles"))
@@ -1006,8 +980,30 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 		if (!ros::ok()) { return; }
 
-		bool success = executeMotion(motion, *scenario->homeState);
-		if (success)
+		bool motionSuccess = executeMotion(motion, *scenario->homeState);
+
+		/////////////////////////////////////////////
+		//// log historian->buffer & scene->segInfo
+		/////////////////////////////////////////////
+		if (shouldLog)
+		{
+			static int iter = 0;
+			{
+				DataLog logger(scenario->experiment->experiment_dir + "/buffer_" + std::to_string(iter) + ".bag");
+				logger.activeChannels.insert("buffer");
+				logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
+				ROS_INFO("Successfully logged buffer.");
+			}
+			{
+				DataLog logger(scenario->experiment->experiment_dir + "/segInfo_" + std::to_string(iter) + ".bag");
+				logger.activeChannels.insert("segInfo");
+				logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
+				ROS_INFO("Successfully logged scene->segInfo.");
+			}
+			++iter;
+		}
+
+		if (motionSuccess)
 		{
 			static int actionCount = 0;
 			std::cerr << "Actions: " << ++actionCount << std::endl;
@@ -1234,7 +1230,6 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	gripperRPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/right_arm/gripper_command", 1, false);
 	displayPub = nh.advertise<moveit_msgs::DisplayTrajectory>("/move_group/display_planned_path", 1, false);
 	pcPub = pnh.advertise<pcl::PointCloud<PointT>>("segment_clouds", 1, true);
-	mapServer = std::make_shared<LocalOctreeServer>(pnh);
 	ros::Duration(1.0).sleep();
 	completionClient = std::make_shared<VoxelCompleter>(nh);
 	segmentationClient = std::make_shared<RGBDSegmenter>(nh);
@@ -1267,16 +1262,10 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	selfModels.erase("victor_left_arm_link_0");
 	selfModels.erase("victor_right_arm_link_0");
 
-	scenario->listener = std::make_shared<tf2_ros::TransformListener>(scenario->transformBuffer);//listener.get();
-	scenario->transformBuffer.setUsingDedicatedThread(true);
-	scenario->broadcaster = broadcaster.get();
-	scenario->mapServer = mapServer;
-	scenario->completionClient = completionClient;
-	scenario->segmentationClient = segmentationClient;
-	scenario->experiment = experiment;
-
+	double resolution = NAN;
 	scenario->minExtent = Eigen::Vector4d::Ones();
 	scenario->maxExtent = Eigen::Vector4d::Ones();
+	pnh.getParam("roi/resolution", resolution);
 	pnh.getParam("roi/min/x", scenario->minExtent.x());
 	pnh.getParam("roi/min/y", scenario->minExtent.y());
 	pnh.getParam("roi/min/z", scenario->minExtent.z());
@@ -1285,8 +1274,16 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	pnh.getParam("roi/max/z", scenario->maxExtent.z());
 	pnh.getParam("roi/frame_id", scenario->worldFrame);
 
-	double resolution = 0.010;
-	pnh.getParam("roi/resolution", resolution);
+	mapServer = std::make_shared<LocalOctreeServer>(resolution, scenario->worldFrame);
+
+	scenario->listener = std::make_shared<tf2_ros::TransformListener>(scenario->transformBuffer);//listener.get();
+	scenario->transformBuffer.setUsingDedicatedThread(true);
+	scenario->broadcaster = broadcaster.get();
+	scenario->mapServer = mapServer;
+	scenario->completionClient = completionClient;
+	scenario->segmentationClient = segmentationClient;
+	scenario->experiment = experiment;
+
 	mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution,
 	                                                            scenario->minExtent.head<3>(),
 	                                                            scenario->maxExtent.head<3>());

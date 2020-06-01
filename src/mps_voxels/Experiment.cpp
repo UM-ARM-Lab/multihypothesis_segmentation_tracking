@@ -32,6 +32,9 @@
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
 
+#include <boost/format.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
+
 #include <boost/filesystem.hpp>
 namespace fs = boost::filesystem;
 
@@ -40,6 +43,7 @@ namespace mps
 
 
 Experiment::Experiment(ros::NodeHandle& nh, ros::NodeHandle& pnh)
+	: experiment_start(ros::WallTime::now())
 {
 	std::random_device rd;
 
@@ -61,8 +65,11 @@ Experiment::Experiment(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	if (!gotParam)
 	{
 		fs::path temp_dir = fs::temp_directory_path();
-		fs::path working_dir = temp_dir / fs::path(ros::this_node::getName() + "_" + experiment_id);
-		fs::create_directory(working_dir);
+		fs::path working_dir = temp_dir /
+		                       fs::path(ros::this_node::getName()) /
+		                       fs::path(timestamp()); // /
+//		                       fs::path(experiment_id);
+		fs::create_directories(working_dir);
 		experiment_dir = working_dir.string();
 		nh.setParam(dirKey, experiment_dir);
 	}
@@ -91,6 +98,12 @@ Experiment::Experiment(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	ROS_INFO_STREAM("Random Seed: " << seed);
 	rng = std::default_random_engine(seed);
 
+}
+
+std::string Experiment::timestamp() const
+{
+	boost::posix_time::ptime p_time = experiment_start.toBoost();
+	return boost::posix_time::to_iso_extended_string(p_time);
 }
 
 }

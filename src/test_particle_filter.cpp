@@ -138,7 +138,7 @@ int main(int argc, char **argv)
 	//// Initialize mapServer
 	/////////////////////////////////////////////
 	std::shared_ptr<Scenario> scenario = fixture.scenario;
-	scenario->mapServer = std::make_shared<LocalOctreeServer>(pnh);
+	scenario->mapServer = std::make_shared<LocalOctreeServer>(0.01, "table_surface");
 	octomap::point3d tMin(scenario->minExtent.x(), scenario->minExtent.y(), scenario->minExtent.z());
 	octomap::point3d tMax(scenario->maxExtent.x(), scenario->maxExtent.y(), scenario->maxExtent.z());
 	scenario->mapServer->m_octree->setBBXMin(tMin);

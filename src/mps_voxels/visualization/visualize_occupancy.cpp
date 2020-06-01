@@ -35,6 +35,21 @@
 namespace mps
 {
 
+visualization_msgs::MarkerArray visualize(
+	const OccupancyData& data,
+	const std_msgs::Header& header,
+	const std::map<VoxelRegion::VertexLabels::value_type , std_msgs::ColorRGBA>& colormap)
+{
+	visualization_msgs::MarkerArray ma = visualize(*data.voxelRegion, data.vertexState, header, colormap);
+//	ma.markers += visualize(*data.voxelRegion, data.edgeState, header, re).markers;
+	for (const auto& pair : data.objects)
+	{
+		ma.markers += visualize(*pair.second, header, colormap.at(pair.first.id)).markers;
+	}
+
+	return ma;
+}
+
 visualization_msgs::MarkerArray visualize(const OccupancyData& data, const std_msgs::Header& header, std::default_random_engine& re)
 {
 	visualization_msgs::MarkerArray ma = visualize(*data.voxelRegion, data.vertexState, header, re);

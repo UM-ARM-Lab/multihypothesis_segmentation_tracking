@@ -45,6 +45,7 @@ class Experiment
 public:
 	Experiment(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 
+	const ros::WallTime experiment_start;
 	std::string experiment_id;
 	std::string experiment_dir;
 	ros::ServiceClient externalVideoClient;
@@ -56,6 +57,8 @@ public:
 		const auto& iter = visualize.find(channel);
 		return (iter != visualize.end() && iter->second);
 	}
+
+	std::string timestamp() const;
 
 //protected:
 

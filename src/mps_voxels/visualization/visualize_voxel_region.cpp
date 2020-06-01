@@ -32,6 +32,56 @@
 namespace mps
 {
 
+visualization_msgs::MarkerArray visualize(
+	const VoxelRegion& region,
+	const VoxelRegion::VertexLabels& labels,
+	const std_msgs::Header& header,
+	const std::map<VoxelRegion::VertexLabels::value_type , std_msgs::ColorRGBA>& colormap)
+{
+	visualization_msgs::Marker m;
+	Eigen::Vector3d offset(region.resolution * 0.5, region.resolution * 0.5, region.resolution * 0.5);
+
+	for (size_t i = 0; i < labels.size(); i++)
+	{
+		if (labels[i] == VoxelRegion::FREE_SPACE) { continue; }
+		const VoxelRegion::vertex_descriptor vd = region.vertex_at(i);
+		Eigen::Vector3d coord = region.regionMin + region.resolution * (Eigen::Map<const Eigen::Matrix<std::size_t, 3, 1>>(vd.data()).cast<double>()) + offset;
+
+		geometry_msgs::Point cubeCenter;
+		cubeCenter.x = coord[0];
+		cubeCenter.y = coord[1];
+		cubeCenter.z = coord[2];
+
+		m.points.push_back(cubeCenter);
+
+		// Colors
+		std_msgs::ColorRGBA color = colormap.at(labels[i]);
+		m.colors.push_back(color);
+	}
+
+	m.header = header;
+	m.ns = "voxel_state";
+	m.id = 0;
+	m.type = visualization_msgs::Marker::CUBE_LIST;
+	m.scale.x = region.resolution;
+	m.scale.y = region.resolution;
+	m.scale.z = region.resolution;
+	m.color.r = 0;
+	m.color.g = 0.2;
+	m.color.b = 1;
+	m.color.a = 1;
+	m.pose.orientation.w = 1;
+
+	if (m.points.empty())
+		m.action = visualization_msgs::Marker::DELETE;
+	else
+		m.action = visualization_msgs::Marker::ADD;
+
+	visualization_msgs::MarkerArray vertexLabelVis;
+	vertexLabelVis.markers.push_back(m);
+	return vertexLabelVis;
+}
+
 visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
                                           const VoxelRegion::VertexLabels& labels,
                                           const std_msgs::Header& header,
@@ -42,7 +92,7 @@ visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
 
 	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
 
-	std::map<int, std_msgs::ColorRGBA> colormap;
+	std::map<VoxelRegion::VertexLabels::value_type , std_msgs::ColorRGBA> colormap;
 	for (size_t i = 0; i < labels.size(); i++)
 	{
 		if (labels[i] == VoxelRegion::FREE_SPACE) { continue; }
