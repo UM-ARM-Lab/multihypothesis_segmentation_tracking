@@ -39,6 +39,8 @@
 namespace mps
 {
 
+visualization_msgs::MarkerArray visualize(const Object& obj, const std_msgs::Header& header, const std_msgs::ColorRGBA& color);
+
 visualization_msgs::MarkerArray visualize(const Object& data, const std_msgs::Header& header, std::default_random_engine& re);
 
 }

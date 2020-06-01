@@ -39,6 +39,12 @@
 namespace mps
 {
 
+visualization_msgs::MarkerArray visualize(
+	const VoxelRegion& region,
+	const VoxelRegion::VertexLabels& labels,
+	const std_msgs::Header& header,
+	const std::map<VoxelRegion::VertexLabels::value_type , std_msgs::ColorRGBA>& colormap);
+
 visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
                                           const VoxelRegion::VertexLabels& data,
                                           const std_msgs::Header& header,

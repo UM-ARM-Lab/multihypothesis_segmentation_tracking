@@ -35,17 +35,9 @@
 namespace mps
 {
 
-visualization_msgs::MarkerArray visualize(const Object& obj, const std_msgs::Header& header, std::default_random_engine& re)
+visualization_msgs::MarkerArray visualize(const Object& obj, const std_msgs::Header& header, const std_msgs::ColorRGBA& color)
 {
 	const auto& subtree = obj.occupancy;
-
-	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
-
-	std_msgs::ColorRGBA color;
-	color.r = uni(re);
-	color.g = uni(re);
-	color.b = uni(re);
-	color.a = 1.0;
 
 	visualization_msgs::MarkerArray ma = visualizeOctree(subtree.get(), header.frame_id, &color);
 	const std::string name = "completed_"+std::to_string(std::abs(obj.index.id));
@@ -71,6 +63,19 @@ visualization_msgs::MarkerArray visualize(const Object& obj, const std_msgs::Hea
 	ma.markers += ms.markers;
 
 	return ma;
+}
+
+visualization_msgs::MarkerArray visualize(const Object& obj, const std_msgs::Header& header, std::default_random_engine& re)
+{
+	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
+
+	std_msgs::ColorRGBA color;
+	color.r = uni(re);
+	color.g = uni(re);
+	color.b = uni(re);
+	color.a = 1.0;
+
+	return visualize(obj, header, color);
 }
 
 }
