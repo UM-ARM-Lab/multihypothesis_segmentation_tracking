@@ -435,32 +435,6 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		}
 	} // end of these sequence of actions
 
-	if (compositeAction->primaryAction >= 0)
-	{
-		std::cerr << "Start Historian!" << std::endl;
-		historian->stopCapture();
-
-		/////////////////////////////////////////////
-		//// log historian->buffer & scene->segInfo
-		/////////////////////////////////////////////
-		if (shouldLog)
-		{
-			static int iter = 0;
-			{
-				DataLog logger(scenario->experiment->experiment_dir + "/buffer_" + std::to_string(iter) + ".bag");
-				logger.activeChannels.insert("buffer");
-				logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
-				ROS_INFO("Successfully logged buffer.");
-			}
-			{
-				DataLog logger(scenario->experiment->experiment_dir + "/segInfo_" + std::to_string(iter) + ".bag");
-				logger.activeChannels.insert("segInfo");
-				logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
-				ROS_INFO("Successfully logged scene->segInfo.");
-			}
-			++iter;
-		}
-	}
 	return true;
 }
 
@@ -1006,8 +980,30 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 		if (!ros::ok()) { return; }
 
-		bool success = executeMotion(motion, *scenario->homeState);
-		if (success)
+		bool motionSuccess = executeMotion(motion, *scenario->homeState);
+
+		/////////////////////////////////////////////
+		//// log historian->buffer & scene->segInfo
+		/////////////////////////////////////////////
+		if (shouldLog)
+		{
+			static int iter = 0;
+			{
+				DataLog logger(scenario->experiment->experiment_dir + "/buffer_" + std::to_string(iter) + ".bag");
+				logger.activeChannels.insert("buffer");
+				logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
+				ROS_INFO("Successfully logged buffer.");
+			}
+			{
+				DataLog logger(scenario->experiment->experiment_dir + "/segInfo_" + std::to_string(iter) + ".bag");
+				logger.activeChannels.insert("segInfo");
+				logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
+				ROS_INFO("Successfully logged scene->segInfo.");
+			}
+			++iter;
+		}
+
+		if (motionSuccess)
 		{
 			static int actionCount = 0;
 			std::cerr << "Actions: " << ++actionCount << std::endl;
