@@ -82,8 +82,7 @@ using namespace mps;
 sensor_msgs::JointState::ConstPtr latestJoints;
 std::mutex joint_mtx;
 
-const bool shouldLog = false;
-const std::string worldname = "experiment_world_02_25";
+const bool shouldLog = true;
 
 void handleJointState(const sensor_msgs::JointState::ConstPtr& js)
 {
@@ -446,20 +445,20 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 		/////////////////////////////////////////////
 		if (shouldLog)
 		{
+			static int iter = 0;
 			{
-				std::cerr << "start logging historian->buffer" << std::endl;
-				DataLog logger(scenario->experiment->experiment_dir + "/buffer_" + worldname + ".bag");
+				DataLog logger(scenario->experiment->experiment_dir + "/buffer_" + std::to_string(iter) + ".bag");
 				logger.activeChannels.insert("buffer");
 				logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
-				std::cerr << "Successfully logged buffer." << std::endl;
+				ROS_INFO("Successfully logged buffer.");
 			}
 			{
-				std::cerr << "start logging scene->segInfo" << std::endl;
-				DataLog logger(scenario->experiment->experiment_dir + "/segInfo_" + worldname + ".bag");
+				DataLog logger(scenario->experiment->experiment_dir + "/segInfo_" + std::to_string(iter) + ".bag");
 				logger.activeChannels.insert("segInfo");
 				logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
-				std::cerr << "Successfully logged scene->segInfo." << std::endl;
+				ROS_INFO("Successfully logged scene->segInfo.");
 			}
+			++iter;
 		}
 	}
 	return true;
@@ -597,14 +596,15 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	if (shouldLog)
 	{
+		static int iter = 0;
 		for (int i = 0; i<particleFilter->numParticles; ++i)
 		{
-			std::cerr << "start logging particle " << i << std::endl;
-			DataLog logger(scenario->experiment->experiment_dir + "/particle_" + std::to_string(i) + "_" + worldname + ".bag");
+			DataLog logger(scenario->experiment->experiment_dir + "/particle_" + std::to_string(iter) + "_" + std::to_string(i) + ".bag");
 			logger.activeChannels.insert("particle");
 			logger.log<OccupancyData>("particle", *particleFilter->particles[i].state);
-			std::cerr << "Successfully logged particle " << i << std::endl;
+			ROS_INFO_STREAM("Logged particle " << i);
 		}
+		++iter;
 	}
 
 	if (scenario->shouldVisualize("particles"))
