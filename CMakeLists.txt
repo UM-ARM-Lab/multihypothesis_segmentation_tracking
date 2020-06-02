@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.8)
 project(mps_interactive_segmentation)
 
 #add_compile_options(-std=c++14)
@@ -77,6 +77,13 @@ link_libraries(${OpenCV_LIBS})
 #  set(CMAKE_CXX_FLAGS_DEBUG "-fsanitize=address -fno-omit-frame-pointer ${CMAKE_CXX_FLAGS_DEBUG}")
 #  set(CMAKE_LINKER_FLAGS_DEBUG "-fsanitize=address -fno-omit-frame-pointer ${CMAKE_STATIC_LINKER_FLAGS_DEBUG}")
 #endif()
+
+#find_package(yaml-cpp REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(YAML_CPP REQUIRED yaml-cpp)
+#message(WARNING "YAML-CPP: ${YAML_CPP_INCLUDE_DIR}")
+include_directories(SYSTEM ${YAML_CPP_INCLUDE_DIR})
+link_libraries(${YAML_CPP_LIBRARIES})
 
 #find_package(catkin REQUIRED mps_msgs actionlib_msgs)
 #add_action_files(DIRECTORY action FILES SegmentRGBD.action)
@@ -249,6 +256,7 @@ add_dependencies(${PROJECT_NAME}_gazebo_segmentation_gt ${${PROJECT_NAME}_EXPORT
 target_link_libraries(${PROJECT_NAME}_gazebo_segmentation_gt
   ${PROJECT_NAME}
   ${catkin_LIBRARIES}
+  ${YAML_CPP_LIBRARIES} # NB: This is not being forwarded correctly from mps_voxels
 )
 if (GVDB)
   target_compile_definitions(${PROJECT_NAME}_gazebo_segmentation_gt PRIVATE VOXELIZER=1)
