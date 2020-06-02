@@ -49,7 +49,7 @@ visualization_msgs::MarkerArray visualize(const Object& obj, const std_msgs::Hea
 
 	// Visualize approximate shape
 	visualization_msgs::Marker m;
-	auto& approx = obj.approximation;
+	const auto& approx = obj.approximation;
 	shapes::constructMarkerFromShape(approx.get(), m, true);
 	m.id = std::abs(obj.index.id);
 	m.ns = "bounds";

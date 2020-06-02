@@ -119,6 +119,7 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 	std::cerr << "roi.height = " << roi.height << "; labels.rows = " << labels.rows << std::endl;
 	MPS_ASSERT(roi.width == labels.cols);
 	MPS_ASSERT(roi.height == labels.rows);
+	MPS_ASSERT(labels.type() == CV_16UC1);
 	using LabelT = uint16_t;
 	const LabelT BUFFER_VALUE = std::numeric_limits<LabelT>::max();
 	std::set<LabelT> uniqueLabels = unique(labels);
