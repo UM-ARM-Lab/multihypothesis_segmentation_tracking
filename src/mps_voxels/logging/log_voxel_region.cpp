@@ -37,19 +37,14 @@ bool DataLog::load<VoxelRegion>(const std::string& channel, VoxelRegion& msg)
 {
 	std_msgs::Float64 res;
 	load(channel + "/resolution" , res);
-	msg.resolution = res.data;
 
 	geometry_msgs::Vector3 rMin;
 	load(channel + "/regionMin" , rMin);
-	msg.regionMin.x() = rMin.x;
-	msg.regionMin.y() = rMin.y;
-	msg.regionMin.z() = rMin.z;
 
 	geometry_msgs::Vector3 rMax;
 	load(channel + "/regionMax" , rMax);
-	msg.regionMax.x() = rMax.x;
-	msg.regionMax.y() = rMax.y;
-	msg.regionMax.z() = rMax.z;
+
+	msg = VoxelRegion(res.data, {rMin.x, rMin.y, rMin.z}, {rMax.x, rMax.y, rMax.z});
 
 	return true;
 }

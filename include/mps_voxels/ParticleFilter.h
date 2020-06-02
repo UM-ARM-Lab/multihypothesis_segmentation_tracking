@@ -25,7 +25,7 @@ public:
 
 	// TODO: Classes for storing intermediate results
 
-	ParticleFilter(std::shared_ptr<const Scenario> scenario_, const VoxelRegion::vertex_descriptor& dims, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n=10);
+	ParticleFilter(std::shared_ptr<const Scenario> scenario_, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n=10);
 
 	std::shared_ptr<const Scenario> scenario;
 
@@ -54,7 +54,7 @@ public:
 
 	void applyMeasurementModel(const std::shared_ptr<const Scene>& newScene);
 
-	// TODO: resample()
+	void resample(std::default_random_engine& rng);
 };
 
 }

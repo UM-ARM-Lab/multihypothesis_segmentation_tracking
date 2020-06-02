@@ -64,7 +64,8 @@ public:
 	using EdgeState = std::vector<bool>;
 	using VertexLabels = std::vector<int>;
 
-	VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax);
+	VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin);
+	VoxelRegion(double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax);
 
 	size_t getEdgeIndex(vertex_descriptor a, vertex_descriptor b);
 
@@ -87,7 +88,7 @@ public:
 		&& query.x() <= regionMax.x() && query.y() <= regionMax.y() && query.z() <= regionMax.z();
 	}
 
-	const vertex_descriptor m_dimension_lengths;
+	vertex_descriptor m_dimension_lengths;
 	vertices_size_type m_num_vertices{};
 
 	boost::array<edges_size_type, Dimensions> m_edge_count{};
@@ -174,7 +175,7 @@ double snapCoord(const double& resolution, const double& x)
 
 mps::VoxelRegion::vertex_descriptor roiToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax);
 
-mps::VoxelRegion::vertex_descriptor roiToVoxelRegion(const double& resolution, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax);
+mps::VoxelRegion::vertex_descriptor roiToDimensions(const double& resolution, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax);
 
 mps::VoxelRegion::vertex_descriptor coordToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& query);
 

@@ -11,10 +11,10 @@
 namespace mps
 {
 
-ParticleFilter::ParticleFilter(std::shared_ptr<const Scenario> scenario_, const VoxelRegion::vertex_descriptor& dims, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n)
+ParticleFilter::ParticleFilter(std::shared_ptr<const Scenario> scenario_, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n)
 	: scenario(std::move(scenario_)), numParticles(n)
 {
-	voxelRegion = std::make_shared<VoxelRegion>(dims, res, rmin, rmax);;
+	voxelRegion = std::make_shared<VoxelRegion>(res, rmin, rmax);
 //	particles.resize(n);
 //	for (int i=0; i<n; ++i)
 //	{
@@ -44,6 +44,9 @@ ParticleFilter::initializeParticles(
 		particle.state = std::make_shared<OccupancyData>(voxelRegion);
 		particle.state->segInfo = std::make_shared<SegmentationInfo>(sample.second.segmentation);
 		particle.weight = sample.first;
+		// Visualization:
+		IMSHOW("segmentation", colorByLabel(particle.state->segInfo->objectness_segmentation->image));
+
 		bool execSegmentation = SceneProcessor::performSegmentation(*scene, particle.state->segInfo, *particle.state);
 		if (!execSegmentation)
 		{
@@ -226,5 +229,30 @@ void ParticleFilter::applyMeasurementModel(const std::shared_ptr<const Scene>& n
 	}
 }
 
+void ParticleFilter::resample(std::default_random_engine& rng)
+{
+	std::vector<double> weightBar;
+
+	for (auto &p : particles)
+	{
+		weightBar.push_back(p.weight);
+	}
+	std::discrete_distribution<> distribution(weightBar.begin(), weightBar.end());
+	std::cout << "Probabilities: ";
+	for (double x:distribution.probabilities()) std::cout << x << " ";
+	std::cout << std::endl;
+
+	std::vector<Particle> resampledParticles;
+	for (int i = 0; i < numParticles; ++i)
+	{
+		int index = distribution(rng);
+		resampledParticles.push_back(particles[index]);
+	}
+	/// Should be deep copy!
+	for (int i = 0; i < numParticles; ++i)
+	{
+		particles[i] = resampledParticles[i];
+	}
+}
 
 }

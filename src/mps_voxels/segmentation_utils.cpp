@@ -193,7 +193,6 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 			}
 		}
 		else { ROS_INFO_STREAM("Rejected object " << pair.first << ": " << percentFilled * 100.0 << "%. (" << pair.second->size() << " pts)"); }
-
 	}
 
 	return retVal;
