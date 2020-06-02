@@ -90,7 +90,9 @@ std::shared_ptr<Scenario> scenarioFactory(ros::NodeHandle& nh, ros::NodeHandle& 
 {
 	auto experiment = std::make_shared<Experiment>(nh, pnh);
 
+	setIfMissing(pnh, "roi/frame_id", "table_surface");
 	setIfMissing(pnh, "frame_id", "table_surface");
+	setIfMissing(pnh, "roi/resolution", 0.010);
 	setIfMissing(pnh, "resolution", 0.010);
 	setIfMissing(pnh, "latch", false);
 	setIfMissing(pnh, "filter_ground", false);

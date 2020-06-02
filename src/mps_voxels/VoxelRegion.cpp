@@ -42,8 +42,31 @@ namespace mps
 
 const int VoxelRegion::FREE_SPACE;
 
-VoxelRegion::VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax) // NOLINT(hicpp-member-init,cppcoreguidelines-pro-type-member-init)
-	: resolution(res), regionMin(std::move(rmin)), regionMax(std::move(rmax)), m_dimension_lengths(dims)
+mps::VoxelRegion::vertex_descriptor
+roiToDimensions(const double& resolution, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax)
+{
+	Eigen::Vector3d minCoord = {snapCoord(resolution, roiMin.x()), snapCoord(resolution, roiMin.y()), snapCoord(resolution, roiMin.z())};
+	Eigen::Vector3d maxCoord = {snapCoord(resolution, roiMax.x()), snapCoord(resolution, roiMax.y()), snapCoord(resolution, roiMax.z())};
+
+	mps::VoxelRegion::vertex_descriptor dims;
+	for (int i = 0; i < 3; ++i)
+	{
+		dims[i] = ceil((maxCoord[i]-minCoord[i])/resolution) + 1;
+	}
+
+	return dims;
+}
+
+VoxelRegion::VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin) // NOLINT(hicpp-member-init,cppcoreguidelines-pro-type-member-init)
+	: resolution(res), regionMin(std::move(rmin)), m_dimension_lengths(dims)
+{
+	precalculate();
+	regionMinSnapped = {snapCoord(resolution, rmin.x()), snapCoord(resolution, rmin.y()), snapCoord(resolution, rmin.z())};
+	regionMax = regionMinSnapped + resolution * Eigen::Vector3d(dims[0], dims[1], dims[2]);
+}
+
+VoxelRegion::VoxelRegion(double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax)
+	: resolution(res), regionMin(std::move(rmin)), regionMax(std::move(rmax)), m_dimension_lengths(roiToDimensions(res, rmin, rmax))
 {
 	precalculate();
 	regionMinSnapped = {snapCoord(resolution, rmin.x()), snapCoord(resolution, rmin.y()), snapCoord(resolution, rmin.z())};
@@ -340,21 +363,6 @@ roiToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Ei
 }
 
 mps::VoxelRegion::vertex_descriptor
-roiToVoxelRegion(const double& resolution, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& roiMax)
-{
-	Eigen::Vector3d minCoord = {snapCoord(resolution, roiMin.x()), snapCoord(resolution, roiMin.y()), snapCoord(resolution, roiMin.z())};
-	Eigen::Vector3d maxCoord = {snapCoord(resolution, roiMax.x()), snapCoord(resolution, roiMax.y()), snapCoord(resolution, roiMax.z())};
-
-	mps::VoxelRegion::vertex_descriptor dims;
-	for (int i = 0; i < 3; ++i)
-	{
-		dims[i] = ceil((maxCoord[i]-minCoord[i])/resolution) + 1;
-	}
-
-	return dims;
-}
-
-mps::VoxelRegion::vertex_descriptor
 coordToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& roiMin, const Eigen::Vector3d& query)
 {
 	auto minCoord = snap(roiMin, octree);
@@ -445,8 +453,7 @@ std::pair<bool, double> sampleIsOccupied(const octomap::OcTree* octree, const Ei
 mps::VoxelRegion::EdgeState
 octreeToGrid(const octomap::OcTree* octree, const Eigen::Vector3d& minExtent, const Eigen::Vector3d& maxExtent)
 {
-	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(octree, minExtent, maxExtent);
-	mps::VoxelRegion vox(dims, octree->getResolution(), minExtent, maxExtent);
+	mps::VoxelRegion vox(octree->getResolution(), minExtent, maxExtent);
 
 	mps::VoxelRegion::EdgeState edges(vox.num_edges());
 
@@ -469,8 +476,7 @@ std::pair<double, mps::VoxelRegion::EdgeState>
 octreeToGridParticle(const octomap::OcTree* octree, const Eigen::Vector3d& minExtent, const Eigen::Vector3d& maxExtent,
                      cv::RNG& rng)
 {
-	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(octree, minExtent, maxExtent);
-	mps::VoxelRegion vox(dims, octree->getResolution(), minExtent, maxExtent);
+	mps::VoxelRegion vox(octree->getResolution(), minExtent, maxExtent);
 
 	mps::VoxelRegion::EdgeState edges(vox.num_edges());
 
@@ -500,8 +506,7 @@ mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, s
                                                          const Eigen::Vector3d& roiMinExtent,
                                                          const Eigen::Vector3d& roiMaxExtent)
 {
-	mps::VoxelRegion::vertex_descriptor dims = roiToGrid(objects.begin()->second->occupancy.get(), roiMinExtent, roiMaxExtent);
-	mps::VoxelRegion vox(dims, objects.begin()->second->occupancy->getResolution(), roiMinExtent, roiMaxExtent);
+	mps::VoxelRegion vox(objects.begin()->second->occupancy->getResolution(), roiMinExtent, roiMaxExtent);
 
 	mps::VoxelRegion::VertexLabels res(vox.num_vertices(), VoxelRegion::FREE_SPACE);
 
@@ -510,8 +515,7 @@ mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, s
 	{
 		auto* obj = pair.second.get();
 		assert(obj);
-		mps::VoxelRegion::vertex_descriptor objDims = roiToGrid(obj->occupancy.get(), obj->minExtent, obj->maxExtent);
-		mps::VoxelRegion objVS(objDims, obj->occupancy->getResolution(), obj->minExtent, obj->maxExtent);
+		mps::VoxelRegion objVS(obj->occupancy->getResolution(), obj->minExtent, obj->maxExtent);
 		mps::VoxelRegion::vertex_descriptor objMin = coordToGrid(obj->occupancy.get(), roiMinExtent, obj->minExtent);
 
 		for (mps::VoxelRegion::vertices_size_type v = 0; v < objVS.num_vertices(); ++v)
@@ -545,8 +549,7 @@ VoxelRegion::objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::uniqu
 	{
 		const auto* obj = pair.second.get();
 		assert(obj);
-		mps::VoxelRegion::vertex_descriptor objDims = roiToGrid(obj->occupancy.get(), obj->minExtent, obj->maxExtent);
-		mps::VoxelRegion objVS(objDims, obj->occupancy->getResolution(), obj->minExtent, obj->maxExtent);
+		mps::VoxelRegion objVS(obj->occupancy->getResolution(), obj->minExtent, obj->maxExtent);
 		mps::VoxelRegion::vertex_descriptor objMin = coordToGrid(obj->occupancy.get(), subRegionMinExtent, obj->minExtent);
 
 		for (mps::VoxelRegion::vertices_size_type v = 0; v < objVS.num_vertices(); ++v)

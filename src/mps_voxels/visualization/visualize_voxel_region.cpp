@@ -87,6 +87,8 @@ visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
                                           const std_msgs::Header& header,
                                           std::default_random_engine& re)
 {
+	assert(region.num_vertices() == labels.size());
+
 	visualization_msgs::Marker m;
 	Eigen::Vector3d offset(region.resolution * 0.5, region.resolution * 0.5, region.resolution * 0.5);
 

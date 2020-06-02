@@ -25,8 +25,7 @@ struct VoxelRegionBuilder
 		                          getParam<double>(p, "roi/max/z"));
 		double resolution = getParam<double>(p, "roi/resolution");
 
-		mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution, minExtent, maxExtent);
-		return {dims, resolution, minExtent, maxExtent};
+		return {resolution, minExtent, maxExtent};
 	}
 };
 

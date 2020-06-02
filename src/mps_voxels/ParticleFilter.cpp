@@ -11,10 +11,10 @@
 namespace mps
 {
 
-ParticleFilter::ParticleFilter(std::shared_ptr<const Scenario> scenario_, const VoxelRegion::vertex_descriptor& dims, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n)
+ParticleFilter::ParticleFilter(std::shared_ptr<const Scenario> scenario_, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n)
 	: scenario(std::move(scenario_)), numParticles(n)
 {
-	voxelRegion = std::make_shared<VoxelRegion>(dims, res, rmin, rmax);;
+	voxelRegion = std::make_shared<VoxelRegion>(res, rmin, rmax);
 //	particles.resize(n);
 //	for (int i=0; i<n; ++i)
 //	{

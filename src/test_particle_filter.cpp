@@ -28,8 +28,7 @@
 using namespace mps;
 
 const std::string testDirName = "package://mps_test_data/";
-const std::string worldname = "experiment_world_02_26";
-
+const std::string expDirName = "2020-06-01T20:39:38.000040/";
 
 class ParticleFilterTestFixture
 {
@@ -62,27 +61,24 @@ public:
 
 		double resolution = 0.010;
 		pnh.getParam("resolution", resolution);
-		mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution,
-		                                                            scenario->minExtent.head<3>().cast<double>(),
-		                                                            scenario->maxExtent.head<3>().cast<double>());
-		particleFilter = std::make_unique<ParticleFilter>(scenario, dims, resolution,
-		                                                  scenario->minExtent.head<3>().cast<double>(),
-		                                                  scenario->maxExtent.head<3>().cast<double>(), 2);
+		particleFilter = std::make_unique<ParticleFilter>(scenario, resolution,
+		                                                  scenario->minExtent.head<3>(),
+		                                                  scenario->maxExtent.head<3>(), 5);
 
 		/////////////////////////////////////////////
 		//// Load initial scene data
 		/////////////////////////////////////////////
 		std::string logDir = parsePackageURL(testDirName);
 		{
-			DataLog loader(logDir + "buffer_" + worldname + ".bag", {}, rosbag::bagmode::Read);
+			DataLog loader(logDir + expDirName + "buffer_" + std::to_string(0) + ".bag", {}, rosbag::bagmode::Read);
 			loader.activeChannels.insert("buffer");
 			loader.load<SensorHistoryBuffer>("buffer", motionData);
-			std::cerr << "Successfully loaded." << std::endl;
+			std::cerr << "Successfully loaded buffer." << std::endl;
 		}
 		std::cerr << "number of frames: " << motionData.rgb.size() << std::endl;
 		SegmentationInfo seg_out;
 		{
-			DataLog loader(logDir + "segInfo_" + worldname + ".bag", {}, rosbag::bagmode::Read);
+			DataLog loader(logDir + expDirName + "segInfo_" + std::to_string(0) + ".bag", {}, rosbag::bagmode::Read);
 			loader.activeChannels.insert("segInfo");
 			loader.load<SegmentationInfo>("segInfo", seg_out);
 			std::cerr << "Successfully loaded segInfo." << std::endl;
@@ -98,20 +94,20 @@ public:
 		/////////////////////////////////////////////
 		//// Load initial particles
 		/////////////////////////////////////////////
-		particleFilter->initializeParticles(initialScene);
+//		particleFilter->initializeParticles(initialScene);
 
-//		for (int i=0; i<particleFilter->numParticles; ++i)
-//		{
-//			Particle p;
-//			p.state = std::make_shared<Particle::ParticleData>(particleFilter->voxelRegion);
-//			DataLog loader(logDir + "/particle_" + std::to_string(i) + "_" + worldname + ".bag", {}, rosbag::bagmode::Read);
-//			loader.activeChannels.insert("particle");
-//			loader.load<OccupancyData>("particle", *p.state);
-//			particleFilter->particles.push_back(p);
-//			particleFilter->particles[i].state->uniqueObjectLabels = getUniqueObjectLabels(particleFilter->particles[i].state->vertexState);
-//			particleFilter->particles[i].state->parentScene = initialScene;
-//			std::cerr << "Successfully loaded." << std::endl;
-//		}
+		for (int i=0; i<particleFilter->numParticles; ++i)
+		{
+			Particle p;
+			p.state = std::make_shared<Particle::ParticleData>(particleFilter->voxelRegion);
+			DataLog loader(logDir + expDirName + "particle_0_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
+			loader.activeChannels.insert("particle");
+			loader.load<OccupancyData>("particle", *p.state);
+			particleFilter->particles.push_back(p);
+			particleFilter->particles[i].state->uniqueObjectLabels = getUniqueObjectLabels(particleFilter->particles[i].state->vertexState);
+			particleFilter->particles[i].state->parentScene = initialScene;
+			std::cerr << "Successfully loaded." << std::endl;
+		}
 		// Load motion data
 	}
 };

@@ -1284,10 +1284,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	scenario->segmentationClient = segmentationClient;
 	scenario->experiment = experiment;
 
-	mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution,
-	                                                            scenario->minExtent.head<3>(),
-	                                                            scenario->maxExtent.head<3>());
-	particleFilter = std::make_unique<ParticleFilter>(scenario, dims, resolution,
+	particleFilter = std::make_unique<ParticleFilter>(scenario, resolution,
 	                                                  scenario->minExtent.head<3>(),
 	                                                  scenario->maxExtent.head<3>(), 5);
 

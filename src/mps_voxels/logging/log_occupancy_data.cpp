@@ -26,15 +26,12 @@ template <>
 bool DataLog::load<OccupancyData>(const std::string& channel, OccupancyData& msg)
 {
 	//// in case the voxelRegion is not initialized
-	const double resolution = 0.010;
-	Eigen::Vector3f ROImaxExtent(0.4f, 0.6f, 0.5f);
-	Eigen::Vector3f ROIminExtent(-0.4f, -0.6f, -0.020f);
-	mps::VoxelRegion::vertex_descriptor dims = roiToVoxelRegion(resolution,
-	                                                            ROIminExtent.cast<double>(),
-	                                                            ROImaxExtent.cast<double>());
-	msg.voxelRegion = std::make_shared<VoxelRegion>(dims, resolution,
-	                                                ROIminExtent.cast<double>(),
-	                                                ROImaxExtent.cast<double>());
+	const double resolution = 1.0;
+	Eigen::Vector3d ROImaxExtent(1.0, 1.0, 1.0);
+	Eigen::Vector3d ROIminExtent(-1.0, -1.0, -1.0);
+	msg.voxelRegion = std::make_shared<VoxelRegion>(resolution,
+	                                                ROIminExtent,
+	                                                ROImaxExtent);
 	load(channel + "/voxelRegion", *msg.voxelRegion);
 
 	std_msgs::Int32MultiArray vs;
