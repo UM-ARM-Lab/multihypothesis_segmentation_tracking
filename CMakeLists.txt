@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.5)
 project(mps_interactive_segmentation)
 
 #add_compile_options(-std=c++14)
@@ -7,6 +7,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 #set(CMAKE_BUILD_TYPE Debug)
+
+option(GVDB "Use GVDB voxelization." OFF)
+if(GVDB)
+  #find_package(CUDA 10.2 REQUIRED)
+  #include_directories(SYSTEM CUDA_INCLUDE_DIRS)
+  find_package(CUDAToolkit 10.2 REQUIRED)
+  find_package(GVDB REQUIRED)
+endif()
 
 macro(use_strict_compile_flags)
   set(BUILD_FLAGS "-Wshadow -Wall -Wextra -Wpedantic -Werror=return-type")
@@ -44,6 +52,8 @@ find_package(catkin REQUIRED COMPONENTS
 
 # CGAL and its components
 # NB: CGAL likes to clobber global variables, e.g. Boost_LIBRARIES, so make sure you include it first
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCGAL_DISABLE_ROUNDING_MATH_CHECK")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCGAL_NO_ASSERTIONS")
 set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE CACHE BOOL "Disable CGAL complaints about performance flags.")
 set(CGAL_DONT_OVERRIDE_CMAKE_FLAGS TRUE CACHE BOOL "Force CGAL to maintain CMAKE flags")
 find_package(CGAL 4.12 REQUIRED COMPONENTS
@@ -55,6 +65,18 @@ include( ${CGAL_USE_FILE} )
 find_package(OpenCV REQUIRED)
 include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 link_libraries(${OpenCV_LIBS})
+
+#find_package(vhacd REQUIRED)
+#include_directories(SYSTEM ${})
+
+#option(ASAN "Adds flags for AddressSanitizer." ON)
+#if(ASAN)
+#  set(CMAKE_BUILD_TYPE "Debug")
+#  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
+#  set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
+#  set(CMAKE_CXX_FLAGS_DEBUG "-fsanitize=address -fno-omit-frame-pointer ${CMAKE_CXX_FLAGS_DEBUG}")
+#  set(CMAKE_LINKER_FLAGS_DEBUG "-fsanitize=address -fno-omit-frame-pointer ${CMAKE_STATIC_LINKER_FLAGS_DEBUG}")
+#endif()
 
 #find_package(catkin REQUIRED mps_msgs actionlib_msgs)
 #add_action_files(DIRECTORY action FILES SegmentRGBD.action)
@@ -166,13 +188,34 @@ include_directories(SYSTEM
   ${catkin_INCLUDE_DIRS}
 )
 
+if (GVDB)
+  set(OTHER_SRCS
+    src/${PROJECT_NAME}/GVDBVoxelizer.cpp
+  )
+else()
+  set(OTHER_SRCS "")
+endif()
+
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/paths.cpp
   src/${PROJECT_NAME}/loading.cpp
   src/${PROJECT_NAME}/GazeboModel.cpp
   src/${PROJECT_NAME}/GazeboMocap.cpp
+  src/${PROJECT_NAME}/ROSVoxelizer.cpp
+  ${OTHER_SRCS}
 )
+target_link_libraries(${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+if (GVDB)
+  target_link_libraries(${PROJECT_NAME}
+  #  ::vhacd
+    CUDA::cudart
+    GVDB::gvdb
+  #  GVDB::gvdbPTX
+  )
+endif()
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -207,6 +250,11 @@ target_link_libraries(${PROJECT_NAME}_gazebo_segmentation_gt
   ${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
+if (GVDB)
+  target_compile_definitions(${PROJECT_NAME}_gazebo_segmentation_gt PRIVATE VOXELIZER=1)
+else()
+  target_compile_definitions(${PROJECT_NAME}_gazebo_segmentation_gt PRIVATE VOXELIZER=0)
+endif()
 
 #############
 ## Install ##
