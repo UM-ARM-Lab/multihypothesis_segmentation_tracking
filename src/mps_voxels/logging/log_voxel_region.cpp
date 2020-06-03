@@ -30,6 +30,8 @@ void DataLog::log<VoxelRegion>(const std::string& channel, const VoxelRegion& ms
 	rMax.z = msg.regionMax.z();
 	activeChannels.insert(channel + "/regionMax");
 	log(channel + "/regionMax", rMax);
+
+	log<const std::string&>(channel + "/frame_id", msg.frame_id);
 }
 
 template <>
@@ -44,7 +46,10 @@ bool DataLog::load<VoxelRegion>(const std::string& channel, VoxelRegion& msg)
 	geometry_msgs::Vector3 rMax;
 	load(channel + "/regionMax" , rMax);
 
-	msg = VoxelRegion(res.data, {rMin.x, rMin.y, rMin.z}, {rMax.x, rMax.y, rMax.z});
+	std_msgs::String frame;
+	load(channel + "/frame_id", frame);
+
+	msg = VoxelRegion(res.data, {rMin.x, rMin.y, rMin.z}, {rMax.x, rMax.y, rMax.z}, frame.data);
 
 	return true;
 }

@@ -64,8 +64,8 @@ public:
 	using EdgeState = std::vector<bool>;
 	using VertexLabels = std::vector<int>;
 
-	VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin);
-	VoxelRegion(double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax);
+	VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin, std::string frame = "");
+	VoxelRegion(double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax, std::string frame = "");
 
 	size_t getEdgeIndex(vertex_descriptor a, vertex_descriptor b);
 
@@ -80,6 +80,7 @@ public:
 	Eigen::Vector3d regionMin;
 	Eigen::Vector3d regionMax;
 	Eigen::Vector3d regionMinSnapped;
+	std::string frame_id;
 
 	inline
 	bool isInRegion(Eigen::Vector3d query) const

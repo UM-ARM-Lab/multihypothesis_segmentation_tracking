@@ -57,16 +57,16 @@ roiToDimensions(const double& resolution, const Eigen::Vector3d& roiMin, const E
 	return dims;
 }
 
-VoxelRegion::VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin) // NOLINT(hicpp-member-init,cppcoreguidelines-pro-type-member-init)
-	: resolution(res), regionMin(std::move(rmin)), m_dimension_lengths(dims)
+VoxelRegion::VoxelRegion(boost::array<std::size_t, Dimensions> dims, double res, Eigen::Vector3d rmin, std::string frame) // NOLINT(hicpp-member-init,cppcoreguidelines-pro-type-member-init)
+	: resolution(res), regionMin(std::move(rmin)), frame_id(std::move(frame)), m_dimension_lengths(dims)
 {
 	precalculate();
 	regionMinSnapped = {snapCoord(resolution, rmin.x()), snapCoord(resolution, rmin.y()), snapCoord(resolution, rmin.z())};
 	regionMax = regionMinSnapped + resolution * Eigen::Vector3d(dims[0], dims[1], dims[2]);
 }
 
-VoxelRegion::VoxelRegion(double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax)
-	: resolution(res), regionMin(std::move(rmin)), regionMax(std::move(rmax)), m_dimension_lengths(roiToDimensions(res, rmin, rmax))
+VoxelRegion::VoxelRegion(double res, Eigen::Vector3d rmin, Eigen::Vector3d rmax, std::string frame)
+	: resolution(res), regionMin(std::move(rmin)), regionMax(std::move(rmax)), frame_id(std::move(frame)), m_dimension_lengths(roiToDimensions(res, rmin, rmax))
 {
 	precalculate();
 	regionMinSnapped = {snapCoord(resolution, rmin.x()), snapCoord(resolution, rmin.y()), snapCoord(resolution, rmin.z())};
@@ -80,7 +80,7 @@ size_t VoxelRegion::getEdgeIndex(VoxelRegion::vertex_descriptor a, VoxelRegion::
 	if (j < i) { std::swap(a, b); }
 
 	// Check for adjacency (boost::edge(a, b) does this, but return the descriptor and not the ID.)
-	int dist = 0;
+	long dist = 0;
 	for (size_t d = 0; d < dimensions(); ++d)
 	{
 		dist += std::abs(static_cast<long>(a[d]) - static_cast<long>(b[d]));
@@ -210,8 +210,7 @@ VoxelRegion::vertices_size_type VoxelRegion::index_of(VoxelRegion::vertex_descri
 VoxelRegion::vertex_descriptor
 VoxelRegion::vertex_at(VoxelRegion::vertices_size_type vertex_index) const
 {
-
-	boost::array<vertices_size_type, Dimensions> vertex;
+	boost::array<vertices_size_type, Dimensions> vertex; // NOLINT(cppcoreguidelines-pro-type-member-init, hicpp-member-init)
 	vertices_size_type index_divider = 1;
 
 	for (std::size_t dimension_index = 0;
@@ -335,7 +334,6 @@ VoxelRegion::vertexLabelToOctrees(const VertexLabels& vlabels, const std::set<Ob
 			Eigen::Vector3d pos = coordinate_of(query);
 
 			labelToOcTreeLookup[ObjectIndex(vlabels[i])]->updateNode(pos.x(), pos.y(), pos.z(), true, true);
-//			labelToOcTreeLookup[ObjectIndex(vlabels[i])]->setNodeValue(pos.x(), pos.y(), pos.z(), 1.0);
 		}
 	}
 
