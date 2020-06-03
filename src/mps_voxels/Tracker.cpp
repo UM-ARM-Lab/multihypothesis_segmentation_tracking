@@ -8,7 +8,7 @@
 #include <opencv2/optflow.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/features2d.hpp>
-#include <opencv2/xfeatures2d.hpp>
+//#include <opencv2/xfeatures2d.hpp>
 
 #include <numeric>
 
@@ -68,6 +68,8 @@ cv::Mat& Tracker::getMask(const SensorHistoryBuffer& buffer)
 	return mask;
 }
 
+// NB: May not exist if cv_xfeatures2d was not found
+#if USE_CPU_SIFT
 void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const std::string directory)
 {
 	if (steps.size() > masks.size())
@@ -215,6 +217,12 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 	video.write(buffer.rgb.at(tLast)->image);
 	tracking.release();
 }
+#else
+void Tracker::track(const std::vector<ros::Time>&, const SensorHistoryBuffer&, const std::map<ros::Time, cv::Mat>&, const std::string)
+{
+	throw std::logic_error("CPU SIFT currently disabled!");
+}
+#endif
 
 /*
 void Tracker::siftOnMask(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label)

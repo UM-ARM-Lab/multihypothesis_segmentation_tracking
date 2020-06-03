@@ -2,10 +2,14 @@
 // Created by arprice on 7/24/18.
 //
 
+#ifndef USE_CPU_SIFT
+#define USE_CPU_SIFT false
+#endif
+
 #include "mps_voxels/Manipulator.h"
 #include "mps_voxels/MotionModel.h"
 #include "mps_voxels/Tracker.h"
-#ifdef USE_CUDA_SIFT
+#if !USE_CPU_SIFT
 #include "mps_voxels/CudaTracker.h"
 #endif
 #include "mps_voxels/SiamTracker.h"
@@ -1291,7 +1295,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	Tracker::TrackingOptions opts;
 	opts.roi.minExtent = {scenario->minExtent.x(), scenario->minExtent.y(), scenario->minExtent.z()};
 	opts.roi.maxExtent = {scenario->maxExtent.x(), scenario->maxExtent.y(), scenario->maxExtent.z()};
-#ifdef USE_CUDA_SIFT
+#if !USE_CPU_SIFT
 	sparseTracker = std::make_unique<CudaTracker>(opts);
 #else
 	sparseTracker = std::make_unique<Tracker>(opts);

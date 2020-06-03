@@ -52,8 +52,8 @@ include( ${CGAL_USE_FILE} )
 find_package(Boost REQUIRED COMPONENTS
   filesystem
 )
-include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
-link_directories(${Boost_LIBRARY_DIRS})
+#include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
+#link_directories(${Boost_LIBRARY_DIRS})
 
 find_package(CUDA REQUIRED)
 if (CMAKE_COMPILER_IS_GNUCC AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 7 AND CUDA_VERSION VERSION_LESS 10) OR CUDA_VERSION VERSION_GREATER_EQUAL 10)
@@ -66,7 +66,6 @@ endif()
 #find_package(yaml-cpp REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(YAML_CPP REQUIRED yaml-cpp)
-#message(WARNING "YAML-CPP: ${YAML_CPP_INCLUDE_DIR}")
 include_directories(SYSTEM ${YAML_CPP_INCLUDE_DIR})
 link_libraries(${YAML_CPP_LIBRARIES})
 
@@ -74,10 +73,8 @@ find_package(OCTOMAP REQUIRED)
 include_directories(SYSTEM ${OCTOMAP_INCLUDE_DIRS})
 link_libraries(${OCTOMAP_LIBRARIES})
 
-find_package(OpenCV 3.4 REQUIRED COMPONENTS
-  cudafeatures2d
-  cudafilters
-  cudaoptflow
+find_package(OpenCV 3.2 REQUIRED
+  OPTIONAL_COMPONENTS
   xfeatures2d
 )
 include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
@@ -123,9 +120,20 @@ endmacro()
 use_strict_compile_flags()
 
 macro(use_openmp)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
-  set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -lgomp")
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -lgomp")
+  find_package(OpenMP)
+  # For CMake < 3.9, we need to make the target ourselves
+  if(NOT TARGET OpenMP::OpenMP_CXX)
+    find_package(Threads REQUIRED)
+    add_library(OpenMP::OpenMP_CXX IMPORTED INTERFACE)
+    set_property(TARGET OpenMP::OpenMP_CXX
+      PROPERTY INTERFACE_COMPILE_OPTIONS ${OpenMP_CXX_FLAGS})
+    # Only works if the same flag is passed to the linker; use CMake 3.9+ otherwise (Intel, AppleClang)
+    set_property(TARGET OpenMP::OpenMP_CXX
+      PROPERTY INTERFACE_LINK_LIBRARIES ${OpenMP_CXX_FLAGS} Threads::Threads)
+  endif()
+#  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+#  set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -lgomp")
+#  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -lgomp")
 endmacro()
 
 use_openmp()
@@ -308,14 +316,22 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/visualization/visualize_occupancy.cpp
   src/${PROJECT_NAME}/visualization/visualize_bounding_spheres.cpp
   src/${PROJECT_NAME}/Experiment.cpp
-  )
-target_link_libraries(${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-  ${PCL_LIBRARIES}
-  ${PCL_IO_LIBRARIES}
-  ${Boost_LIBRARIES}
-  ${YAML_CPP_LIBRARIES}
 )
+target_link_libraries(${PROJECT_NAME}
+  PUBLIC
+    ${catkin_LIBRARIES}
+    ${PCL_LIBRARIES}
+    ${PCL_IO_LIBRARIES}
+    ${YAML_CPP_LIBRARIES}
+    Boost::boost
+    Boost::filesystem
+    OpenMP::OpenMP_CXX
+)
+if ("opencv_xfeatures2d" IN_LIST OpenCV_LIB_COMPONENTS)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE USE_CPU_SIFT=1)
+else()
+  target_compile_definitions(${PROJECT_NAME} PRIVATE USE_CPU_SIFT=0)
+endif()
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
