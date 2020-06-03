@@ -1,35 +1,11 @@
 cmake_minimum_required(VERSION 3.8)
 project(mps_simulation)
 
-#add_compile_options(-std=c++14)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 #set(CMAKE_BUILD_TYPE Debug)
-
-option(GVDB "Use GVDB voxelization." OFF)
-if(GVDB)
-  #find_package(CUDA 10.2 REQUIRED)
-  #include_directories(SYSTEM CUDA_INCLUDE_DIRS)
-  find_package(CUDAToolkit 10.2 REQUIRED)
-  find_package(GVDB REQUIRED)
-endif()
-
-macro(use_strict_compile_flags)
-  set(BUILD_FLAGS "-Wshadow -Wall -Wextra -Wpedantic -Werror=return-type")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${BUILD_FLAGS}")
-endmacro()
-
-use_strict_compile_flags()
-
-macro(use_openmp)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
-  set(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} -lgomp")
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -lgomp")
-endmacro()
-
-use_openmp()
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -48,12 +24,22 @@ find_package(catkin REQUIRED COMPONENTS
   tf_conversions
 )
 
+if ("-std=c++11" IN_LIST GAZEBO_CXX_FLAGS)
+  message(STATUS "Package 'gazebo_dev' has injected c++11 into the CXX_FLAGS. Removing.")
+  string(REPLACE "-std=c++11" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+endif()
+
+include(${mps_voxels_SOURCE_DIR}/cmake/mps_macros.cmake)
+#include(${mps_voxels_DIR}/mps_macros.cmake)
+
+use_strict_compile_flags()
+
+use_openmp()
+
 ## System dependencies are found with CMake's conventions
 
 # CGAL and its components
 # NB: CGAL likes to clobber global variables, e.g. Boost_LIBRARIES, so make sure you include it first
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCGAL_DISABLE_ROUNDING_MATH_CHECK")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCGAL_NO_ASSERTIONS")
 set(CGAL_DO_NOT_WARN_ABOUT_CMAKE_BUILD_TYPE TRUE CACHE BOOL "Disable CGAL complaints about performance flags.")
 set(CGAL_DONT_OVERRIDE_CMAKE_FLAGS TRUE CACHE BOOL "Force CGAL to maintain CMAKE flags")
 find_package(CGAL 4.12 REQUIRED COMPONENTS
@@ -66,17 +52,16 @@ find_package(OpenCV REQUIRED)
 include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 link_libraries(${OpenCV_LIBS})
 
+option(GVDB "Use GVDB voxelization." OFF)
+if(GVDB)
+  #find_package(CUDA 10.2 REQUIRED)
+  #include_directories(SYSTEM CUDA_INCLUDE_DIRS)
+  find_package(CUDAToolkit 10.2 REQUIRED)
+  find_package(GVDB REQUIRED)
+endif()
+
 #find_package(vhacd REQUIRED)
 #include_directories(SYSTEM ${})
-
-#option(ASAN "Adds flags for AddressSanitizer." ON)
-#if(ASAN)
-#  set(CMAKE_BUILD_TYPE "Debug")
-#  set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
-#  set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
-#  set(CMAKE_CXX_FLAGS_DEBUG "-fsanitize=address -fno-omit-frame-pointer ${CMAKE_CXX_FLAGS_DEBUG}")
-#  set(CMAKE_LINKER_FLAGS_DEBUG "-fsanitize=address -fno-omit-frame-pointer ${CMAKE_STATIC_LINKER_FLAGS_DEBUG}")
-#endif()
 
 #find_package(yaml-cpp REQUIRED)
 find_package(PkgConfig REQUIRED)
@@ -84,66 +69,6 @@ pkg_check_modules(YAML_CPP REQUIRED yaml-cpp)
 #message(WARNING "YAML-CPP: ${YAML_CPP_INCLUDE_DIR}")
 include_directories(SYSTEM ${YAML_CPP_INCLUDE_DIR})
 link_libraries(${YAML_CPP_LIBRARIES})
-
-#find_package(catkin REQUIRED mps_msgs actionlib_msgs)
-#add_action_files(DIRECTORY action FILES SegmentRGBD.action)
-#generate_messages(DEPENDENCIES actionlib_msgs)
-
-## Uncomment this if the package has a setup.py. This macro ensures
-## modules and global scripts declared therein get installed
-## See http://ros.org/doc/api/catkin/html/user_guide/setup_dot_py.html
-# catkin_python_setup()
-
-################################################
-## Declare ROS messages, services and actions ##
-################################################
-
-## To declare and build messages, services or actions from within this
-## package, follow these steps:
-## * Let MSG_DEP_SET be the set of packages whose message types you use in
-##   your messages/services/actions (e.g. std_msgs, actionlib_msgs, ...).
-## * In the file package.xml:
-##   * add a build_depend tag for "message_generation"
-##   * add a build_depend and a exec_depend tag for each package in MSG_DEP_SET
-##   * If MSG_DEP_SET isn't empty the following dependency has been pulled in
-##     but can be declared for certainty nonetheless:
-##     * add a exec_depend tag for "message_runtime"
-## * In this file (CMakeLists.txt):
-##   * add "message_generation" and every package in MSG_DEP_SET to
-##     find_package(catkin REQUIRED COMPONENTS ...)
-##   * add "message_runtime" and every package in MSG_DEP_SET to
-##     catkin_package(CATKIN_DEPENDS ...)
-##   * uncomment the add_*_files sections below as needed
-##     and list every .msg/.srv/.action file to be processed
-##   * uncomment the generate_messages entry below
-##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
-
-## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
-
-## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
-
-## Generate actions in the 'action' folder
-# add_action_files(
-#   FILES
-#   Action1.action
-#   Action2.action
-# )
-
-## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs  # Or other packages containing msgs
-# )
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
