@@ -1,0 +1,18 @@
+# MatchFrameSegments.action
+# Given a sequence of image segmentations, match the single-frame segments into multi-frame bundles representing objects, etc.
+
+# Input sequence of segmentations
+mps_msgs/Segmentation[] frames
+
+---
+
+# The timestamp of the frame the index map corresponds to (should be 1:1 with frames)
+time[] stamps
+
+# For each frame, the mapping from the local segment ID to the global bundle ID
+mps_msgs/IndexMap[] segments_to_bundles
+
+---
+
+# Percentage completion
+float32 progress
