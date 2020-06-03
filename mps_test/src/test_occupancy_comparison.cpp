@@ -35,10 +35,17 @@
 #include <mps_voxels/OccupancyData.h>
 #include <mps_voxels/logging/DataLog.h>
 #include <mps_voxels/logging/log_occupancy_data.h>
+#include <mps_voxels/image_utils.h>
 
-using Colormap = std::map<mps::VoxelRegion::VertexLabels::value_type , std_msgs::ColorRGBA>;
+#include <mps_simulation/GazeboModel.h>
+#include <mps_simulation/GazeboModelState.h>
 
-std_msgs::ColorRGBA randomColor(std::default_random_engine& rng)
+
+using VoxelColormap = std::map<mps::VoxelRegion::VertexLabels::value_type , std_msgs::ColorRGBA>;
+
+
+
+std_msgs::ColorRGBA randomColorMsg(std::default_random_engine& rng)
 {
 	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
 
@@ -50,16 +57,52 @@ std_msgs::ColorRGBA randomColor(std::default_random_engine& rng)
 	return color;
 }
 
-void extend(Colormap& cmap, const mps::VoxelRegion::VertexLabels& labels, std::default_random_engine& rng)
+void extend(VoxelColormap& cmap, const mps::VoxelRegion::VertexLabels& labels, std::default_random_engine& rng)
 {
 	for (int label : labels)
 	{
 		if (label == mps::VoxelRegion::FREE_SPACE) { continue; }
 		if (cmap.find(label) == cmap.end())
 		{
-			cmap.insert({label, randomColor(rng)});
+			cmap.emplace(label, randomColorMsg(rng));
 		}
 	}
+}
+
+namespace mps
+{
+
+struct Metrics
+{
+	mps::JaccardMatch3D match;
+	VoxelColormap cmapA, cmapB;
+
+	Metrics(const OccupancyData& hypothesis, const OccupancyData& truth, std::default_random_engine& rng)
+		: match(hypothesis, truth)
+	{
+		for (const auto& m : match.match.second)
+		{
+			std::cerr << m.left << "\t<->\t" << m.right << std::endl;
+
+			std_msgs::ColorRGBA color = randomColorMsg(rng);
+
+			cmapA.emplace(m.left, color);
+			cmapB.emplace(m.right, color);
+		}
+
+		extend(cmapA, hypothesis.vertexState, rng);
+		extend(cmapB, truth.vertexState, rng);
+	}
+};
+/*
+class SegmentationEvaluator
+{
+public:
+	std::vector<std::shared_ptr<GazeboModel>> models;
+
+	Metrics evaluate(const OccupancyData& occupancy, const std::vector<GazeboModelState>& states);
+};
+*/
 }
 
 int main(int argc, char* argv[])
@@ -99,22 +142,7 @@ int main(int argc, char* argv[])
 			a.voxelRegion = region;
 			if (a.vertexState.size() != a.voxelRegion->num_vertices()) { throw std::logic_error("Fake news (a)!"); }
 
-			mps::JaccardMatch3D match(a, b);
-
-			Colormap cmapA, cmapB;
-
-			for (const auto& m : match.match.second)
-			{
-				std::cerr << m.left << "\t<->\t" << m.right << std::endl;
-
-				std_msgs::ColorRGBA color = randomColor(rng);
-
-				cmapA.insert({m.left, color});
-				cmapB.insert({m.right, color});
-			}
-
-			extend(cmapA, a.vertexState, rng);
-			extend(cmapB, b.vertexState, rng);
+			mps::Metrics metrics(a, b, rng);
 
 			int trueNeg = 0;
 			int truePos = 0;
@@ -136,16 +164,16 @@ int main(int argc, char* argv[])
 			}
 
 			std::cerr << p << std::endl;
-			std::cerr << "\t" << match.match.first << std::endl;
+			std::cerr << "\t" << metrics.match.match.first << std::endl;
 			std::cerr << "\t" << trueNeg << "\t" << truePos << "\t" << other << std::endl;
 			std::cerr << "\t" << trueNeg/(double)region->num_vertices() << "\t" << truePos/(double)region->num_vertices() << "\t" << other/(double)region->num_vertices() << std::endl;
 
 			std_msgs::Header header;
 			header.frame_id = globalFrame;
 			header.stamp = ros::Time::now();
-			auto markers = mps::visualize(a, header, cmapA);
+			auto markers = mps::visualize(a, header, metrics.cmapA);
 			visualPubA.publish(markers);
-			markers = mps::visualize(b, header, cmapB);
+			markers = mps::visualize(b, header, metrics.cmapB);
 			visualPubB.publish(markers);
 		}
 	}

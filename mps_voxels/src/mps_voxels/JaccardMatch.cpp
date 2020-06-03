@@ -173,6 +173,9 @@ JaccardMatch3D::JaccardMatch3D(const OccupancyData& labels1, const OccupancyData
 //	{
 //		throw std::logic_error("jaccard() !!! Only works with CV_16U 1-channel Mats");
 //	}
+	assert(labels1.voxelRegion.num_vertices() == labels1.vertexState.size());
+	assert(labels2.voxelRegion.num_vertices() == labels2.vertexState.size());
+	assert(labels1.voxelRegion.num_vertices() == labels2.voxelRegion.num_vertices());
 
 	boxes1 = getBBoxes(labels1);
 	boxes2 = getBBoxes(labels2);
