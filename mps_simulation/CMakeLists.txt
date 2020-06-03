@@ -52,14 +52,6 @@ find_package(OpenCV REQUIRED)
 include_directories(SYSTEM ${OpenCV_INCLUDE_DIR})
 link_libraries(${OpenCV_LIBS})
 
-option(GVDB "Use GVDB voxelization." OFF)
-if(GVDB)
-  #find_package(CUDA 10.2 REQUIRED)
-  #include_directories(SYSTEM CUDA_INCLUDE_DIRS)
-  find_package(CUDAToolkit 10.2 REQUIRED)
-  find_package(GVDB REQUIRED)
-endif()
-
 #find_package(vhacd REQUIRED)
 #include_directories(SYSTEM ${})
 
@@ -100,9 +92,20 @@ link_libraries(${YAML_CPP_LIBRARIES})
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  #  INCLUDE_DIRS include
-  #  LIBRARIES mps_simulation
-  #  CATKIN_DEPENDS moveit_core
+  INCLUDE_DIRS include
+  LIBRARIES ${PROJECT_NAME}
+  CATKIN_DEPENDS
+    cv_bridge
+    gazebo_dev
+    gazebo_msgs
+    image_geometry
+    image_transport
+    moveit_core
+    mps_msgs
+    mps_voxels
+    roscpp
+    roslib
+    tf_conversions
   #  DEPENDS system_lib
 )
 
@@ -120,34 +123,16 @@ include_directories(SYSTEM
   ${catkin_INCLUDE_DIRS}
 )
 
-if (GVDB)
-  set(OTHER_SRCS
-    src/${PROJECT_NAME}/GVDBVoxelizer.cpp
-  )
-else()
-  set(OTHER_SRCS "")
-endif()
-
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/paths.cpp
   src/${PROJECT_NAME}/loading.cpp
   src/${PROJECT_NAME}/GazeboModel.cpp
   src/${PROJECT_NAME}/GazeboMocap.cpp
-  src/${PROJECT_NAME}/ROSVoxelizer.cpp
-  ${OTHER_SRCS}
 )
 target_link_libraries(${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
-if (GVDB)
-  target_link_libraries(${PROJECT_NAME}
-  #  ::vhacd
-    CUDA::cudart
-    GVDB::gvdb
-  #  GVDB::gvdbPTX
-  )
-endif()
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -174,20 +159,6 @@ target_link_libraries(${PROJECT_NAME}_gazebo_mocap
   ${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
-
-add_executable(${PROJECT_NAME}_gazebo_segmentation_gt test/system/gazebo_segmentation_gt.cpp)
-set_target_properties(${PROJECT_NAME}_gazebo_segmentation_gt PROPERTIES OUTPUT_NAME gazebo_segmentation_gt PREFIX "")
-add_dependencies(${PROJECT_NAME}_gazebo_segmentation_gt ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_gazebo_segmentation_gt
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-  ${YAML_CPP_LIBRARIES} # NB: This is not being forwarded correctly from mps_voxels
-)
-if (GVDB)
-  target_compile_definitions(${PROJECT_NAME}_gazebo_segmentation_gt PRIVATE VOXELIZER=1)
-else()
-  target_compile_definitions(${PROJECT_NAME}_gazebo_segmentation_gt PRIVATE VOXELIZER=0)
-endif()
 
 #############
 ## Install ##

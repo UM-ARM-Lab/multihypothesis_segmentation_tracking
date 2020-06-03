@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(mps_test)
 
-## Compile as C++11, supported in ROS Kinetic and newer
-# add_compile_options(-std=c++11)
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -12,65 +12,25 @@ find_package(catkin REQUIRED COMPONENTS
   mps_voxels
 )
 
+include(${mps_voxels_SOURCE_PREFIX}/cmake/mps_macros.cmake)
+#include(${mps_voxels_DIR}/mps_macros.cmake)
+
+use_strict_compile_flags()
+
+use_openmp()
+
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
 
-## Uncomment this if the package has a setup.py. This macro ensures
-## modules and global scripts declared therein get installed
-## See http://ros.org/doc/api/catkin/html/user_guide/setup_dot_py.html
-# catkin_python_setup()
+option(GVDB "Use GVDB voxelization." OFF)
+if(GVDB)
+  #find_package(CUDA 10.2 REQUIRED)
+  #include_directories(SYSTEM CUDA_INCLUDE_DIRS)
+  find_package(CUDAToolkit 10.2 REQUIRED)
+  find_package(GVDB REQUIRED)
+endif()
 
-################################################
-## Declare ROS messages, services and actions ##
-################################################
-
-## To declare and build messages, services or actions from within this
-## package, follow these steps:
-## * Let MSG_DEP_SET be the set of packages whose message types you use in
-##   your messages/services/actions (e.g. std_msgs, actionlib_msgs, ...).
-## * In the file package.xml:
-##   * add a build_depend tag for "message_generation"
-##   * add a build_depend and a exec_depend tag for each package in MSG_DEP_SET
-##   * If MSG_DEP_SET isn't empty the following dependency has been pulled in
-##     but can be declared for certainty nonetheless:
-##     * add a exec_depend tag for "message_runtime"
-## * In this file (CMakeLists.txt):
-##   * add "message_generation" and every package in MSG_DEP_SET to
-##     find_package(catkin REQUIRED COMPONENTS ...)
-##   * add "message_runtime" and every package in MSG_DEP_SET to
-##     catkin_package(CATKIN_DEPENDS ...)
-##   * uncomment the add_*_files sections below as needed
-##     and list every .msg/.srv/.action file to be processed
-##   * uncomment the generate_messages entry below
-##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
-
-## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
-
-## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
-
-## Generate actions in the 'action' folder
-# add_action_files(
-#   FILES
-#   Action1.action
-#   Action2.action
-# )
-
-## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs  # Or other packages containing msgs
-# )
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -114,19 +74,38 @@ catkin_package(
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
+include_directories(
+  include
+)
+
 include_directories(SYSTEM
   ${catkin_INCLUDE_DIRS}
 )
 
-## Declare a C++ library
-# add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/mps_test.cpp
-# )
+if (GVDB)
+  set(OTHER_SRCS
+    src/${PROJECT_NAME}/GVDBVoxelizer.cpp
+  )
+else()
+  set(OTHER_SRCS "")
+endif()
 
-## Add cmake target dependencies of the library
-## as an example, code may need to be generated before libraries
-## either from message generation or dynamic reconfigure
-# add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+## Declare a C++ library
+add_library(${PROJECT_NAME}
+  src/${PROJECT_NAME}/ROSVoxelizer.cpp
+  ${OTHER_SRCS}
+)
+target_link_libraries(${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+if (GVDB)
+  target_link_libraries(${PROJECT_NAME}
+    #  ::vhacd
+    CUDA::cudart
+    GVDB::gvdb
+    #  GVDB::gvdbPTX
+  )
+endif()
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
@@ -135,6 +114,28 @@ add_executable(${PROJECT_NAME}_generate_gazebo_benchmark src/generate_gazebo_ben
 set_target_properties(${PROJECT_NAME}_generate_gazebo_benchmark PROPERTIES OUTPUT_NAME generate_gazebo_benchmark PREFIX "")
 add_dependencies(${PROJECT_NAME}_generate_gazebo_benchmark ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME}_generate_gazebo_benchmark
+  ${catkin_LIBRARIES}
+)
+
+add_executable(${PROJECT_NAME}_gazebo_segmentation_gt src/gazebo_segmentation_gt.cpp)
+set_target_properties(${PROJECT_NAME}_gazebo_segmentation_gt PROPERTIES OUTPUT_NAME gazebo_segmentation_gt PREFIX "")
+add_dependencies(${PROJECT_NAME}_gazebo_segmentation_gt ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_gazebo_segmentation_gt
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+  ${YAML_CPP_LIBRARIES} # NB: This is not being forwarded correctly from mps_voxels
+  )
+if (GVDB)
+  target_compile_definitions(${PROJECT_NAME}_gazebo_segmentation_gt PRIVATE VOXELIZER=1)
+else()
+  target_compile_definitions(${PROJECT_NAME}_gazebo_segmentation_gt PRIVATE VOXELIZER=0)
+endif()
+
+add_executable(${PROJECT_NAME}_test_occupancy_comparison src/test_occupancy_comparison.cpp)
+set_target_properties(${PROJECT_NAME}_test_occupancy_comparison PROPERTIES OUTPUT_NAME test_occupancy_comparison PREFIX "")
+add_dependencies(${PROJECT_NAME}_test_occupancy_comparison ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_test_occupancy_comparison
+  ${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
 

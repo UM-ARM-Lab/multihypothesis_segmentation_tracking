@@ -34,11 +34,11 @@
 #include "mps_simulation/GazeboModel.h"
 #include "mps_simulation/paths.h"
 #include "mps_simulation/loading.h"
-#include "mps_simulation/SceneVoxelizer.h"
+#include "../include/mps_test/SceneVoxelizer.h"
 #if VOXELIZER == VOXELIZER_GVDB
 #include "mps_simulation/GVDBVoxelizer.h"
 #else
-#include "mps_simulation/ROSVoxelizer.h"
+#include "../include/mps_test/ROSVoxelizer.h"
 #endif
 
 #include <mps_voxels/VoxelRegion.h>
