@@ -8,7 +8,7 @@ project(mps_test)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  mps_interactive_segmentation
+  mps_simulation
   mps_voxels
 )
 
@@ -104,7 +104,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES mps_test
-#  CATKIN_DEPENDS mps_interactive_segmentation mps_voxels
+#  CATKIN_DEPENDS mps_simulation mps_voxels
 #  DEPENDS system_lib
 )
 

@@ -49,11 +49,11 @@
   <!-- Use doc_depend for packages you need only for building documentation: -->
   <!--   <doc_depend>doxygen</doc_depend> -->
   <buildtool_depend>catkin</buildtool_depend>
-  <build_depend>mps_interactive_segmentation</build_depend>
+  <build_depend>mps_simulation</build_depend>
   <build_depend>mps_voxels</build_depend>
-  <build_export_depend>mps_interactive_segmentation</build_export_depend>
+  <build_export_depend>mps_simulation</build_export_depend>
   <build_export_depend>mps_voxels</build_export_depend>
-  <exec_depend>mps_interactive_segmentation</exec_depend>
+  <exec_depend>mps_simulation</exec_depend>
   <exec_depend>mps_voxels</exec_depend>
 
 
