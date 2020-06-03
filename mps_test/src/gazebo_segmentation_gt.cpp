@@ -32,14 +32,19 @@
 
 #include "mps_simulation/GazeboMocap.h"
 #include "mps_simulation/GazeboModel.h"
+#include "mps_simulation/GazeboModelState.h"
 #include "mps_simulation/paths.h"
 #include "mps_simulation/loading.h"
-#include "../include/mps_test/SceneVoxelizer.h"
+#include "mps_test/ScenePixelizer.h"
+#include "mps_test/CPUPixelizer.h"
+#include "mps_test/SceneVoxelizer.h"
 #if VOXELIZER == VOXELIZER_GVDB
 #include "mps_simulation/GVDBVoxelizer.h"
 #else
-#include "../include/mps_test/ROSVoxelizer.h"
+#include "mps_test/ROSVoxelizer.h"
 #endif
+
+#include <mps_voxels/image_utils.h>
 
 #include <mps_voxels/VoxelRegion.h>
 #include <mps_voxels/parameters/VoxelRegionBuilder.hpp>
@@ -76,60 +81,12 @@
 #define DEBUG_MESH_LOADING false
 #endif
 
-#define CV_VERSION_AT_LEAST(x,y,z) (CV_VERSION_MAJOR>x || (CV_VERSION_MAJOR>=x && \
-                                   (CV_VERSION_MINOR>y || (CV_VERSION_MINOR>=y && \
-                                                           CV_VERSION_REVISION>=z))))
-
-using mps::GazeboModel;
-using mps::SceneVoxelizer;
-using mps::parseModelURL;
-using mps::parsePackageURL;
-
 typedef actionlib::SimpleActionServer<mps_msgs::SegmentRGBDAction> GTServer;
 
 const bool shouldLog = true;
 
-template <typename PointT>
-PointT toPoint3D(const float uIdx, const float vIdx, const float depthMeters, const image_geometry::PinholeCameraModel& cam)
+namespace mps
 {
-	PointT pt;
-	pt.x() = (uIdx - cam.cx()) * depthMeters / cam.fx();
-	pt.y() = (vIdx - cam.cy()) * depthMeters / cam.fy();
-	pt.z() = depthMeters;
-	return pt;
-}
-
-// TODO: colormap or mt ref
-cv::Mat colorByLabel(const cv::Mat& input)
-{
-	double min;
-	double max;
-	cv::minMaxIdx(input, &min, &max);
-	cv::Mat labels;
-	input.convertTo(labels, CV_8UC1);
-
-	cv::Mat colormap(256, 1, CV_8UC3);
-	cv::randu(colormap, 0, 256);
-
-	cv::Mat output;
-#if CV_VERSION_AT_LEAST(3, 3, 0)
-	cv::applyColorMap(labels, output, colormap);
-#else
-	cv::LUT(labels, colormap, output);
-#endif
-
-	return output;
-}
-
-struct GazeboModelState
-{
-	using Pose = Eigen::Isometry3d;
-
-	Pose pose;
-
-	enum { NeedsToAlign = (sizeof(Pose)%16)==0 };
-	EIGEN_MAKE_ALIGNED_OPERATOR_NEW_IF(NeedsToAlign)
-};
 
 class Segmenter
 {
@@ -144,6 +101,7 @@ public:
 	std::unique_ptr<tf::TransformListener> listener;
 	std::unique_ptr<tf::TransformBroadcaster> broadcaster;
 	std::unique_ptr<GTServer> actionServer;
+	std::unique_ptr<ScenePixelizer> pixelizer;
 	std::unique_ptr<SceneVoxelizer> voxelizer;
 
 	std::unique_ptr<image_transport::Publisher> imageSegmentationPub;
@@ -159,22 +117,24 @@ public:
 	{
 		listener = std::make_unique<tf::TransformListener>(ros::Duration(60.0));
 		broadcaster = std::make_unique<tf::TransformBroadcaster>();
-		cam_sub = std::make_unique<ros::Subscriber>(nh.subscribe<sensor_msgs::CameraInfo>("/kinect2_victor_head/hd/camera_info", 1, boost::bind(&Segmenter::cam_cb, this, _1)));
+		cam_sub = std::make_unique<ros::Subscriber>(
+			nh.subscribe<sensor_msgs::CameraInfo>("/kinect2_victor_head/hd/camera_info", 1,
+			                                      boost::bind(&Segmenter::cam_cb, this, _1)));
 
 		image_transport::ImageTransport it(ros::NodeHandle("~"));
 		imageSegmentationPub = std::make_unique<image_transport::Publisher>(it.advertise("image_segmentation", 1));
-		voxelSegmentationPub = std::make_unique<ros::Publisher>(nh.advertise<visualization_msgs::MarkerArray>("voxel_segmentation", 1, true));
+		voxelSegmentationPub = std::make_unique<ros::Publisher>(
+			nh.advertise<visualization_msgs::MarkerArray>("voxel_segmentation", 1, true));
 
-		actionServer = std::make_unique<GTServer>(nh, "gazebo_segmentation", boost::bind(&Segmenter::execute, this, _1), false);
+		actionServer = std::make_unique<GTServer>(nh, "gazebo_segmentation", boost::bind(&Segmenter::execute, this, _1),
+		                                          false);
 //		actionServer->start();
 	}
 
-	void cam_cb (const sensor_msgs::CameraInfoConstPtr& cam_msg)
+	void cam_cb(const sensor_msgs::CameraInfoConstPtr& cam_msg)
 	{
 		cameraModel.fromCameraInfo(cam_msg);
 		cameraFrame = cam_msg->header.frame_id;
-//		cameraModel.rawRoi().x = 0;
-//		cameraModel.rawRoi().y = 0;
 	}
 
 	cv::Mat segmentUVD()
@@ -196,13 +156,12 @@ public:
 		Eigen::Isometry3d worldTcamera;
 		tf::transformTFToEigen(cameraPose, worldTcamera);
 
-		auto roi = cameraModel.rectifiedRoi();
+		if (!this->pixelizer)
+		{
+			this->pixelizer = std::make_unique<mps::CPUPixelizer>(models);
+		}
 
-		using LabelT = uint16_t;
-		using DepthT = double;
-		cv::Mat labels = cv::Mat::zeros(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_16U);
-		cv::Mat depthBuf(cameraModel.cameraInfo().height, cameraModel.cameraInfo().width, CV_64F, std::numeric_limits<DepthT>::max());
-
+		cv::Mat labels = pixelizer->pixelize(cameraModel, worldTcamera, states);
 
 //		for (size_t m = 0; m < models.size(); ++m)
 //		{
@@ -240,111 +199,6 @@ public:
 			throw std::logic_error("Model/State size mismatch!");
 		}
 
-		const int step = 1;
-
-#pragma omp parallel for
-		for (int v = roi.y; v < roi.y+roi.height; /*++v*/v+=step)
-		{
-//			if (actionServer->isActive())
-//			{
-//				mps_msgs::SegmentRGBDFeedback fb;
-//				fb.progress = static_cast<float>(v)/roi.height;
-//				actionServer->publishFeedback(fb);
-//			}
-//			std::cerr << v << std::endl;
-
-			for (int u = roi.x; u < roi.x + roi.width; /*++u*/u+=step)
-			{
-				const Eigen::Vector3d rn_world = worldTcamera.linear() * toPoint3D<Eigen::Vector3d>(u, v, 1.0, cameraModel).normalized();
-				const Eigen::Vector3d r0_world = worldTcamera.translation();
-
-				tf::Transform temp;
-//				Eigen::Isometry3d worldTray = Eigen::Isometry3d::Identity(); worldTray.translation() = r0_world + rn_world;
-//				tf::poseEigenToTF(worldTray, temp);
-//				broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), worldFrame, "ray"));
-//				ros::spinOnce(); ros::Duration(0.1).sleep();
-
-//				Eigen::Isometry3d cameraTray = Eigen::Isometry3d::Identity(); cameraTray.translation() = toPoint3D<Eigen::Vector3d>(u, v, 1.0, cameraModel).normalized();
-//				tf::poseEigenToTF(cameraTray, temp);
-//				broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), cameraFrame, "ray_camera"));
-//				ros::spinOnce(); ros::Duration(0.1).sleep();
-
-				for (size_t m = 0; m < models.size(); ++m)
-				{
-					const GazeboModel& model = *models[m];
-					const GazeboModelState& state = states[m];
-
-					Eigen::Isometry3d worldTshape = state.pose/* * body_pair.second->getPose()*/;
-					Eigen::Isometry3d shapeTworld = worldTshape.inverse(Eigen::Isometry);
-
-					const Eigen::Vector3d cam_body = shapeTworld * r0_world;
-					const Eigen::Vector3d dir_body = shapeTworld.linear() * rn_world;
-
-//					for (const auto& body_pair : model.bodies)
-					{
-
-
-//						tf::Transform temp;
-//						Eigen::Isometry3d cameraTshape = cameraTworld * worldTshape;
-//						tf::poseEigenToTF(cameraTshape, temp);
-//						broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), cameraFrame, model.name + "_" + body_pair.first));
-//						tf::poseEigenToTF(cameraTworld, temp);
-//						broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), cameraFrame, worldFrame + "_inv"));
-
-//						Eigen::Isometry3d bodyTcam_origin = Eigen::Isometry3d::Identity(); bodyTcam_origin.translation() = cam_body;
-//						tf::poseEigenToTF(bodyTcam_origin, temp);
-//						broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), model.name + "_" + body_pair.first, "ray_camera"));
-//						ros::spinOnce(); ros::Duration(0.1).sleep();
-//
-//						Eigen::Isometry3d bodyTdirpt = Eigen::Isometry3d::Identity(); bodyTdirpt.translation() = cam_body + dir_body;
-//						tf::poseEigenToTF(bodyTdirpt, temp);
-//						broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), model.name + "_" + body_pair.first, "dir_" + model.name + "_" + body_pair.first));
-//						ros::spinOnce(); ros::Duration(0.1).sleep();
-
-						EigenSTL::vector_Vector3d intersections;
-						if (mps::rayIntersectsModel(cam_body, dir_body, model, intersections))
-						{
-							Eigen::Vector3d closestIntersection;
-							for (const Eigen::Vector3d &pt_body : intersections)
-							{
-//								Eigen::Isometry3d bodyTdirpt = Eigen::Isometry3d::Identity(); bodyTdirpt.translation() = pt_body;
-//								tf::poseEigenToTF(bodyTdirpt, temp);
-//								broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), "mocap_" + model.name, "intersect"));
-//								ros::spinOnce(); ros::Duration(0.1).sleep();
-//							const Eigen::Vector3d pt_world = worldTshape * pt_body;
-								double dist = dir_body.dot(pt_body - cam_body);
-								assert(dist >= 0.0);
-								#pragma omp critical
-								{
-									auto& zBuf = depthBuf.at<DepthT>(v, u);
-									if (dist < zBuf)
-									{
-										zBuf = dist;
-										labels.at<LabelT>(v, u) = m + 10;
-//										if (model.name.find("table") != std::string::npos)
-//										{
-//											labels.at<LabelT>(v, u) = 1;
-//										}
-										closestIntersection = pt_body;
-									}
-								}
-							}
-//							Eigen::Isometry3d cameraTray = Eigen::Isometry3d::Identity(); cameraTray.translation() = toPoint3D<Eigen::Vector3d>(u, v, 1.0, cameraModel).normalized() * depthBuf.at<DepthT>(v, u);
-//							tf::poseEigenToTF(cameraTray, temp);
-//							broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), cameraFrame, "ray_camera"));
-//							ros::spinOnce(); ros::Duration(0.5).sleep();
-						}
-
-//						Eigen::Isometry3d worldTray = Eigen::Isometry3d::Identity(); worldTray.translation() = closestIntersection;
-//						tf::poseEigenToTF(worldTray, temp);
-//						broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), worldFrame, "ray"));
-//						ros::spinOnce(); ros::Duration(0.1).sleep();
-
-					}
-				}
-			}
-		}
-
 //		double alpha = 0.75;
 		cv::Mat labelColorsMap = colorByLabel(labels);
 		labelColorsMap.setTo(0, 0 == labels);
@@ -352,13 +206,11 @@ public:
 
 		if (imageSegmentationPub->getNumSubscribers() > 0)
 		{
-			std_msgs::Header h; h.frame_id = cameraFrame; h.stamp = ros::Time::now();
+			std_msgs::Header h;
+			h.frame_id = cameraFrame;
+			h.stamp = ros::Time::now();
 			imageSegmentationPub->publish(cv_bridge::CvImage(h, "bgr8", labelColorsMap).toImageMsg());
 		}
-
-//		cv::waitKey(1);
-//		cv::imshow("segmentation", labelColorsMap);
-//		cv::waitKey(0);
 
 		return labels;
 	}
@@ -411,7 +263,9 @@ public:
 
 		if (voxelSegmentationPub->getNumSubscribers() > 0)
 		{
-			std_msgs::Header h; h.frame_id = tableFrame; h.stamp = ros::Time::now();
+			std_msgs::Header h;
+			h.frame_id = tableFrame;
+			h.stamp = ros::Time::now();
 			auto viz = mps::visualize(region, labels, h, re);
 			voxelSegmentationPub->publish(viz);
 		}
@@ -462,6 +316,13 @@ public:
 	}
 
 };
+
+}
+
+
+using mps::GazeboModel;
+using mps::parseModelURL;
+using mps::parsePackageURL;
 
 int main(int argc, char** argv)
 {
@@ -520,7 +381,7 @@ int main(int argc, char** argv)
 
 	std::vector<std::shared_ptr<GazeboModel>> tmpModels; tmpModels.reserve(shapeModels.size());
 	for (const auto& m : shapeModels) { tmpModels.push_back(m.second); }
-	Segmenter seg(pnh, tmpModels);
+	mps::Segmenter seg(pnh, tmpModels);
 	seg.worldFrame = mocap.gazeboTmocap.frame_id_;
 
 

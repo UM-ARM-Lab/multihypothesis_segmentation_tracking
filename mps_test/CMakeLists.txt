@@ -92,6 +92,7 @@ endif()
 
 ## Declare a C++ library
 add_library(${PROJECT_NAME}
+  src/${PROJECT_NAME}/CPUPixelizer.cpp
   src/${PROJECT_NAME}/ROSVoxelizer.cpp
   ${OTHER_SRCS}
 )

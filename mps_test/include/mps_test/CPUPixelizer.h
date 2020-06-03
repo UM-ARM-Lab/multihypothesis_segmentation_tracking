@@ -27,32 +27,28 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MPS_ROSVOXELIZER_H
-#define MPS_ROSVOXELIZER_H
+#ifndef MPS_CPUPIXELIZER_H
+#define MPS_CPUPIXELIZER_H
 
-#include "mps_test/SceneVoxelizer.h"
-
+#include "mps_test/ScenePixelizer.h"
 #include <mps_simulation/GazeboModel.h>
-
-#include <vector>
-#include <memory>
 
 namespace mps
 {
 
-class GazeboModel;
-
-class ROSVoxelizer : public SceneVoxelizer
+class CPUPixelizer : public ScenePixelizer
 {
 public:
 	std::vector<std::shared_ptr<GazeboModel>> models;
 
-	explicit
-	ROSVoxelizer(std::vector<std::shared_ptr<GazeboModel>> models);
+	CPUPixelizer(std::vector<std::shared_ptr<GazeboModel>> _models);
 
-	mps::VoxelRegion::VertexLabels voxelize(const mps::VoxelRegion& region, const std::vector<Eigen::Isometry3d>& poses) override;
+	cv::Mat depthBuf;
+
+	cv::Mat pixelize(const image_geometry::PinholeCameraModel& cameraModel, const Eigen::Isometry3d& worldTcamera,
+	                 const std::vector<GazeboModelState>& states) override;
 };
 
 }
 
-#endif //MPS_ROSVOXELIZER_H
+#endif //MPS_CPUPIXELIZER_H

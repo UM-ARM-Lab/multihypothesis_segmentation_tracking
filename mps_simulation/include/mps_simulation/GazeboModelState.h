@@ -27,32 +27,24 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef MPS_ROSVOXELIZER_H
-#define MPS_ROSVOXELIZER_H
+#ifndef MPS_GAZEBOMODELSTATE_H
+#define MPS_GAZEBOMODELSTATE_H
 
-#include "mps_test/SceneVoxelizer.h"
-
-#include <mps_simulation/GazeboModel.h>
-
-#include <vector>
-#include <memory>
+#include <Eigen/Geometry>
 
 namespace mps
 {
 
-class GazeboModel;
-
-class ROSVoxelizer : public SceneVoxelizer
+struct GazeboModelState
 {
-public:
-	std::vector<std::shared_ptr<GazeboModel>> models;
+	using Pose = Eigen::Isometry3d;
 
-	explicit
-	ROSVoxelizer(std::vector<std::shared_ptr<GazeboModel>> models);
+	Pose pose;
 
-	mps::VoxelRegion::VertexLabels voxelize(const mps::VoxelRegion& region, const std::vector<Eigen::Isometry3d>& poses) override;
+	enum { NeedsToAlign = (sizeof(Pose)%16)==0 };
+	EIGEN_MAKE_ALIGNED_OPERATOR_NEW_IF(NeedsToAlign)
 };
 
 }
 
-#endif //MPS_ROSVOXELIZER_H
+#endif //MPS_GAZEBOMODELSTATE_H
