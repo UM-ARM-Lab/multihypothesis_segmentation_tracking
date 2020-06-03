@@ -66,15 +66,10 @@
 #include <tf/transform_broadcaster.h>
 #include <tf_conversions/tf_eigen.h>
 
-#include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 
 #include "tinyxml.h"
 
-#include <boost/algorithm/string.hpp>
-
-#include <regex>
-#include <iterator>
 #include <mutex>
 
 #ifndef DEBUG_MESH_LOADING
