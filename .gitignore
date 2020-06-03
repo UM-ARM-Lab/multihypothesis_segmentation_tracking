@@ -1,8 +1,1 @@
 *.swp
-*.avi
-scripts/.ipynb_checkpoints/
-build/
-_build/
-.vscode/
-Dockerfile_*
-.DS_Store
