@@ -8,7 +8,10 @@
 #include <opencv2/optflow.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/features2d.hpp>
-//#include <opencv2/xfeatures2d.hpp>
+
+#if USE_CPU_SIFT
+#include <opencv2/xfeatures2d.hpp>
+#endif
 
 #include <numeric>
 
