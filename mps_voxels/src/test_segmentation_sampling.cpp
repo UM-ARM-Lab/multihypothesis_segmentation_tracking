@@ -494,7 +494,7 @@ int main(int argc, char* argv[])
 //	mcmc.sigmaSquared = 0.5*vStar*vStar; // The larger this number, the more permissive exploration is allowed
 //	mcmc.nTrials = 50;
 
-	const int maxRejections = 100;
+//	const int maxRejections = 100;
 	const int nSamples = 5000;
 	for (const auto& pair : subtrees)
 	{
@@ -534,7 +534,7 @@ int main(int argc, char* argv[])
 
 		csv << "Trial,logp(cut),Jaccard,Cover,cut" << std::endl;
 
-		int numRejections = 0;
+//		int numRejections = 0;
 		std::set<tree::TreeCut> cuts;
 		for (int i = 0; i < nSamples; ++i)
 		{

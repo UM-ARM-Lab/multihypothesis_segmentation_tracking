@@ -69,7 +69,7 @@ bool generateSensorHistory(SensorHistoryBuffer& buff)
 std::shared_ptr<SegmentationInfo>
 segment(const cv_bridge::CvImage& rgb, const cv_bridge::CvImage& depth, const sensor_msgs::CameraInfo& cam)
 {
-	using LabelType = uint16_t;
+//	using LabelType = uint16_t;
 	using SegmentationClient = actionlib::SimpleActionClient<mps_msgs::SegmentRGBDAction>;
 
 	ros::NodeHandle nh;

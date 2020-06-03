@@ -86,11 +86,11 @@ add_definitions(${PCL_DEFINITIONS})
 
 include_directories(SYSTEM COB/src/misc)
 
-#set(CMAKE_BUILD_TYPE RelWithDebInfo)
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE RelWithDebInfo)
+#set(CMAKE_BUILD_TYPE Debug)
 add_compile_definitions("CGAL_DISABLE_ROUNDING_MATH_CHECK")
 add_compile_definitions("CGAL_NO_ASSERTIONS")
-add_compile_options("-O0")
+#add_compile_options("-O0")
 
 use_strict_compile_flags()
 
