@@ -29,7 +29,7 @@ if ("-std=c++11" IN_LIST GAZEBO_CXX_FLAGS)
   string(REPLACE "-std=c++11" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
 endif()
 
-include(${mps_voxels_SOURCE_DIR}/cmake/mps_macros.cmake)
+include(${mps_voxels_SOURCE_PREFIX}/cmake/mps_macros.cmake)
 #include(${mps_voxels_DIR}/mps_macros.cmake)
 
 use_strict_compile_flags()
