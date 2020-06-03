@@ -2,7 +2,7 @@
 // Created by pricear on 2020-04-24.
 //
 
-#include "mps_interactive_segmentation/GVDBVoxelizer.h"
+#include "mps_simulation/GVDBVoxelizer.h"
 
 #include "gvdb.h"
 #include <GL/glew.h>

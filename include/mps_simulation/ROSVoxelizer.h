@@ -30,7 +30,7 @@
 #ifndef MPS_ROSVOXELIZER_H
 #define MPS_ROSVOXELIZER_H
 
-#include "mps_interactive_segmentation/SceneVoxelizer.h"
+#include "mps_simulation/SceneVoxelizer.h"
 
 #include <vector>
 #include <memory>

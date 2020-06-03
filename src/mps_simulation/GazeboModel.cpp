@@ -2,7 +2,7 @@
 // Created by kunhuang on 7/29/19.
 //
 
-#include "mps_interactive_segmentation/GazeboModel.h"
+#include "mps_simulation/GazeboModel.h"
 
 #include <geometric_shapes/body_operations.h>
 

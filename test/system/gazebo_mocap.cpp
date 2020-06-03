@@ -2,7 +2,7 @@
 // Created by arprice on 2/25/19.
 //
 
-#include "mps_interactive_segmentation/GazeboMocap.h"
+#include "mps_simulation/GazeboMocap.h"
 
 
 int main(int argc, char** argv)

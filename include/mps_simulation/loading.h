@@ -30,7 +30,7 @@
 #ifndef SRC_LOADING_H
 #define SRC_LOADING_H
 
-#include "mps_interactive_segmentation/GazeboModel.h"
+#include "mps_simulation/GazeboModel.h"
 
 #include <string>
 #include <memory>

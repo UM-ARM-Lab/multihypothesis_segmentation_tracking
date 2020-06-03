@@ -27,8 +27,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mps_interactive_segmentation/ROSVoxelizer.h"
-#include "mps_interactive_segmentation/GazeboModel.h"
+#include "mps_simulation/ROSVoxelizer.h"
+#include "mps_simulation/GazeboModel.h"
 
 mps::ROSVoxelizer::ROSVoxelizer(std::vector<std::shared_ptr<GazeboModel>> _models)
 	: models(std::move(_models))

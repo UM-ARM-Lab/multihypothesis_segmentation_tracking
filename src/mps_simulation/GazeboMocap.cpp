@@ -2,7 +2,7 @@
 // Created by kunhuang on 7/23/19.
 //
 
-#include "mps_interactive_segmentation/GazeboMocap.h"
+#include "mps_simulation/GazeboMocap.h"
 
 #include <gazebo_msgs/GetWorldProperties.h>
 #include <gazebo_msgs/GetModelState.h>

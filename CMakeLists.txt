@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(mps_interactive_segmentation)
+project(mps_simulation)
 
 #add_compile_options(-std=c++14)
 set(CMAKE_CXX_STANDARD 14)
@@ -176,7 +176,7 @@ link_libraries(${YAML_CPP_LIBRARIES})
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   #  INCLUDE_DIRS include
-  #  LIBRARIES mps_interactive_segmentation
+  #  LIBRARIES mps_simulation
   #  CATKIN_DEPENDS moveit_core
   #  DEPENDS system_lib
 )
@@ -304,7 +304,7 @@ endif()
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_mps_interactive_segmentation.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_mps_simulation.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()

@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mps_interactive_segmentation/paths.h"
+#include "mps_simulation/paths.h"
 
 #include <gazebo/common/SystemPaths.hh>
 

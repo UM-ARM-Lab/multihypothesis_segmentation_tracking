@@ -27,8 +27,8 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mps_interactive_segmentation/loading.h"
-#include "mps_interactive_segmentation/paths.h"
+#include "mps_simulation/loading.h"
+#include "mps_simulation/paths.h"
 
 #include <ros/ros.h>
 #include <geometry_msgs/Pose.h>

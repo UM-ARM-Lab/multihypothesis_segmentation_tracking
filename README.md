@@ -1,4 +1,4 @@
-# mps_interactive_segmentation
+# mps_simulation
 
 ## Installation on a Clean System
 
@@ -29,13 +29,13 @@ make install
 Clone the current package and its source dependencies
 ```
 cd ~/catkin_ws/src
-git clone git@github.com:UM-ARM-Lab/mps_interactive_segmentation.git
+git clone git@github.com:UM-ARM-Lab/mps_simulation.git
 ```
 
 ```
 cd ~/catkin_ws
 wstool init src
-wstool merge -t src src/mps_interactive_segmentation/.rosinstall
+wstool merge -t src src/mps_simulation/.rosinstall
 wstool update -t src
 ```
 
@@ -50,7 +50,7 @@ rosdep install --from-paths src --ignore-src -r -y
 
 ```roscore```
 
-```roslaunch mps_interactive_segmentation test_domain.launch world:=experiment_world```
+```roslaunch mps_simulation test_domain.launch world:=experiment_world```
 
 ```rosrun mps_voxels matlab_action_wrapper.py __name:=segment_rgbd _pkg:=mps_msgs _action:=SegmentRGBD _request:=/segment_rgbd/request _response:=/segment_rgbd/response```
 

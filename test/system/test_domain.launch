@@ -9,9 +9,9 @@
 	</include>
 
 	<!-- Startup simulation world -->
-	<param name="simulation_world" value="package://mps_interactive_segmentation/worlds/$(arg world).world"/>
+	<param name="simulation_world" value="package://mps_simulation/worlds/$(arg world).world"/>
 	<include file="$(find gazebo_ros)/launch/empty_world.launch">
-		<arg name="world_name" value="$(find mps_interactive_segmentation)/worlds/$(arg world).world"/>
+		<arg name="world_name" value="$(find mps_simulation)/worlds/$(arg world).world"/>
 		<arg name="paused" value="true"/>
 		<arg name="gui" value="$(arg gui)"/>
 		<arg name="physics" value="ode"/>
@@ -28,14 +28,14 @@
 	</node>
 
 	<!--<node name="camera_body_transform" pkg="tf" type="static_transform_publisher" args="0 0 1.5 0 0.15 0 /victor_root /kinect2_victor_head 10"/>-->
-	<node name="gazebo_mocap" pkg="mps_interactive_segmentation" type="gazebo_mocap"/>
+	<node name="gazebo_mocap" pkg="mps_simulation" type="gazebo_mocap"/>
 	<node name="camera_body_transform" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 1 /mocap_kinect2_victor_head /kinect2_victor_head 10"/>
 	<node name="camera_optical_transform" pkg="tf" type="static_transform_publisher" args="0 0 0 -1.57079632679 0 -1.57079632679 /kinect2_victor_head /kinect2_victor_head_optical_frame 10"/>
 	<node name="table_transform" pkg="tf" type="static_transform_publisher" args="0 0 1 0 0 -0.7071068 0.7071068 mocap_table table_surface 10"/>
 	<node name="world_transform" pkg="tf" type="static_transform_publisher" args="0 0 0 0 0 0 1 world world_origin 10"/>
 
 	<!-- joint_state_controller -->
-	<rosparam file="$(find mps_interactive_segmentation)/test/system/config/gazebo_joint_state_controller.yaml" command="load"/>
+	<rosparam file="$(find mps_simulation)/test/system/config/gazebo_joint_state_controller.yaml" command="load"/>
 	<node name="joint_state_controller_spawner" pkg="controller_manager" type="controller_manager" args="spawn joint_state_controller" respawn="false" output="screen"/>
 
 	<!--
@@ -45,8 +45,8 @@
 	-->
 	<!-- Load joint controller configurations from YAML file to parameter server -->
 	<param name="move_group/moveit_controller_manager" value="moveit_simple_controller_manager/MoveItSimpleControllerManager"/>
-	<rosparam file="$(find mps_interactive_segmentation)/test/system/config/gazebo_controllers.yaml" command="load"/>
-	<rosparam file="$(find mps_interactive_segmentation)/test/system/config/moveit_controllers.yaml" command="load"/>
+	<rosparam file="$(find mps_simulation)/test/system/config/gazebo_controllers.yaml" command="load"/>
+	<rosparam file="$(find mps_simulation)/test/system/config/moveit_controllers.yaml" command="load"/>
 	<node name="independent_controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
 	      output="screen" args="--stopped right_arm_controller left_arm_controller "/>
     <node name="dual_controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
@@ -61,7 +61,7 @@
 
 	<!-- Load the motion planner gui -->
 	<node name="$(anon rviz)" pkg="rviz" type="rviz" respawn="false" if="$(arg gui)"
-        args="-d $(find mps_interactive_segmentation)/config/manip.rviz" output="screen">
+        args="-d $(find mps_simulation)/config/manip.rviz" output="screen">
         <rosparam command="load" file="$(find victor_moveit_config)/config/kinematics.yaml"/>
     </node>
 

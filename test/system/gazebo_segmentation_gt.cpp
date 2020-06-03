@@ -30,15 +30,15 @@
 #define VOXELIZER_ROS 0
 #define VOXELIZER_GVDB 1
 
-#include "mps_interactive_segmentation/GazeboMocap.h"
-#include "mps_interactive_segmentation/GazeboModel.h"
-#include "mps_interactive_segmentation/paths.h"
-#include "mps_interactive_segmentation/loading.h"
-#include "mps_interactive_segmentation/SceneVoxelizer.h"
+#include "mps_simulation/GazeboMocap.h"
+#include "mps_simulation/GazeboModel.h"
+#include "mps_simulation/paths.h"
+#include "mps_simulation/loading.h"
+#include "mps_simulation/SceneVoxelizer.h"
 #if VOXELIZER == VOXELIZER_GVDB
-#include "mps_interactive_segmentation/GVDBVoxelizer.h"
+#include "mps_simulation/GVDBVoxelizer.h"
 #else
-#include "mps_interactive_segmentation/ROSVoxelizer.h"
+#include "mps_simulation/ROSVoxelizer.h"
 #endif
 
 #include <mps_voxels/VoxelRegion.h>
