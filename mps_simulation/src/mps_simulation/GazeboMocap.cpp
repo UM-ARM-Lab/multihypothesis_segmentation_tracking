@@ -16,8 +16,13 @@ Eigen::Isometry3d randomTransform(std::mt19937& gen, const double tScale)
 {
 	std::uniform_real_distribution<> uni(-1.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
 	Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
-	T.rotate(Eigen::Quaterniond(Eigen::Vector4d::NullaryExpr([&](){return uni(gen);})).normalized());
-	T.translation() = tScale * Eigen::Vector3d::NullaryExpr([&](){return uni(gen);});
+#if EIGEN_VERSION_AT_LEAST(3, 3, 0)
+	auto rand_fn = [&](){return uni(gen);};
+#else
+	auto rand_fn = [&](float){return uni(gen);};
+#endif
+	T.rotate(Eigen::Quaterniond(Eigen::Vector4d::NullaryExpr(rand_fn)).normalized());
+	T.translation() = tScale * Eigen::Vector3d::NullaryExpr(rand_fn);
 	return T;
 }
 
