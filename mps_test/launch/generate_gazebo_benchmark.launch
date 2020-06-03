@@ -1,0 +1,21 @@
+<launch>
+    <arg name="gui" default="false"/>
+    <arg name="world" default="victor_table"/>
+    <arg name="ignore" default="[table, kinect2_victor_head, ground_plane]"/>
+
+    <!-- Startup simulation world -->
+    <include file="$(find mps_simulation)/test/system/test_domain.launch">
+        <arg name="world" value="$(arg world)"/>
+        <arg name="gui" value="$(arg gui)"/>
+    </include>
+
+    <node pkg="mps_simulation" type="gazebo_segmentation_gt" name="gazebo_segmentation_gt">
+        <remap from="gazebo_segmentation_gt/gazebo_segmentation" to="/segment_rgbd"/>
+        <rosparam param="ignore" subst_value="True">$(arg ignore)</rosparam>
+    </node>
+
+    <param name="/use_sim_time" value="true"/>
+    <node pkg="mps_test" type="generate_gazebo_benchmark" name="generate_gazebo_benchmark" required="true">
+    </node>
+
+</launch>
