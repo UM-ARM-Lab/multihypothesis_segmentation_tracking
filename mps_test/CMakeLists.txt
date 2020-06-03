@@ -124,7 +124,6 @@ add_dependencies(${PROJECT_NAME}_gazebo_segmentation_gt ${${PROJECT_NAME}_EXPORT
 target_link_libraries(${PROJECT_NAME}_gazebo_segmentation_gt
   ${PROJECT_NAME}
   ${catkin_LIBRARIES}
-  ${YAML_CPP_LIBRARIES} # NB: This is not being forwarded correctly from mps_voxels
   )
 if (GVDB)
   target_compile_definitions(${PROJECT_NAME}_gazebo_segmentation_gt PRIVATE VOXELIZER=1)

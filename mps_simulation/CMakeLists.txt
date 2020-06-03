@@ -55,13 +55,6 @@ link_libraries(${OpenCV_LIBS})
 #find_package(vhacd REQUIRED)
 #include_directories(SYSTEM ${})
 
-#find_package(yaml-cpp REQUIRED)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(YAML_CPP REQUIRED yaml-cpp)
-#message(WARNING "YAML-CPP: ${YAML_CPP_INCLUDE_DIR}")
-include_directories(SYSTEM ${YAML_CPP_INCLUDE_DIR})
-link_libraries(${YAML_CPP_LIBRARIES})
-
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
 ################################################

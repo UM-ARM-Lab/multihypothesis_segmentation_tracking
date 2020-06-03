@@ -149,7 +149,8 @@ catkin_package(
     sensor_msgs
     tf
     tf_conversions
-#  DEPENDS system_lib
+  DEPENDS
+    YAML_CPP
 )
 
 ###########
