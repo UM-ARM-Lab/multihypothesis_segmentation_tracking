@@ -41,7 +41,10 @@ bool DataLog::load<OccupancyData>(const std::string& channel, OccupancyData& msg
 	load(channel + "/vertexState", vs);
 	msg.vertexState = vs.data;
 
-	load(channel + "/segInfo", *msg.segInfo);
+	SegmentationInfo seg_out;
+	load(channel + "/segInfo", seg_out);
+	msg.segInfo = std::make_shared<SegmentationInfo>(seg_out);
+
 	return true;
 }
 
