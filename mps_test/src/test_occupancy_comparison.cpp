@@ -47,7 +47,8 @@
 #include <mps_test/ROSVoxelizer.h>
 #include <tf_conversions/tf_eigen.h>
 
-#include <boost/regex.hpp>
+#include <regex>
+#include <boost/filesystem.hpp>
 
 using VoxelColormap = std::map<mps::VoxelRegion::VertexLabels::value_type , std_msgs::ColorRGBA>;
 
@@ -118,7 +119,7 @@ int main(int argc, char* argv[])
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-05T16:24:42.273504/";
 //	const std::string ground_truth = "/tmp/gazebo_segmentation/gt_occupancy.bag";
 	const std::string globalFrame = "table_surface";
-	const boost::regex my_filter( "particle_(.+)_(.+)\\.bag" );
+	const std::regex my_filter( "particle_(.+)_(.+)\\.bag" );
 
 	int numGenerations = 0;
 	int numParticles = 0;
@@ -128,10 +129,10 @@ int main(int argc, char* argv[])
 		// Skip if not a file
 		if( !boost::filesystem::is_regular_file( i->status() ) ) continue;
 
-		boost::smatch what;
+		std::smatch what;
 
 		// Skip if no match:
-		if( !boost::regex_match( i->path().filename().string(), what, my_filter ) ) continue;
+		if( !std::regex_match( i->path().filename().string(), what, my_filter ) ) continue;
 
 		numGenerations = std::max(numGenerations, std::stoi(what[1])+1);
 		numParticles = std::max(numParticles, std::stoi(what[2])+1);

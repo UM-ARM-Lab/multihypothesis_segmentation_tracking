@@ -20,7 +20,11 @@ use_strict_compile_flags()
 use_openmp()
 
 ## System dependencies are found with CMake's conventions
-# find_package(Boost REQUIRED COMPONENTS system)
+find_package(Boost REQUIRED COMPONENTS
+  filesystem
+)
+include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
+link_libraries(${Boost_LIBRARIES})
 
 
 option(GVDB "Use GVDB voxelization." OFF)
@@ -136,7 +140,6 @@ set_target_properties(${PROJECT_NAME}_test_occupancy_comparison PROPERTIES OUTPU
 add_dependencies(${PROJECT_NAME}_test_occupancy_comparison ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME}_test_occupancy_comparison
   ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
 )
 
 #############
