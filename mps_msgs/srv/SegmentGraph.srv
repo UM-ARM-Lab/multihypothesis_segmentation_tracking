@@ -1,0 +1,8 @@
+mps_msgs/SparseMatrix adjacency
+int32 num_labels
+string algorithm
+
+---
+
+int32 num_labels
+int32[] labels

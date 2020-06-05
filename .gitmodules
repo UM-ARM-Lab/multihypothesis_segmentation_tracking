@@ -1,9 +1,6 @@
-[submodule "Shape-completion"]
-	path = Shape-completion
-	url = git@github.com:UM-ARM-Lab/Shape-completion.git
 [submodule "CudaSift"]
-	path = CudaSift
+	path = mps_voxels/CudaSift
 	url = git@github.com:UM-ARM-Lab/CudaSift.git
 [submodule "COB"]
-	path = COB
+	path = mps_voxels/COB
 	url = git@github.com:jinlinyi/COB.git

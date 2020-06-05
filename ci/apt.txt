@@ -1,7 +1,0 @@
-ssh
-git
-python-pip
-gcovr
-ccache
-libgmp-dev
-libmpfr-dev

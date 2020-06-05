@@ -1,0 +1,10 @@
+sensor_msgs/Image[] video
+mps_msgs/AABBox2d bbox
+
+---
+
+sensor_msgs/Image[] mask
+
+---
+
+float32 progress
