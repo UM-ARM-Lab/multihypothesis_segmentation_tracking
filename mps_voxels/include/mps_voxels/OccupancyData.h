@@ -65,7 +65,7 @@ struct OccupancyData
 	explicit
 	OccupancyData(std::shared_ptr<VoxelRegion> region);
 
-	OccupancyData(const std::shared_ptr<const Scene>& scene, std::shared_ptr<VoxelRegion> region, VoxelRegion::VertexLabels vertexState);
+	OccupancyData(std::shared_ptr<VoxelRegion> region, VoxelRegion::VertexLabels vertexState);
 
 	// Domain properties shared by this particle
 	std::shared_ptr<VoxelRegion> voxelRegion;
@@ -79,16 +79,11 @@ struct OccupancyData
 	// Cached set of object labels
 	std::set<ObjectIndex> uniqueObjectLabels;
 
-	// The seeding segmentation image info
-	std::shared_ptr<SegmentationInfo> segInfo;
-
 	std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segments;
 	boost::bimap<uint16_t, ObjectIndex> labelToIndexLookup; ///< Carries body segmentation to object index in this scene
 
 	// Objects in this scene
 	std::map<ObjectIndex, std::unique_ptr<Object>> objects;
-
-	std::weak_ptr<const Scene> parentScene;
 
 	// TODO: These are probably obviated by the vertexState type
 	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> coordToObject;
@@ -100,6 +95,7 @@ struct OccupancyData
 	std::shared_ptr<ObjectIndex> targetObjectID;
 };
 
+cv::Rect2d occupancyToROI(const OccupancyData& state, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera);
 cv::Mat rayCastOccupancy(const OccupancyData& occupancy, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const cv::Rect& roi, const int& step = 1);
 
 }

@@ -7,6 +7,9 @@
 #include "mps_voxels/SegmentationTreeSampler.h"
 #include "mps_voxels/image_output.h"
 #include "mps_voxels/JaccardMatch.h"
+#include "mps_voxels/OccupancyData.h"
+
+#include <tf_conversions/tf_eigen.h>
 
 namespace mps
 {
@@ -15,11 +18,6 @@ ParticleFilter::ParticleFilter(std::shared_ptr<const Scenario> scenario_, const 
 	: scenario(std::move(scenario_)), numParticles(n)
 {
 	voxelRegion = std::make_shared<VoxelRegion>(res, rmin, rmax);
-//	particles.resize(n);
-//	for (int i=0; i<n; ++i)
-//	{
-//		particles[i].state = std::make_shared<Particle::ParticleData>(voxelRegion);
-//	}
 }
 
 bool
@@ -32,6 +30,9 @@ ParticleFilter::initializeParticles(
 	SegmentationTreeSampler treeSampler(scene->segInfo);
 	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), numParticles, true);
 
+	// Currently this is only local, but may need to move up to the class level
+	std::map<ParticleIndex, std::shared_ptr<SegmentationInfo>> particleToInitialSegmentation;
+
 	// TODO: This should probably be wrapped into its own thing
 	for (int p = 0; p < numParticles; ++p)
 	{
@@ -42,12 +43,14 @@ ParticleFilter::initializeParticles(
 		const auto& sample = segmentationSamples[p];
 
 		particle.state = std::make_shared<OccupancyData>(voxelRegion);
-		particle.state->segInfo = std::make_shared<SegmentationInfo>(sample.second.segmentation);
 		particle.weight = sample.first;
-		// Visualization:
-		IMSHOW("segmentation", colorByLabel(particle.state->segInfo->objectness_segmentation->image));
 
-		bool execSegmentation = SceneProcessor::performSegmentation(*scene, particle.state->segInfo, *particle.state);
+		const auto segInfo = std::make_shared<SegmentationInfo>(sample.second.segmentation);
+		particleToInitialSegmentation.emplace(p, segInfo);
+		// Visualization:
+		IMSHOW("segmentation", colorByLabel(segInfo->objectness_segmentation->image));
+
+		bool execSegmentation = SceneProcessor::performSegmentation(*scene, segInfo->objectness_segmentation->image, *particle.state);
 		if (!execSegmentation)
 		{
 			std::cerr << "Particle " << particle.particle << " failed to segment." << std::endl;
@@ -62,10 +65,8 @@ ParticleFilter::initializeParticles(
 
 		particle.state->vertexState = voxelRegion->objectsToSubRegionVoxelLabel(particle.state->objects, scene->minExtent.head<3>());
 		particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
-		particle.state->parentScene = scene;
 
-		auto uniqueImageLabels = unique(particle.state->segInfo->objectness_segmentation->image);
-
+		auto uniqueImageLabels = unique(segInfo->objectness_segmentation->image);
 
 		particles.push_back(particle);
 	}
@@ -97,8 +98,33 @@ ParticleFilter::computeActionModel(
 		return {inputParticle.particle, labelToMotionLookup};
 	}
 
-	const cv::Mat& segParticle = inputParticle.state->segInfo->objectness_segmentation->image;
-	const cv::Rect& roi = inputParticle.state->segInfo->roi;
+	moveit::Pose worldTcamera;
+	const auto& cameraModel = buffer.cameraModel;
+	{
+		const ros::Time queryTime = ros::Time(0);
+		const ros::Duration timeout = ros::Duration(5.0);
+		std::string tfError;
+		bool canTransform = buffer.tfs->canTransform(scenario->worldFrame, cameraModel.tfFrame(), queryTime, &tfError);
+
+		if (!canTransform) // ros::Duration(5.0)
+		{
+			ROS_ERROR_STREAM("Failed to look up transform between '" << scenario->worldFrame << "' and '"
+			                                                        << cameraModel.tfFrame() << "' with error '"
+			                                                        << tfError << "'.");
+			throw std::runtime_error("Sadness.");
+		}
+
+		tf::StampedTransform cameraFrameInTableCoordinates;
+		const auto temp = buffer.tfs->lookupTransform(cameraModel.tfFrame(), scenario->worldFrame, queryTime);
+		tf::transformStampedMsgToTF(temp, cameraFrameInTableCoordinates);
+		tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
+	}
+
+
+	const cv::Rect roi = occupancyToROI(*inputParticle.state, cameraModel, worldTcamera);
+	cv::Mat segParticle = rayCastOccupancy(*inputParticle.state, cameraModel, worldTcamera, roi);
+//	const cv::Mat& segParticle = inputParticle.state->segInfo->objectness_segmentation->image;
+//	const cv::Rect& roi = inputParticle.state->segInfo->roi;
 	// TODO: Use faster version
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, roi, 5);
 	std::cerr << "number of bounding boxes in segParticle: " << labelToBBoxLookup.size() << std::endl;
@@ -166,8 +192,7 @@ Particle ParticleFilter::applyActionModel(
 	}
 
 	Particle outputParticle;
-	outputParticle.state = std::make_shared<OccupancyData>(
-		inputParticle.state->parentScene.lock(), inputParticle.state->voxelRegion, outputState);
+	outputParticle.state = std::make_shared<OccupancyData>(inputParticle.state->voxelRegion, outputState);
 
 	return outputParticle;
 }
@@ -192,6 +217,8 @@ void ParticleFilter::applyMeasurementModel(const std::shared_ptr<const Scene>& n
 	SegmentationTreeSampler treeSampler(newScene->segInfo);
 	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), nSamples, true);
 
+	assert(newScene->roi.x >= 0);
+	assert(newScene->roi.y >= 0);
 	assert(newScene->roi.width > 0);
 	assert(newScene->roi.height > 0);
 
@@ -199,10 +226,16 @@ void ParticleFilter::applyMeasurementModel(const std::shared_ptr<const Scene>& n
 	for (auto & particle : particles)
 	{
 		assert(particle.state);
-		particle.state->parentScene = newScene; // Update the scene pointer
-		// Ray-cast particle only in ROI
-		assert(particle.state->segInfo->objectness_segmentation);
-		cv::Mat segParticle(particle.state->segInfo->objectness_segmentation->image, newScene->roi);
+//		assert(particle.state->segInfo->objectness_segmentation);
+
+		cv::Mat segParticle = rayCastOccupancy(*particle.state, newScene->cameraModel, newScene->worldTcamera, newScene->roi);
+		if (segParticle.size() == cv::Size(newScene->cameraModel.cameraInfo().width, newScene->cameraModel.cameraInfo().height))
+		{
+			cv::Mat cropped = segParticle(newScene->roi);
+			cropped.copyTo(segParticle);
+		}
+		MPS_ASSERT(segParticle.size() == newScene->roi.size());
+		// TODO: cache somewhere?
 
 		IMSHOW("segmentation", colorByLabel(segParticle));
 		WAIT_KEY(0);

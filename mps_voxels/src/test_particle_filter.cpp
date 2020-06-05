@@ -105,7 +105,6 @@ public:
 			loader.load<OccupancyData>("particle", *p.state);
 			particleFilter->particles.push_back(p);
 			particleFilter->particles[i].state->uniqueObjectLabels = getUniqueObjectLabels(particleFilter->particles[i].state->vertexState);
-			particleFilter->particles[i].state->parentScene = initialScene;
 			std::cerr << "Successfully loaded." << std::endl;
 		}
 		// Load motion data

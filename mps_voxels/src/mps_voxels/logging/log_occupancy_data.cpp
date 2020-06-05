@@ -20,9 +20,6 @@ void DataLog::log<OccupancyData>(const std::string& channel, const OccupancyData
 	vs.data = msg.vertexState;
 	activeChannels.insert(channel + "/vertexState");
 	log(channel + "/vertexState", vs);
-
-	activeChannels.insert(channel + "/segInfo");
-	log(channel + "/segInfo", *msg.segInfo);
 }
 
 template <>
@@ -41,7 +38,6 @@ bool DataLog::load<OccupancyData>(const std::string& channel, OccupancyData& msg
 	load(channel + "/vertexState", vs);
 	msg.vertexState = vs.data;
 
-	load(channel + "/segInfo", *msg.segInfo);
 	return true;
 }
 

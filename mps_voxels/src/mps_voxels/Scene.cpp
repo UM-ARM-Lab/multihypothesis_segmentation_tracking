@@ -734,12 +734,12 @@ bool SceneProcessor::computeOcclusions(Scene& s)
 }
 
 
-bool SceneProcessor::performSegmentation(const Scene& s, const std::shared_ptr<SegmentationInfo>& segHypo, OccupancyData& occupancy)
+bool SceneProcessor::performSegmentation(const Scene& s, cv::Mat& segHypo, OccupancyData& occupancy)
 {
-	MPS_ASSERT(s.roi.width == segHypo->objectness_segmentation->image.cols);
-	MPS_ASSERT(s.roi.height == segHypo->objectness_segmentation->image.rows);
+	MPS_ASSERT(s.roi.width == segHypo.cols);
+	MPS_ASSERT(s.roi.height == segHypo.rows);
 	std::cerr << "pile_cloud size = " << s.pile_cloud->size() << std::endl;
-	occupancy.segments = segmentCloudsFromImage(s.pile_cloud, segHypo->objectness_segmentation->image, s.cameraModel, s.roi, &occupancy.labelToIndexLookup);
+	occupancy.segments = segmentCloudsFromImage(s.pile_cloud, segHypo, s.cameraModel, s.roi, &occupancy.labelToIndexLookup);
 
 	if (occupancy.segments.empty())
 	{
@@ -747,11 +747,11 @@ bool SceneProcessor::performSegmentation(const Scene& s, const std::shared_ptr<S
 		return false;
 	}
 
-	for (const auto label : unique(segHypo->objectness_segmentation->image))
+	for (const auto label : unique(segHypo))
 	{
 		if (occupancy.labelToIndexLookup.left.find(label) == occupancy.labelToIndexLookup.left.end())
 		{
-			segHypo->objectness_segmentation->image.setTo(0, label == segHypo->objectness_segmentation->image);
+			segHypo.setTo(0, label == segHypo);
 		}
 	}
 

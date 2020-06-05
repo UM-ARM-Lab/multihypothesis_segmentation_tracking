@@ -247,8 +247,8 @@ std::map<ObjectIndex, pcl::PointCloud<PointT>::Ptr> segmentCloudsFromImage(
 
 std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels, const cv::Rect& roi, const int& dilation)
 {
-	MPS_ASSERT(roi.width == labels.cols);
-	MPS_ASSERT(roi.height == labels.rows);
+//	MPS_ASSERT(roi.width == labels.cols);
+//	MPS_ASSERT(roi.height == labels.rows);
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup;
 	using LabelT = uint16_t;
 	std::set<LabelT> uniqueLabels = unique(labels);
@@ -256,13 +256,14 @@ std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels, const cv::
 	for (const auto label : uniqueLabels)
 	{
 		mps_msgs::AABBox2d bbox;
-		cv::Rect box = cv::boundingRect(labels == label);
+		cv::Rect box = cv::boundingRect(labels == label) & roi;
 
+		// TODO: I wasn't 100% sure on the desired logic here -Andrew
 		if (2 * box.height * box.width > roi.height * roi.width) { continue; } // get rid of table segment
-		bbox.xmin = std::max(0, box.x + roi.x - dilation);
-		bbox.xmax = std::min(roi.x + roi.width, box.x + box.width + roi.x + dilation);
-		bbox.ymin = std::max(0, box.y + roi.y - dilation);
-		bbox.ymax = std::min(roi.y + roi.height, box.y + box.height + roi.y + dilation);
+		bbox.xmin = std::max(0, box.x - dilation);
+		bbox.xmax = std::min(labels.cols, box.x + box.width + dilation);
+		bbox.ymin = std::max(0, box.y - dilation);
+		bbox.ymax = std::min(labels.rows, box.y + box.height + dilation);
 
 		labelToBBoxLookup.insert({label, bbox});
 	}

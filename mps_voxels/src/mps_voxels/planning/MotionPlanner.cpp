@@ -176,11 +176,11 @@ std::priority_queue<MotionPlanner::RankedPose, std::vector<MotionPlanner::Ranked
 }
 
 
-ObjectSampler::ObjectSampler(const Scenario* scenario, const OccupancyData* env)
+ObjectSampler::ObjectSampler(const Scenario* scenario, const Scene* scene, const OccupancyData* env)
 	: succeeded(false)
 {
 	// By default, search through all shadow points
-	const octomap::point3d_collection* shadowPoints = &env->parentScene.lock()->occludedPts;
+	const octomap::point3d_collection* shadowPoints = &scene->occludedPts;
 
 	if (!env->obstructions.empty())
 	{
@@ -222,9 +222,9 @@ ObjectSampler::ObjectSampler(const Scenario* scenario, const OccupancyData* env)
 	std::iota(indices.begin(), indices.end(), 0);
 	std::shuffle(indices.begin(), indices.end(), scenario->rng());
 
-	cameraOrigin = octomap::point3d((float) env->parentScene.lock()->worldTcamera.translation().x(),
-	                                (float) env->parentScene.lock()->worldTcamera.translation().y(),
-	                                (float) env->parentScene.lock()->worldTcamera.translation().z());
+	cameraOrigin = octomap::point3d((float) scene->worldTcamera.translation().x(),
+	                                (float) scene->worldTcamera.translation().y(),
+	                                (float) scene->worldTcamera.translation().z());
 
 	for (const unsigned int index : indices)
 	{
@@ -233,18 +233,18 @@ ObjectSampler::ObjectSampler(const Scenario* scenario, const OccupancyData* env)
 		// Get a randomly selected shadowed point
 		if (samplePoint.z()<0.05) { continue; }
 		ray = samplePoint-cameraOrigin;
-		bool hit = env->parentScene.lock()->sceneOctree->castRay(cameraOrigin, ray, collision, true);
+		bool hit = scene->sceneOctree->castRay(cameraOrigin, ray, collision, true);
 		MPS_ASSERT(hit);
-		collision = env->parentScene.lock()->sceneOctree->keyToCoord(env->parentScene.lock()->sceneOctree->coordToKey(collision)); // regularize
+		collision = scene->sceneOctree->keyToCoord(scene->sceneOctree->coordToKey(collision)); // regularize
 
 		if (scenario->shouldVisualize("object_sampling"))
 		{
 			// Display occluded point and push frame
 			Eigen::Vector3d pt(samplePoint.x(), samplePoint.y(), samplePoint.z());
 			tf::Transform t = tf::Transform::getIdentity();
-			Eigen::Vector3d pt_camera = env->parentScene.lock()->worldTcamera.inverse(Eigen::Isometry)*pt;
+			Eigen::Vector3d pt_camera = scene->worldTcamera.inverse(Eigen::Isometry)*pt;
 			t.setOrigin({pt_camera.x(), pt_camera.y(), pt_camera.z()});
-			scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), env->parentScene.lock()->cameraFrame, "occluded_point"));
+			scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), scene->cameraFrame, "occluded_point"));
 		}
 
 //		if (!env->obstructions.empty())
@@ -302,7 +302,7 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 		const std::shared_ptr<octomap::OcTree>& segment = obj.second->occupancy;
 
 //		const Pose worldTobj_init = Pose::Identity();
-		const Pose worldTcamera_prime = /*worldTobj_init * */ worldTobj_prime.inverse(Eigen::Isometry) * env->parentScene.lock()->worldTcamera;
+		const Pose worldTcamera_prime = /*worldTobj_init * */ worldTobj_prime.inverse(Eigen::Isometry) * scene->worldTcamera;
 
 		octomap::point3d cameraOrigin((float) worldTcamera_prime.translation().x(), (float) worldTcamera_prime.translation().y(),
 		                              (float) worldTcamera_prime.translation().z());
@@ -357,7 +357,7 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 		auto jointTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(compositeAction->actions[actionIdx]);
 		if (jointTraj)
 		{
-//			auto* arm = env->parentScene.lock()->manipulators.front()->pModel->getJointModelGroup(jointTraj->jointGroupName);
+//			auto* arm = scene->manipulators.front()->pModel->getJointModelGroup(jointTraj->jointGroupName);
 			const auto& manipulator = scenario->jointToManipulator.at(jointTraj->cmd.joint_names.front());
 			collision_detection::AllowedCollisionMatrix acm = gripperEnvironmentACM(manipulator);
 
@@ -422,14 +422,13 @@ MotionPlanner::reward(const robot_state::RobotState& robotState, const Motion* m
 }
 
 collision_detection::WorldPtr
-computeCollisionWorld(const OccupancyData& occupancy)
+computeCollisionWorld(const Scene* scene, const OccupancyData& occupancy)
 {
 	auto world = std::make_shared<collision_detection::World>();
-	assert(occupancy.parentScene.lock());
 
-	moveit::Pose robotTworld = occupancy.parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
+	moveit::Pose robotTworld = scene->worldTrobot.inverse(Eigen::Isometry);
 
-	for (const auto& obstacle : occupancy.parentScene.lock()->scenario->staticObstacles)
+	for (const auto& obstacle : scene->scenario->staticObstacles)
 	{
 		world->addToObject(MotionPlanner::CLUTTER_NAME, obstacle.first, robotTworld * obstacle.second);
 	}
@@ -460,14 +459,14 @@ MotionPlanner::computePlanningScene(bool useCollisionObjects)
 	if (useCollisionObjects)
 	{
 		assert(env);
-		world = computeCollisionWorld(*env);
+		world = computeCollisionWorld(scene.get(), *env);
 	}
 	else
 	{
 		world = std::make_shared<collision_detection::World>();
 	}
 	collisionWorld = world; // NB: collisionWorld is const, but the planning scene constructor is not
-	planningScene = std::make_shared<planning_scene::PlanningScene>(env->parentScene.lock()->scenario->manipulators.front()->pModel, world);
+	planningScene = std::make_shared<planning_scene::PlanningScene>(scene->scenario->manipulators.front()->pModel, world);
 	return planningScene;
 }
 
@@ -552,9 +551,9 @@ bool MotionPlanner::addPhysicalObstructions(const std::shared_ptr<Manipulator>& 
 		collision_detection::AllowedCollisionMatrix acm = gripperEnvironmentACM(manipulator);
 		planningScene->checkCollision(collision_request, collision_result, collisionState, acm);
 
-		octomap::point3d cameraOrigin((float) env->parentScene.lock()->worldTcamera.translation().x(),
-		                              (float) env->parentScene.lock()->worldTcamera.translation().y(),
-		                              (float) env->parentScene.lock()->worldTcamera.translation().z());
+		octomap::point3d cameraOrigin((float) scene->worldTcamera.translation().x(),
+		                              (float) scene->worldTcamera.translation().y(),
+		                              (float) scene->worldTcamera.translation().z());
 		for (auto& cts : collision_result.contacts)
 		{
 			std::cerr << cts.second.size() << std::endl;
@@ -567,11 +566,11 @@ bool MotionPlanner::addPhysicalObstructions(const std::shared_ptr<Manipulator>& 
 				// For each contact point, cast ray from camera to point; see if it hits completed shape
 				for (auto& c : cts.second)
 				{
-					Eigen::Vector3d p = env->parentScene.lock()->worldTrobot * c.pos;
+					Eigen::Vector3d p = scene->worldTrobot * c.pos;
 					std::cerr << p.transpose() << std::endl;
 
 					octomap::point3d collision = octomap::point3d((float)p.x(), (float)p.y(), (float)p.z());
-					//								collision = env->parentScene.lock()->sceneOctree->keyToCoord(env->parentScene.lock()->sceneOctree->coordToKey(collision));
+					//								collision = scene->sceneOctree->keyToCoord(scene->sceneOctree->coordToKey(collision));
 
 					std::cerr << "raycasting" << std::endl;
 					octomath::Vector3 ray = collision-cameraOrigin;
@@ -602,14 +601,14 @@ bool MotionPlanner::addVisualObstructions(const ObjectIndex target, OccupancyDat
 	bool hasVisualObstruction = false;
 	for (const auto& targetPt : env->objects.at(target)->points)
 	{
-		octomap::point3d cameraOrigin((float) env->parentScene.lock()->worldTcamera.translation().x(), (float) env->parentScene.lock()->worldTcamera.translation().y(),
-		                              (float) env->parentScene.lock()->worldTcamera.translation().z());
+		octomap::point3d cameraOrigin((float) scene->worldTcamera.translation().x(), (float) scene->worldTcamera.translation().y(),
+		                              (float) scene->worldTcamera.translation().z());
 		octomath::Vector3 ray = targetPt-cameraOrigin;
 		octomap::point3d collision;
-		bool hit = env->parentScene.lock()->sceneOctree->castRay(cameraOrigin, ray, collision);
+		bool hit = scene->sceneOctree->castRay(cameraOrigin, ray, collision);
 		if (hit)
 		{
-			collision = env->parentScene.lock()->sceneOctree->keyToCoord(env->parentScene.lock()->sceneOctree->coordToKey(collision));
+			collision = scene->sceneOctree->keyToCoord(scene->sceneOctree->coordToKey(collision));
 			const auto& iter = env->surfaceCoordToObject.find(collision);
 			if (iter!=env->surfaceCoordToObject.end())
 			{
@@ -638,11 +637,11 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 		}
 	}
 
-	Pose robotTworld = env->parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
+	Pose robotTworld = scene->worldTrobot.inverse(Eigen::Isometry);
 	State objectState = stateFactory(env->objects);
 
 	// Get an object to slide
-	const ObjectSampler sampleInfo(scenario.get(), env.get());
+	const ObjectSampler sampleInfo(scenario.get(), scene.get(), env.get());
 	if (info) { info->objectSampleInfo = sampleInfo; }
 	if (!sampleInfo)
 	{
@@ -872,11 +871,11 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 		}
 	}
 
-	Pose robotTworld = env->parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
+	Pose robotTworld = scene->worldTrobot.inverse(Eigen::Isometry);
 	State objectState = stateFactory(env->objects);
 
 	// Get an object to slide
-	const ObjectSampler sampleInfo(scenario.get(), env.get());
+	const ObjectSampler sampleInfo(scenario.get(), scene.get(), env.get());
 	if (info) { info->objectSampleInfo = sampleInfo; }
 	if (!sampleInfo)
 	{
@@ -896,8 +895,8 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 	const double Z_SAFETY_HEIGHT = 0.16;
 
 	trajectory_msgs::JointTrajectory cmd;
-	std::uniform_real_distribution<double> xDistr(env->parentScene.lock()->minExtent.x()+TABLE_BUFFER, env->parentScene.lock()->maxExtent.x()-TABLE_BUFFER);
-	std::uniform_real_distribution<double> yDistr(env->parentScene.lock()->minExtent.y()+TABLE_BUFFER, env->parentScene.lock()->maxExtent.y()-TABLE_BUFFER);
+	std::uniform_real_distribution<double> xDistr(scene->minExtent.x()+TABLE_BUFFER, scene->maxExtent.x()-TABLE_BUFFER);
+	std::uniform_real_distribution<double> yDistr(scene->minExtent.y()+TABLE_BUFFER, scene->maxExtent.y()-TABLE_BUFFER);
 	std::uniform_real_distribution<double> thetaDistr(0.0, 2.0*M_PI);
 
 	// Shuffle manipulators (without shuffling underlying array)
@@ -1109,7 +1108,7 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 		}
 	}
 
-	Pose robotTworld = env->parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
+	Pose robotTworld = scene->worldTrobot.inverse(Eigen::Isometry);
 	State objectState = stateFactory(env->objects);
 
 	// Get an object to slide
@@ -1308,10 +1307,10 @@ MotionPlanner::recoverCrash(const robot_state::RobotState& currentState,
 			continue;
 		}
 
-		Pose worldThand = env->parentScene.lock()->worldTrobot*currentState.getFrameTransform(manipulator->palmName);
+		Pose worldThand = scene->worldTrobot*currentState.getFrameTransform(manipulator->palmName);
 		Pose worldTretreat = worldThand;
 		worldTretreat.translation().z() += RETREAT_DISTANCE;
-		Pose robotTworld = env->parentScene.lock()->worldTrobot.inverse(Eigen::Isometry);
+		Pose robotTworld = scene->worldTrobot.inverse(Eigen::Isometry);
 
 		std::shared_ptr<CompositeAction> compositeAction = std::make_shared<CompositeAction>();
 		auto releaseAction = std::make_shared<GripperCommandAction>();
@@ -1378,8 +1377,8 @@ MotionPlanner::recoverCrash(const robot_state::RobotState& currentState,
 	return std::shared_ptr<Motion>();
 }
 
-MotionPlanner::MotionPlanner(std::shared_ptr<const Scenario> _scenario, std::shared_ptr<const OccupancyData> _occupancy)
-	: scenario(std::move(_scenario)), env(std::move(_occupancy))
+MotionPlanner::MotionPlanner(std::shared_ptr<const Scenario> _scenario, std::shared_ptr<const Scene> _scene, std::shared_ptr<const OccupancyData> _occupancy)
+	: scenario(std::move(_scenario)), scene(std::move(_scene)), env(std::move(_occupancy))
 {
 	computePlanningScene(true);
 }

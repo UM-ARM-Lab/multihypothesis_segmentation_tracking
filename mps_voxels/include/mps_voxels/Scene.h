@@ -206,7 +206,7 @@ public:
 	bool computeOcclusions(Scene& s);
 
 	static
-	bool performSegmentation(const Scene& s, const std::shared_ptr<SegmentationInfo>& segHypo, OccupancyData& occupancy);
+	bool performSegmentation(const Scene& s, cv::Mat& segHypo, OccupancyData& occupancy);
 
 	static
 	bool buildObjects(const Scene& s, OccupancyData& occupancy);

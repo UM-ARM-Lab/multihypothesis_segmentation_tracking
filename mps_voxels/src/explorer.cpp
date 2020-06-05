@@ -623,7 +623,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				visualPub.publish(ma);
 			}
 
-			IMSHOW("segmentation", colorByLabel(particle.state->segInfo->objectness_segmentation->image));
+//			IMSHOW("segmentation", colorByLabel(particle.state->segInfo->objectness_segmentation->image));
 
 			IMSHOW("orig_segmentation", colorByLabel(scene->segInfo->objectness_segmentation->image));
 			WAIT_KEY(0);
@@ -888,7 +888,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	std::priority_queue<RankedMotion, std::vector<RankedMotion>, decltype(comp)> motionQueue(comp);
 
 	scene->bestGuess->obstructions.clear();
-	planner = std::make_unique<MotionPlanner>(scenario, scene->bestGuess);
+	planner = std::make_unique<MotionPlanner>(scenario, scene, scene->bestGuess);
 	auto rs = getCurrentRobotState();
 
 	std::shared_ptr<Motion> motion;

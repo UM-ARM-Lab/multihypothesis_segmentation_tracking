@@ -51,11 +51,11 @@ public:
 	octomap::point3d collision; ///< Center of collision voxel in world coordinates
 
 	ObjectSampler() = default;
-	explicit ObjectSampler(const Scenario* scenario, const OccupancyData* scene);
+	explicit ObjectSampler(const Scenario* scenario, const Scene* scene, const OccupancyData* occupancy);
 	explicit operator bool() const { return succeeded; }
 };
 
-collision_detection::WorldPtr computeCollisionWorld(const OccupancyData& occupancy);
+collision_detection::WorldPtr computeCollisionWorld(const Scene* scene, const OccupancyData& occupancy);
 
 class MotionPlanner
 {
@@ -69,9 +69,10 @@ public:
 		ObjectSampler objectSampleInfo;
 	};
 
-	MotionPlanner(std::shared_ptr<const Scenario> _scenario, std::shared_ptr<const OccupancyData> _occupancy);
+	MotionPlanner(std::shared_ptr<const Scenario> _scenario, std::shared_ptr<const Scene> _scene, std::shared_ptr<const OccupancyData> _occupancy);
 
 	std::shared_ptr<const Scenario> scenario;
+	std::shared_ptr<const Scene> scene;
 	std::shared_ptr<const OccupancyData> env;
 
 	static const std::string CLUTTER_NAME;

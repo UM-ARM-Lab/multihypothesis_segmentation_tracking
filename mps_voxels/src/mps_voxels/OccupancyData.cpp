@@ -37,6 +37,8 @@
 
 #include <image_geometry/pinhole_camera_model.h>
 
+#include <Eigen/StdVector>
+
 // From https://tavianator.com/cgit/dimension.git/tree/libdimension/bvh/bvh.c#n196
 // NB: Will miss if ray is coplanar with a box face
 bool
@@ -84,8 +86,7 @@ OccupancyData::OccupancyData(std::shared_ptr<VoxelRegion> region)
 
 }
 
-OccupancyData::OccupancyData(const std::shared_ptr<const Scene>& scene,
-                             std::shared_ptr<VoxelRegion> region,
+OccupancyData::OccupancyData(std::shared_ptr<VoxelRegion> region,
                              VoxelRegion::VertexLabels state)
 	: voxelRegion(std::move(region)),
 	  vertexState(std::move(state)),
@@ -106,10 +107,10 @@ OccupancyData::OccupancyData(const std::shared_ptr<const Scene>& scene,
 	// Allocate the object representation
 	for (const auto& id : uniqueObjectLabels)
 	{
-		std::shared_ptr<octomap::OcTree> subtree(scene->sceneOctree->create());
+		auto subtree = std::make_shared<octomap::OcTree>(region->resolution);
 		subtree->setProbMiss(0.05);
 		subtree->setProbHit(0.95);
-		setBBox(scene->minExtent, scene->maxExtent, subtree.get());
+		setBBox(region->regionMin, region->regionMax, subtree.get());
 		auto res = objects.emplace(id, std::make_unique<Object>(id, subtree));
 		res.first->second->minExtent = Eigen::Vector3d::Constant(std::numeric_limits<double>::max());
 		res.first->second->maxExtent = Eigen::Vector3d::Constant(std::numeric_limits<double>::lowest());
@@ -138,22 +139,41 @@ OccupancyData::OccupancyData(const std::shared_ptr<const Scene>& scene,
 		pair.second->approximation = approximateShape(pair.second->occupancy.get());
 	}
 
-	segInfo = std::make_shared<SegmentationInfo>();
-	*segInfo = *scene->segInfo; // Shallow copy; deep copy objectness later
+//	segInfo = std::make_shared<SegmentationInfo>();
+//	*segInfo = *scene->segInfo; // Shallow copy; deep copy objectness later
+//
+//	const auto& os = scene->segInfo->objectness_segmentation;
+//	segInfo->objectness_segmentation = boost::make_shared<cv_bridge::CvImage>(
+//		os->header, os->encoding,
+//		cv::Mat(os->image.size(),
+//		        os->image.type()));
+//
+//	const int segStep = 1;
+//	segInfo->objectness_segmentation->image = rayCastOccupancy(*this, scene->cameraModel, scene->worldTcamera, scene->roi, segStep);
 
-	const auto& os = scene->segInfo->objectness_segmentation;
-	segInfo->objectness_segmentation = boost::make_shared<cv_bridge::CvImage>(
-		os->header, os->encoding,
-		cv::Mat(os->image.size(),
-		        os->image.type()));
+//	if (scene->scenario->shouldVisualize("particle_segmentation"))
+//	{
+////		IMSHOW()
+//	}
+}
 
-	const int segStep = 1;
-	segInfo->objectness_segmentation->image = rayCastOccupancy(*this, scene->cameraModel, scene->worldTcamera, scene->roi, segStep);
-
-	if (scene->scenario->shouldVisualize("particle_segmentation"))
+cv::Rect2d occupancyToROI(const OccupancyData& state, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera)
+{
+	Eigen::AlignedBox2d aabb;
+	moveit::Pose cameraTworld = worldTcamera.inverse(Eigen::Isometry);
+	for (const auto& obj : state.objects)
 	{
-//		IMSHOW()
+		// Get all corners of box
+		for (const auto& corner : getCorners(obj.second->minExtent, obj.second->maxExtent, 3))
+		{
+			Eigen::Vector3d p = cameraTworld * corner;
+			cv::Point3d worldPt_camera(p.x(), p.y(), p.z());
+			cv::Point2d imgPt = cameraModel.project3dToPixel(worldPt_camera);
+			aabb.extend(Eigen::Vector2d{imgPt.x, imgPt.y});
+		}
 	}
+
+	return {aabb.min().x(), aabb.min().y(), aabb.max().x()-aabb.min().x(), aabb.max().y()-aabb.min().y()};
 }
 
 
