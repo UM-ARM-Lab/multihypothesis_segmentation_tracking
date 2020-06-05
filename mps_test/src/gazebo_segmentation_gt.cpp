@@ -163,36 +163,6 @@ public:
 
 		cv::Mat labels = pixelizer->pixelize(cameraModel, worldTcamera, states);
 
-//		for (size_t m = 0; m < models.size(); ++m)
-//		{
-//			const GazeboModel &model = models[m];
-//			const GazeboModelState &state = states[m];
-//
-//			tf::Transform temp;
-//
-//			tf::poseEigenToTF(state.pose, temp);
-//			broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), worldFrame, model.name + "__base"));
-//			ros::spinOnce(); ros::Duration(0.1).sleep();
-//
-//			for (const auto& body_pair : model.bodies)
-//			{
-//				std::cerr << body_pair.second->getPose().matrix() << std::endl;
-//				Eigen::Isometry3d worldTshape = state.pose * body_pair.second->getPose();
-//
-//
-//				tf::poseEigenToTF(worldTshape, temp);
-//				broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), worldFrame, model.name + "_" + body_pair.first));
-//				ros::spinOnce(); ros::Duration(0.1).sleep();
-//
-//				Eigen::Isometry3d cameraTshape = cameraTworld * worldTshape;
-//
-//				tf::poseEigenToTF(cameraTshape, temp);
-//				broadcaster->sendTransform(tf::StampedTransform(temp, ros::Time::now(), cameraFrame, model.name + "_" + body_pair.first));
-//				ros::spinOnce(); ros::Duration(0.1).sleep();
-//
-//			}
-//		}
-
 		std::lock_guard<std::mutex> lock(stateMtx);
 		if (states.size() != models.size())
 		{

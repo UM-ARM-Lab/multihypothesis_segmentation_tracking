@@ -101,7 +101,8 @@ bool DataLog::load<SensorHistoryBuffer>(const std::string& channel, SensorHistor
 		msg.joint.insert(std::make_pair(m.header.stamp, js));
 	}
 
-	msg.tfs = std::make_shared<tf2_ros::Buffer>(ros::Duration(tf2_ros::Buffer::DEFAULT_CACHE_TIME));
+	// TODO: make the history length reasonable, based on the images
+	msg.tfs = std::make_shared<tf2_ros::Buffer>(ros::Duration(100*tf2_ros::Buffer::DEFAULT_CACHE_TIME));
 	loadAll(channel + "/tf", msg.tf_raw);
 	for (const auto& m : msg.tf_raw)
 	{
