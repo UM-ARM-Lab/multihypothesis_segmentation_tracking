@@ -47,6 +47,8 @@
 #include <mps_test/ROSVoxelizer.h>
 #include <tf_conversions/tf_eigen.h>
 
+#include <boost/regex.hpp>
+
 using VoxelColormap = std::map<mps::VoxelRegion::VertexLabels::value_type , std_msgs::ColorRGBA>;
 
 using namespace mps;
@@ -116,16 +118,30 @@ int main(int argc, char* argv[])
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-05T16:24:42.273504/";
 //	const std::string ground_truth = "/tmp/gazebo_segmentation/gt_occupancy.bag";
 	const std::string globalFrame = "table_surface";
+	const boost::regex my_filter( "particle_(.+)_(.+)\\.bag" );
+
+	int numGenerations = 0;
+	int numParticles = 0;
+	boost::filesystem::directory_iterator end_itr; // Default ctor yields past-the-end
+	for( boost::filesystem::directory_iterator i( workingDir ); i != end_itr; ++i )
+	{
+		// Skip if not a file
+		if( !boost::filesystem::is_regular_file( i->status() ) ) continue;
+
+		boost::smatch what;
+
+		// Skip if no match:
+		if( !boost::regex_match( i->path().filename().string(), what, my_filter ) ) continue;
+
+		numGenerations = std::max(numGenerations, std::stoi(what[1])+1);
+		numParticles = std::max(numParticles, std::stoi(what[2])+1);
+	}
 
 	std::shared_ptr<mps::VoxelRegion> region = std::make_shared<mps::VoxelRegion>(mps::VoxelRegionBuilder::build(YAML::Load("{roi: {min: {x: -0.4, y: -0.6, z: -0.020}, max: {x: 0.4, y: 0.6, z: 0.5}, resolution: 0.01}}")));
 
 	std::random_device rd;
 	int seed = rd(); //0;
 	std::default_random_engine rng = std::default_random_engine(seed);
-
-	// TODO: Load from directory
-	const int numGenerations = 2;
-	const int numParticles = 2;
 
 	ros::Publisher particlePubGT = nh.advertise<visualization_msgs::MarkerArray>("visualization_gt", 1, true);
 	std::vector<std::shared_ptr<ros::Publisher>> particlePubs;
