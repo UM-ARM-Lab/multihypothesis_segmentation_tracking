@@ -22,6 +22,7 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl_ros/point_cloud.h>
 #include <ros/ros.h>
+#include <mps_voxels/image_output.h>
 
 namespace mps
 {
@@ -153,7 +154,7 @@ ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& st
 		{
 			firstCloudSegment = make_PC_segment(buffer.rgb.at(steps[t])->image, buffer.depth.at(steps[t])->image,
 			                                    buffer.cameraModel, masks.at(steps[t]));
-			assert(!firstCloudSegment->empty());
+			MPS_ASSERT(!firstCloudSegment->empty());
 
 			if (scenario->shouldVisualize("poseArray"))
 			{
@@ -342,8 +343,15 @@ bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 //	return sampleAction(buffer_out, startMask, seg_out.roi, sparseTracker, denseTracker, label, bbox);
 //}
 
-bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, const cv::Mat& firstFrameSeg, const cv::Rect& roi, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
+bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, const cv::Mat& firstFrameSeg, const cv::Rect& roi,
+	std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker,
+	uint16_t label, mps_msgs::AABBox2d& bbox)
 {
+	assert(roi.x >= 0);
+	assert(roi.y >= 0);
+	assert(roi.x + roi.width <= buffer_out.rgb.begin()->second->image.cols);
+	assert(roi.y + roi.height <= buffer_out.rgb.begin()->second->image.rows);
+
 	actionSamples.clear();
 	/////////////////////////////////////////////
 	//// Construct tracking time steps
@@ -381,21 +389,29 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, cons
 	}
 	if (masks.find(steps.back()) == masks.end())
 	{
-		ROS_ERROR_STREAM("Failed to estimate motion because of insufficient masks! Return!");
+		ROS_ERROR_STREAM("Failed to estimate motion: SiamMask did not return masks for all frames! Return!");
 		return false;
 	}
 	//// Fill in the first frame mask
-//	cv::Mat startMask = label == firstFrameSeg;
-	cv::Mat startMask = cv::Mat::zeros(buffer_out.rgb.begin()->second->image.size(), CV_8UC1);
-	cv::Mat subwindow(startMask, roi);
-	subwindow = label == firstFrameSeg;
+	cv::Mat startMask;
+	if (firstFrameSeg.size() == cv::Size(roi.width, roi.height))
+	{
+		startMask = cv::Mat::zeros(buffer_out.rgb.begin()->second->image.size(), CV_8UC1);
+		cv::Mat subwindow(startMask, roi);
+		subwindow = label == firstFrameSeg;
+	}
+	else
+	{
+		startMask = label == firstFrameSeg;
+	}
+
 	masks.insert(masks.begin(), {steps.front(), startMask});
 
 	/////////////////////////////////////////////
 	//// Estimate motion using SiamMask
 	/////////////////////////////////////////////
-	Eigen::Vector3d roughMotion_w = sampleActionFromMask(masks[steps[0]], buffer_out.depth.at(steps[0])->image,
-	                                                     masks[steps.back()], buffer_out.depth.at(steps.back())->image,
+	Eigen::Vector3d roughMotion_w = sampleActionFromMask(masks.at(steps.front()), buffer_out.depth.at(steps.front())->image,
+	                                                     masks.at(steps.back()), buffer_out.depth.at(steps.back())->image,
 	                                                     buffer_out.cameraModel, worldTcamera);
 	std::cerr << "Rough Motion from SiamMask: " << roughMotion_w.x() << " " << roughMotion_w.y() << " " << roughMotion_w.z() << std::endl;
 	Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();

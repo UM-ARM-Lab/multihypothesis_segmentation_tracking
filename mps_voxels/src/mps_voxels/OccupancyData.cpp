@@ -86,10 +86,10 @@ OccupancyData::OccupancyData(std::shared_ptr<VoxelRegion> region)
 
 }
 
-OccupancyData::OccupancyData(std::shared_ptr<VoxelRegion> region,
-                             VoxelRegion::VertexLabels state)
-	: voxelRegion(std::move(region)),
-	  vertexState(std::move(state)),
+OccupancyData::OccupancyData(std::shared_ptr<VoxelRegion> _region,
+                             VoxelRegion::VertexLabels _state)
+	: voxelRegion(std::move(_region)),
+	  vertexState(std::move(_state)),
 	  edgeState(voxelRegion->num_edges(), false),
 	  uniqueObjectLabels(getUniqueObjectLabels(vertexState))
 {
@@ -107,10 +107,10 @@ OccupancyData::OccupancyData(std::shared_ptr<VoxelRegion> region,
 	// Allocate the object representation
 	for (const auto& id : uniqueObjectLabels)
 	{
-		auto subtree = std::make_shared<octomap::OcTree>(region->resolution);
+		auto subtree = std::make_shared<octomap::OcTree>(voxelRegion->resolution);
 		subtree->setProbMiss(0.05);
 		subtree->setProbHit(0.95);
-		setBBox(region->regionMin, region->regionMax, subtree.get());
+		setBBox(voxelRegion->regionMin, voxelRegion->regionMax, subtree.get());
 		auto res = objects.emplace(id, std::make_unique<Object>(id, subtree));
 		res.first->second->minExtent = Eigen::Vector3d::Constant(std::numeric_limits<double>::max());
 		res.first->second->maxExtent = Eigen::Vector3d::Constant(std::numeric_limits<double>::lowest());
@@ -160,6 +160,8 @@ OccupancyData::OccupancyData(std::shared_ptr<VoxelRegion> region,
 cv::Rect2d occupancyToROI(const OccupancyData& state, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera)
 {
 	Eigen::AlignedBox2d aabb;
+	Eigen::AlignedBox2d imageAABB(Eigen::Vector2d{0, 0},
+	                              Eigen::Vector2d{cameraModel.cameraInfo().width, cameraModel.cameraInfo().height});
 	moveit::Pose cameraTworld = worldTcamera.inverse(Eigen::Isometry);
 	for (const auto& obj : state.objects)
 	{
@@ -169,9 +171,36 @@ cv::Rect2d occupancyToROI(const OccupancyData& state, const image_geometry::Pinh
 			Eigen::Vector3d p = cameraTworld * corner;
 			cv::Point3d worldPt_camera(p.x(), p.y(), p.z());
 			cv::Point2d imgPt = cameraModel.project3dToPixel(worldPt_camera);
-			aabb.extend(Eigen::Vector2d{imgPt.x, imgPt.y});
+			Eigen::Vector2d pt{imgPt.x, imgPt.y};
+
+			aabb.extend(pt);
 		}
 	}
+
+	aabb = aabb.intersection(imageAABB);
+
+	return {aabb.min().x(), aabb.min().y(), aabb.max().x()-aabb.min().x(), aabb.max().y()-aabb.min().y()};
+}
+
+cv::Rect2d workspaceToROI(const VoxelRegion& region, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera)
+{
+	Eigen::AlignedBox2d aabb;
+	Eigen::AlignedBox2d imageAABB(Eigen::Vector2d{0, 0},
+	                              Eigen::Vector2d{cameraModel.cameraInfo().width, cameraModel.cameraInfo().height});
+	moveit::Pose cameraTworld = worldTcamera.inverse(Eigen::Isometry);
+
+	// Get all corners of box
+	for (const auto& corner : getCorners(region.regionMin, region.regionMax, 3))
+	{
+		Eigen::Vector3d p = cameraTworld * corner;
+		cv::Point3d worldPt_camera(p.x(), p.y(), p.z());
+		cv::Point2d imgPt = cameraModel.project3dToPixel(worldPt_camera);
+		Eigen::Vector2d pt{imgPt.x, imgPt.y};
+
+		aabb.extend(pt);
+	}
+
+	aabb = aabb.intersection(imageAABB);
 
 	return {aabb.min().x(), aabb.min().y(), aabb.max().x()-aabb.min().x(), aabb.max().y()-aabb.min().y()};
 }

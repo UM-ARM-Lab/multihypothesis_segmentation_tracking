@@ -29,14 +29,15 @@ bool DataLog::load<OccupancyData>(const std::string& channel, OccupancyData& msg
 	const double resolution = 1.0;
 	Eigen::Vector3d ROImaxExtent(1.0, 1.0, 1.0);
 	Eigen::Vector3d ROIminExtent(-1.0, -1.0, -1.0);
-	msg.voxelRegion = std::make_shared<VoxelRegion>(resolution,
-	                                                ROIminExtent,
-	                                                ROImaxExtent);
-	load(channel + "/voxelRegion", *msg.voxelRegion);
+	auto voxelRegion = std::make_shared<VoxelRegion>(resolution,
+	                                                 ROIminExtent,
+	                                                 ROImaxExtent);
+	load(channel + "/voxelRegion", *voxelRegion);
 
 	std_msgs::Int32MultiArray vs;
 	load(channel + "/vertexState", vs);
-	msg.vertexState = vs.data;
+
+	msg = OccupancyData(voxelRegion, vs.data);
 
 	return true;
 }

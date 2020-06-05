@@ -96,6 +96,7 @@ struct OccupancyData
 };
 
 cv::Rect2d occupancyToROI(const OccupancyData& state, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera);
+cv::Rect2d workspaceToROI(const VoxelRegion& region, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera);
 cv::Mat rayCastOccupancy(const OccupancyData& occupancy, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera, const cv::Rect& roi, const int& step = 1);
 
 }

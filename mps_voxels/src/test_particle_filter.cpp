@@ -23,6 +23,10 @@
 #include "mps_voxels/Scene.h"
 #include "mps_voxels/octree_utils.h"
 
+#if HAS_CUDA_SIFT
+#include "mps_voxels/CudaTracker.h"
+#endif
+
 #include <moveit/robot_model_loader/robot_model_loader.h>
 
 using namespace mps;
@@ -53,10 +57,14 @@ public:
 		scenario->segmentationClient = std::make_shared<RGBDSegmenter>(nh);
 		scenario->completionClient = std::make_shared<VoxelCompleter>(nh);
 
+		#if HAS_CUDA_SIFT
+		sparseTracker = std::make_unique<CudaTracker>();
+		#else
 		sparseTracker = std::make_unique<Tracker>();
 		sparseTracker->track_options.featureRadius = 200.0f;
 		sparseTracker->track_options.pixelRadius = 1000.0f;
 		sparseTracker->track_options.meterRadius = 1.0f;
+		#endif
 		denseTracker = std::make_unique<SiamTracker>();
 
 		double resolution = 0.010;

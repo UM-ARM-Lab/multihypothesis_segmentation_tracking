@@ -101,7 +101,7 @@ ParticleFilter::computeActionModel(
 	moveit::Pose worldTcamera;
 	const auto& cameraModel = buffer.cameraModel;
 	{
-		const ros::Time queryTime = ros::Time(0);
+		const ros::Time queryTime = ros::Time(0); // buffer.rgb.begin()->first;
 		const ros::Duration timeout = ros::Duration(5.0);
 		std::string tfError;
 		bool canTransform = buffer.tfs->canTransform(scenario->worldFrame, cameraModel.tfFrame(), queryTime, &tfError);
@@ -120,19 +120,23 @@ ParticleFilter::computeActionModel(
 		tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
 	}
 
+	// Image region of objects currently
+	const cv::Rect objectsROI = occupancyToROI(*inputParticle.state, cameraModel, worldTcamera);
+	cv::Mat segParticle = rayCastOccupancy(*inputParticle.state, cameraModel, worldTcamera, objectsROI);
 
-	const cv::Rect roi = occupancyToROI(*inputParticle.state, cameraModel, worldTcamera);
-	cv::Mat segParticle = rayCastOccupancy(*inputParticle.state, cameraModel, worldTcamera, roi);
+	// Image region where objects could be after moving
+	const cv::Rect workspaceROI = workspaceToROI(*inputParticle.state->voxelRegion, cameraModel, worldTcamera);
+
 //	const cv::Mat& segParticle = inputParticle.state->segInfo->objectness_segmentation->image;
 //	const cv::Rect& roi = inputParticle.state->segInfo->roi;
-	// TODO: Use faster version
-	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, roi, 5);
+
+	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, objectsROI, 5);
 	std::cerr << "number of bounding boxes in segParticle: " << labelToBBoxLookup.size() << std::endl;
 
 	std::unique_ptr<ObjectActionModel> oam = std::make_unique<ObjectActionModel>(scenario, 1);
 	for (auto& pair : labelToBBoxLookup)
 	{
-		bool sampleActionSuccess = oam->sampleAction(buffer, segParticle, roi, sparseTracker, denseTracker, pair.first, pair.second);
+		bool sampleActionSuccess = oam->sampleAction(buffer, segParticle, workspaceROI, sparseTracker, denseTracker, pair.first, pair.second);
 		if (sampleActionSuccess)
 		{
 			labelToMotionLookup.emplace(pair.first, oam->actionSamples[0]);
