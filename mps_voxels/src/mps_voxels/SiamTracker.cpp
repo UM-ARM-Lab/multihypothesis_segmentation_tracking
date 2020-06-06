@@ -110,9 +110,9 @@ bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 		// only store the first frame and the last frame:
 //		if (iter != actionClient.getResult()->mask.begin() && iter != actionClient.getResult()->mask.end()-1) continue;
 
-		const sensor_msgs::Image& im = res->mask[i];
-		cv_bridge::CvImageConstPtr cv_ptr = cv_bridge::toCvCopy(im, im.encoding);
-		cv::Mat mask = cv_ptr->image > 0; // uchar
+		const sensor_msgs::CompressedImage& im = res->mask[i];
+		cv::Mat extracted = cv::imdecode(im.data, cv::IMREAD_GRAYSCALE);
+		cv::Mat mask = extracted > 0; // uchar
 		masks.insert(masks.end(), {steps[i+1], mask});
 	}
 	return true;
