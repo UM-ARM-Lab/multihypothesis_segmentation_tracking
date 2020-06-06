@@ -32,7 +32,7 @@
 using namespace mps;
 
 const std::string testDirName = "package://mps_test_data/";
-const std::string expDirName = "2020-06-01T20:39:38.000040/";
+const std::string expDirName = "2020-06-05T06:25:12.600309/";
 
 class ParticleFilterTestFixture
 {
@@ -71,7 +71,7 @@ public:
 		pnh.getParam("resolution", resolution);
 		particleFilter = std::make_unique<ParticleFilter>(scenario, resolution,
 		                                                  scenario->minExtent.head<3>(),
-		                                                  scenario->maxExtent.head<3>(), 5);
+		                                                  scenario->maxExtent.head<3>(), 2);
 
 		/////////////////////////////////////////////
 		//// Load initial scene data
@@ -80,7 +80,7 @@ public:
 		{
 			DataLog loader(logDir + expDirName + "buffer_" + std::to_string(0) + ".bag", {}, rosbag::bagmode::Read);
 			loader.activeChannels.insert("buffer");
-			loader.load<SensorHistoryBuffer>("buffer", motionData);
+			motionData = loader.load<SensorHistoryBuffer>("buffer");
 			std::cerr << "Successfully loaded buffer." << std::endl;
 		}
 		std::cerr << "number of frames: " << motionData.rgb.size() << std::endl;
@@ -88,7 +88,7 @@ public:
 		{
 			DataLog loader(logDir + expDirName + "segInfo_" + std::to_string(0) + ".bag", {}, rosbag::bagmode::Read);
 			loader.activeChannels.insert("segInfo");
-			loader.load<SegmentationInfo>("segInfo", seg_out);
+			seg_out = loader.load<SegmentationInfo>("segInfo");
 			std::cerr << "Successfully loaded segInfo." << std::endl;
 		}
 
@@ -110,7 +110,7 @@ public:
 			p.state = std::make_shared<Particle::ParticleData>(particleFilter->voxelRegion);
 			DataLog loader(logDir + expDirName + "particle_0_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
 			loader.activeChannels.insert("particle");
-			loader.load<OccupancyData>("particle", *p.state);
+			*p.state = loader.load<OccupancyData>("particle");
 			particleFilter->particles.push_back(p);
 			particleFilter->particles[i].state->uniqueObjectLabels = getUniqueObjectLabels(particleFilter->particles[i].state->vertexState);
 			std::cerr << "Successfully loaded." << std::endl;

@@ -20,7 +20,7 @@ template <>
 void DataLog::log<cv::Rect>(const std::string& channel, const cv::Rect& msg);
 
 template <>
-bool DataLog::load<cv::Rect>(const std::string& channel, cv::Rect& msg);
+cv::Rect DataLog::load<cv::Rect>(const std::string& channel);
 
 }
 

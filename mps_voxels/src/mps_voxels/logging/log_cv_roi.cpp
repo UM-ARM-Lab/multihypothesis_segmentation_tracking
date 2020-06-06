@@ -38,12 +38,10 @@ void DataLog::log<cv::Rect>(const std::string& channel, const cv::Rect& msg)
 }
 
 template <>
-bool DataLog::load<cv::Rect>(const std::string& channel, cv::Rect& msg)
+cv::Rect DataLog::load<cv::Rect>(const std::string& channel)
 {
-	sensor_msgs::RegionOfInterest out_msg;
-	load(channel + "/roi" , out_msg);
-	msg = fromMessage(out_msg);
-	return true;
+	auto out_msg = load<sensor_msgs::RegionOfInterest>(channel + "/roi");
+	return fromMessage(out_msg);
 }
 
 }

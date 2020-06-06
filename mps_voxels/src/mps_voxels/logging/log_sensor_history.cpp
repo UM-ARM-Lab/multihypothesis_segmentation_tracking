@@ -72,9 +72,10 @@ void DataLog::log<SensorHistoryBuffer>(const std::string& channel, const SensorH
 }
 
 template <>
-bool DataLog::load<SensorHistoryBuffer>(const std::string& channel, SensorHistoryBuffer& msg)
+SensorHistoryBuffer DataLog::load<SensorHistoryBuffer>(const std::string& channel)
 {
-	load(channel + "/camera_model", msg.cameraModel);
+	SensorHistoryBuffer msg;
+	msg.cameraModel = load<image_geometry::PinholeCameraModel>(channel + "/camera_model");
 
 	std::vector<sensor_msgs::Image> rgbs;
 	loadAll(channel + "/rgb", rgbs);
@@ -120,7 +121,7 @@ bool DataLog::load<SensorHistoryBuffer>(const std::string& channel, SensorHistor
 		}
 	}
 
-	return true;
+	return msg;
 }
 
 }

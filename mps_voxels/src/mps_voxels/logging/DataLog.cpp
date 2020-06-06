@@ -101,6 +101,13 @@ void DataLog::log<const std::string&>(const std::string& channel, const std::str
 }
 
 template <>
+std::string DataLog::load<std::string>(const std::string& channel)
+{
+	std_msgs::String s = load<std_msgs::String>(channel);
+	return s.data;
+}
+
+template <>
 void DataLog::log<const std::vector<char>>(const std::string& channel, const std::vector<char>& msg)
 {
 	if (activeChannels.find(channel) == activeChannels.end()) { return; }

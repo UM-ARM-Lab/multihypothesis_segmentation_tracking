@@ -75,10 +75,7 @@ bool loadOrGenerateData(const std::string& bagFileName, const std::string& chann
 		std::shared_ptr<DataLog> log = std::make_shared<DataLog>(bagFileName, std::unordered_set<std::string>{channelName}, rosbag::BagMode::Read);
 		try
 		{
-			if (log->load(channelName, data))
-			{
-				return true;
-			}
+			data = log->load<T>(channelName);
 		}
 		catch (...)
 		{
@@ -299,13 +296,7 @@ int main(int argc, char* argv[])
 	cv::Mat gt_labels;
 	try
 	{
-		sensor_msgs::Image im;
-		if (!log->load("ground_truth/labels", im))
-		{
-			ROS_FATAL_STREAM("Failed to load ground truth.");
-			return -1;
-		}
-		gt_labels = fromMessage(im);
+		gt_labels = log->load<cv::Mat>("ground_truth/labels");
 		assert(gt_labels.type() == CV_16UC1);
 	}
 	catch (...)

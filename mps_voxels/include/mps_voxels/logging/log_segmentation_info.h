@@ -40,7 +40,7 @@ template <>
 void DataLog::log<SegmentationInfo>(const std::string& channel, const SegmentationInfo& msg);
 
 template <>
-bool DataLog::load<SegmentationInfo>(const std::string& channel, SegmentationInfo& msg);
+SegmentationInfo DataLog::load<SegmentationInfo>(const std::string& channel);
 
 }
 

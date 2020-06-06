@@ -40,7 +40,7 @@ template <>
 void DataLog::log<SensorHistoryBuffer>(const std::string& channel, const SensorHistoryBuffer& msg);
 
 template <>
-bool DataLog::load<SensorHistoryBuffer>(const std::string& channel, SensorHistoryBuffer& msg);
+SensorHistoryBuffer DataLog::load<SensorHistoryBuffer>(const std::string& channel);
 
 }
 

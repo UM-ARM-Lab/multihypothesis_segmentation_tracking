@@ -154,9 +154,8 @@ int main(int argc, char* argv[])
 	//-------------------------------------------------------------------------
 	// Ground Truth
 	//-------------------------------------------------------------------------
-	mps::SensorHistoryBuffer motionData;
 	mps::DataLog loaderB(workingDir + "buffer_0.bag", {"buffer"}, rosbag::BagMode::Read);
-	loaderB.load<mps::SensorHistoryBuffer>("buffer", motionData);
+	mps::SensorHistoryBuffer motionData = loaderB.load<mps::SensorHistoryBuffer>("buffer");
 
 	std::string worldFileParam;
 	if (!pnh.getParam("/simulation_world", worldFileParam))
@@ -251,9 +250,8 @@ int main(int argc, char* argv[])
 				                              + std::to_string(generation) + "_"
 				                              + std::to_string(p) + ".bag";
 
-				mps::OccupancyData a(region);
 				mps::DataLog loaderA(generated, {"particle"}, rosbag::BagMode::Read);
-				loaderA.load<mps::OccupancyData>("particle", a);
+				mps::OccupancyData a = loaderA.load<mps::OccupancyData>("particle");
 				a.voxelRegion = region;
 				if (a.vertexState.size() != a.voxelRegion->num_vertices()) { throw std::logic_error("Fake news (a)!"); }
 

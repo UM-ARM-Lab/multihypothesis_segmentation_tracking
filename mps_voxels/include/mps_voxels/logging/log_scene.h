@@ -16,7 +16,7 @@ template <>
 void DataLog::log<Scene>(const std::string& channel, const Scene& msg);
 
 template <>
-bool DataLog::load<Scene>(const std::string& channel, Scene& msg);
+Scene DataLog::load<Scene>(const std::string& channel);
 
 std::shared_ptr<Scene>
 computeSceneFromSensorHistorian(const std::shared_ptr<Scenario>& scenario, const SensorHistoryBuffer& buffer,

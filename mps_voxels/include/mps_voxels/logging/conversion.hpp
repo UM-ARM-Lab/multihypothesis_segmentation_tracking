@@ -93,7 +93,7 @@ struct ros_message_conversion<CPPTYPE> \
 	using CppType = CPPTYPE; \
  \
 	static \
-	RosType toMessage(const CppType& t, const std::nullptr_t); \
+	RosType toMessage(const CppType& t, const std::nullptr_t); /* NOLINT(readability-avoid-const-params-in-decls)*/ \
  \
 	static \
 	CppType fromMessage(const RosType& t); \

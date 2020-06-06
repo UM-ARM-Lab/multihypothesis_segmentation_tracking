@@ -52,7 +52,10 @@ template <>
 void DataLog::log<image_geometry::PinholeCameraModel>(const std::string& channel, const image_geometry::PinholeCameraModel& msg);
 
 template <>
-bool DataLog::load<image_geometry::PinholeCameraModel>(const std::string& channel, image_geometry::PinholeCameraModel& msg);
+image_geometry::PinholeCameraModel DataLog::load<image_geometry::PinholeCameraModel>(const std::string& channel);
+
+template <>
+cv::Mat DataLog::load<cv::Mat>(const std::string& channel);
 
 }
 

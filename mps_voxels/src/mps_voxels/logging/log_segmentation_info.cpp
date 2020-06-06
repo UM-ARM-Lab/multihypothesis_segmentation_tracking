@@ -53,26 +53,24 @@ void DataLog::log<SegmentationInfo>(const std::string& channel, const Segmentati
 }
 
 #define LOAD_IMAGE_MESSAGE(var_name) \
-	load(channel + "/" STRINGIFY(var_name) , im); msg.var_name = fromMessage(im);
+	msg.var_name = load<cv::Mat>(channel + "/" STRINGIFY(var_name));
 template <>
-bool DataLog::load<SegmentationInfo>(const std::string& channel, SegmentationInfo& msg)
+SegmentationInfo DataLog::load<SegmentationInfo>(const std::string& channel)
 {
-	sensor_msgs::Image im;
+	SegmentationInfo msg;
 	APPLY_TO_ALL(LOAD_IMAGE_MESSAGE, rgb, depth, ucm2, labels2, centroids2, stats2, display_contours, labels)
+
+	auto im = load<sensor_msgs::Image>(channel + "/objectness_segmentation");
+	msg.objectness_segmentation = cv_bridge::toCvCopy(im);
 	msg.t = im.header.stamp; msg.frame_id = im.header.frame_id;
 
-	load(channel + "/objectness_segmentation" , im);
-	msg.objectness_segmentation = cv_bridge::toCvCopy(im);
-
-	cv::Rect roi;
-	load(channel + "/roi", roi);
-	msg.roi = roi;
+	msg.roi = load<cv::Rect>(channel + "/roi");
 
 	assert(msg.ucm2.type() == CV_64FC1);
 	assert(msg.rgb.type() == CV_8UC3);
 	assert(msg.depth.type() == CV_16UC1);
 
-	return true;
+	return msg;
 }
 
 }

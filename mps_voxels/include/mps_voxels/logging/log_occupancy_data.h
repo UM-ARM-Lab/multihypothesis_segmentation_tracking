@@ -15,7 +15,7 @@ template <>
 void DataLog::log<OccupancyData>(const std::string& channel, const OccupancyData& msg);
 
 template <>
-bool DataLog::load<OccupancyData>(const std::string& channel, OccupancyData& msg);
+OccupancyData DataLog::load<OccupancyData>(const std::string& channel);
 
 }
 

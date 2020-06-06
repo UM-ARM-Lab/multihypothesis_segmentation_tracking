@@ -15,7 +15,7 @@ template <>
 void DataLog::log<VoxelRegion>(const std::string& channel, const VoxelRegion& msg);
 
 template <>
-bool DataLog::load<VoxelRegion>(const std::string& channel, VoxelRegion& msg);
+VoxelRegion DataLog::load<VoxelRegion>(const std::string& channel);
 
 }
 

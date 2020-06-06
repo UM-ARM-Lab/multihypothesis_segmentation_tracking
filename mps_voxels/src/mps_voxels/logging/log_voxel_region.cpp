@@ -35,23 +35,23 @@ void DataLog::log<VoxelRegion>(const std::string& channel, const VoxelRegion& ms
 }
 
 template <>
-bool DataLog::load<VoxelRegion>(const std::string& channel, VoxelRegion& msg)
+VoxelRegion DataLog::load<VoxelRegion>(const std::string& channel)
 {
-	std_msgs::Float64 res;
-	load(channel + "/resolution" , res);
+	auto res = load<std_msgs::Float64>(channel + "/resolution");
+	auto rMin = load<geometry_msgs::Vector3>(channel + "/regionMin" );
+	auto rMax = load<geometry_msgs::Vector3>(channel + "/regionMax" );
 
-	geometry_msgs::Vector3 rMin;
-	load(channel + "/regionMin" , rMin);
+	std::string frame_id = "";
+	try
+	{
+		frame_id = load<std::string>(channel + "/frame_id");
+	}
+	catch (const std::exception& ex)
+	{
+		ROS_ERROR_STREAM("Failed to load a frame_id: '" << ex.what() << "'");
+	}
 
-	geometry_msgs::Vector3 rMax;
-	load(channel + "/regionMax" , rMax);
-
-	std_msgs::String frame;
-	load(channel + "/frame_id", frame);
-
-	msg = VoxelRegion(res.data, {rMin.x, rMin.y, rMin.z}, {rMax.x, rMax.y, rMax.z}, frame.data);
-
-	return true;
+	return VoxelRegion(res.data, {rMin.x, rMin.y, rMin.z}, {rMax.x, rMax.y, rMax.z}, frame_id);
 }
 
 }

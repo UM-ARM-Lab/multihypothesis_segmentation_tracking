@@ -82,7 +82,7 @@ public:
 	}
 
 	template <class Msg>
-	bool load(const std::string& channel, Msg& msg)
+	Msg load(const std::string& channel)
 	{
 		static_assert(ros::message_traits::IsMessage<Msg>::value, "Default load only defined for ROS message types.");
 		std::lock_guard<std::mutex> lock(mtx);
@@ -94,11 +94,14 @@ public:
 			auto p = m.instantiate<Msg>();
 			if (p)
 			{
-				msg = *p;
-				return true;
+				return *p;
 			}
 		}
-		return false;
+
+		throw std::runtime_error("Failed to load message of type '" +
+		                         std::string(ros::message_traits::DataType<Msg>::value()) + "' from channel '" +
+		                         channel + "' in file '" + this->bag->getFileName() + "'.");
+//		return false;
 	}
 
 	template <class Msg>
@@ -147,6 +150,9 @@ public:
 
 template <>
 void DataLog::log<const std::string&>(const std::string& channel, const std::string& msg);
+
+template <>
+std::string DataLog::load<std::string>(const std::string& channel);
 
 template <>
 void DataLog::log<const std::vector<char>>(const std::string& channel, const std::vector<char>& msg);

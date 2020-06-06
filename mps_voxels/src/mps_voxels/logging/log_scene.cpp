@@ -65,46 +65,40 @@ void DataLog::log<Scene>(const std::string& channel, const Scene& msg)
 }
 
 template <>
-bool DataLog::load<Scene>(const std::string& channel, Scene& msg)
+Scene DataLog::load<Scene>(const std::string& channel)
 {
-	sensor_msgs::Image rgb;
-	load(channel + "/cv_rgb_ptr", rgb);
+	Scene msg;
+	auto rgb = load<sensor_msgs::Image>(channel + "/cv_rgb_ptr");
 	msg.cv_rgb_ptr = cv_bridge::toCvCopy(rgb);
 	assert(msg.cv_rgb_ptr->image.type() == CV_8UC3);
 
-	sensor_msgs::Image depth;
-	load(channel + "/cv_depth_ptr", depth);
+	auto depth = load<sensor_msgs::Image>(channel + "/cv_depth_ptr");
 	msg.cv_depth_ptr = cv_bridge::toCvCopy(depth);
 	assert(msg.cv_depth_ptr->image.type() == CV_16UC1);
 
-	image_geometry::PinholeCameraModel cameraModel;
-	load(channel + "/camera_model", cameraModel);
+	auto cameraModel = load<image_geometry::PinholeCameraModel>(channel + "/camera_model");
 	msg.cameraModel = cameraModel;
 
-	std_msgs::String cf;
-	load(channel + "/cameraFrame", cf);
+	auto cf = load<std_msgs::String>(channel + "/cameraFrame");
 	msg.cameraFrame = cf.data;
 
-	load(channel + "/roi", msg.roi);
+	msg.roi = load<cv::Rect>(channel + "/roi");
 
-	load(channel + "/segInfo", *msg.segInfo);
+	msg.segInfo = std::make_shared<SegmentationInfo>(load<SegmentationInfo>(channel + "/segInfo"));
 
-	geometry_msgs::Vector3 rMin;
-	load(channel + "/minExtent", rMin);
+	auto rMin = load<geometry_msgs::Vector3>(channel + "/minExtent");
 	msg.minExtent.x() = rMin.x;
 	msg.minExtent.y() = rMin.y;
 	msg.minExtent.z() = rMin.z;
 	msg.minExtent.w() = 1.0;
 
-	geometry_msgs::Vector3 rMax;
-	load(channel + "/maxExtent", rMax);
+	auto rMax = load<geometry_msgs::Vector3>(channel + "/maxExtent");
 	msg.maxExtent.x() = rMax.x;
 	msg.maxExtent.y() = rMax.y;
 	msg.maxExtent.z() = rMax.z;
 	msg.maxExtent.w() = 1.0;
 
-
-	return true;
+	return msg;
 }
 
 std::shared_ptr<Scene>

@@ -23,23 +23,12 @@ void DataLog::log<OccupancyData>(const std::string& channel, const OccupancyData
 }
 
 template <>
-bool DataLog::load<OccupancyData>(const std::string& channel, OccupancyData& msg)
+OccupancyData DataLog::load<OccupancyData>(const std::string& channel)
 {
-	//// in case the voxelRegion is not initialized
-	const double resolution = 1.0;
-	Eigen::Vector3d ROImaxExtent(1.0, 1.0, 1.0);
-	Eigen::Vector3d ROIminExtent(-1.0, -1.0, -1.0);
-	auto voxelRegion = std::make_shared<VoxelRegion>(resolution,
-	                                                 ROIminExtent,
-	                                                 ROImaxExtent);
-	load(channel + "/voxelRegion", *voxelRegion);
+	auto voxelRegion = std::make_shared<VoxelRegion>(load<VoxelRegion>(channel + "/voxelRegion"));
+	auto vs = load<std_msgs::Int32MultiArray>(channel + "/vertexState");
 
-	std_msgs::Int32MultiArray vs;
-	load(channel + "/vertexState", vs);
-
-	msg = OccupancyData(voxelRegion, vs.data);
-
-	return true;
+	return OccupancyData(voxelRegion, vs.data);
 }
 
 }
