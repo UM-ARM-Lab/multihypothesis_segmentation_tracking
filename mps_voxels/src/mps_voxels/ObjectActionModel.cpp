@@ -187,6 +187,9 @@ ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& st
 			error = icp.getFitnessScore();
 			std::cerr << "is Converged: " << icp.hasConverged() << "; Score = " << error << std::endl;
 
+			// TODO: add random disturbance after first icp
+
+
 			//// Visualization of ICP
 			if (scenario->shouldVisualize("icp"))
 			{
