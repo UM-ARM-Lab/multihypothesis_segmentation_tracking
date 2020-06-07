@@ -41,14 +41,13 @@ struct VoxelRegionBuilder
 	template <typename ParameterProvider>
 	static VoxelRegion build(const ParameterProvider& p)
 	{
-		// TODO: Remove "roi/"
-		Eigen::Vector3d minExtent(getParam<double>(p, "roi/min/x"),
-		                          getParam<double>(p, "roi/min/y"),
-		                          getParam<double>(p, "roi/min/z"));
-		Eigen::Vector3d maxExtent(getParam<double>(p, "roi/max/x"),
-		                          getParam<double>(p, "roi/max/y"),
-		                          getParam<double>(p, "roi/max/z"));
-		double resolution = getParam<double>(p, "roi/resolution");
+		Eigen::Vector3d minExtent(getParam<double>(p, "min/x"),
+		                          getParam<double>(p, "min/y"),
+		                          getParam<double>(p, "min/z"));
+		Eigen::Vector3d maxExtent(getParam<double>(p, "max/x"),
+		                          getParam<double>(p, "max/y"),
+		                          getParam<double>(p, "max/z"));
+		double resolution = getParam<double>(p, "resolution");
 
 		return {resolution, minExtent, maxExtent};
 	}

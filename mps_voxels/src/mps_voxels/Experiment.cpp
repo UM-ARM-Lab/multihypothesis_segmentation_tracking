@@ -47,10 +47,12 @@ Experiment::Experiment(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 {
 	std::random_device rd;
 
+	const std::string ns = "/experiment";
+
 	bool gotParam = false;
-	const std::string idKey = "/experiment/id";
+	const std::string idKey = ns + "/id";
 	gotParam = nh.getParam(idKey, experiment_id);
-	if (!gotParam)
+//	if (!gotParam)
 	{
 		boost::mt19937 ran(rd());
 		boost::uuids::basic_random_generator<boost::mt19937> gen(ran);
@@ -60,9 +62,9 @@ Experiment::Experiment(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	}
 	ROS_INFO_STREAM("Experiment ID: " << experiment_id);
 
-	const std::string dirKey = "/experiment/directory";
+	const std::string dirKey = ns + "/directory";
 	gotParam = nh.getParam(dirKey, experiment_dir);
-	if (!gotParam)
+//	if (!gotParam)
 	{
 		fs::path temp_dir = fs::temp_directory_path();
 		fs::path working_dir = temp_dir /
@@ -87,16 +89,19 @@ Experiment::Experiment(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 		}
 	}
 
-	const std::string seedKey = "seed";
+	const std::string seedKey = ns + "/seed";
 	int seed = 0;
 	gotParam = pnh.getParam(seedKey, seed);
-	if (!gotParam)
+//	if (!gotParam)
 	{
 		seed = rd();
 		nh.setParam(seedKey, seed);
 	}
 	ROS_INFO_STREAM("Random Seed: " << seed);
 	rng = std::default_random_engine(seed);
+
+	const std::string timeKey = ns + "/start_time";
+	nh.setParam(timeKey, timestamp());
 
 }
 

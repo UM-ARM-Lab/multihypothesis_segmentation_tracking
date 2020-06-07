@@ -115,7 +115,7 @@ int main(int argc, char* argv[])
 	ros::init(argc, argv, "test_occupancy_comparison");
 	ros::NodeHandle nh, pnh("~");
 
-	const std::string workingDir = "/tmp/scene_explorer/2020-06-05T16:12:56.229850/";
+	const std::string workingDir = "/tmp/scene_explorer/2020-06-07T08:55:02.095309/";
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-05T16:24:42.273504/";
 //	const std::string ground_truth = "/tmp/gazebo_segmentation/gt_occupancy.bag";
 	const std::string globalFrame = "table_surface";
@@ -138,7 +138,10 @@ int main(int argc, char* argv[])
 		numParticles = std::max(numParticles, std::stoi(what[2])+1);
 	}
 
-	std::shared_ptr<mps::VoxelRegion> region = std::make_shared<mps::VoxelRegion>(mps::VoxelRegionBuilder::build(YAML::Load("{roi: {min: {x: -0.4, y: -0.6, z: -0.020}, max: {x: 0.4, y: 0.6, z: 0.5}, resolution: 0.01}}")));
+	YAML::Node rosparams = YAML::LoadFile(workingDir + "rosparam.yaml");
+
+	std::shared_ptr<mps::VoxelRegion> region = std::make_shared<mps::VoxelRegion>(mps::VoxelRegionBuilder::build(rosparams["scene_explorer"]["roi"]));
+
 
 	std::random_device rd;
 	int seed = rd(); //0;
@@ -151,20 +154,8 @@ int main(int argc, char* argv[])
 		particlePubs.emplace_back(std::make_shared<ros::Publisher>(nh.advertise<visualization_msgs::MarkerArray>("visualization_" + std::to_string(p), 1, true)));
 	}
 
-	//-------------------------------------------------------------------------
-	// Ground Truth
-	//-------------------------------------------------------------------------
-	mps::DataLog loaderB(workingDir + "buffer_0.bag", {"buffer"}, rosbag::BagMode::Read);
-	mps::SensorHistoryBuffer motionData = loaderB.load<mps::SensorHistoryBuffer>("buffer");
-
-	std::string worldFileParam;
-	if (!pnh.getParam("/simulation_world", worldFileParam))
-	{
-		ROS_FATAL_STREAM("Unable to read world file name from parameter server '" << worldFileParam << "'");
-		return -1;
-	}
 	// Load Gazebo world file and get meshes
-	const std::string gazeboWorldFilename = parsePackageURL(worldFileParam);
+	const std::string gazeboWorldFilename = parsePackageURL(rosparams["/simulation_world"].as<std::string>());
 
 	std::vector<std::string> modelsToIgnore;
 	pnh.param("ignore", modelsToIgnore, std::vector<std::string>());
@@ -191,8 +182,9 @@ int main(int argc, char* argv[])
 	std::vector<std::shared_ptr<GazeboModel>> tmpModels; tmpModels.reserve(shapeModels.size());
 	for (const auto& m : shapeModels) { tmpModels.push_back(m.second); }
 
+	// Create state and observation generators
+	std::unique_ptr<ScenePixelizer> pixelizer = std::make_unique<CPUPixelizer>(tmpModels);
 	std::unique_ptr<SceneVoxelizer> voxelizer = std::make_unique<ROSVoxelizer>(tmpModels);
-
 
 	// Create colormap for ground truth
 	VoxelColormap cmapGT;
@@ -208,6 +200,12 @@ int main(int argc, char* argv[])
 	{
 		for (int generation = 0; generation < numGenerations; ++generation)
 		{
+			//-------------------------------------------------------------------------
+			// Ground Truth
+			//-------------------------------------------------------------------------
+			mps::DataLog sensorLog(workingDir + "buffer_ " + std::to_string(generation) + ".bag", {"buffer"}, rosbag::BagMode::Read);
+			mps::SensorHistoryBuffer motionData = sensorLog.load<mps::SensorHistoryBuffer>("buffer");
+
 			// Publish images here
 			// Compute poses from buffer
 			std::vector<Eigen::Isometry3d> poses;
@@ -246,48 +244,40 @@ int main(int argc, char* argv[])
 
 			for (int p = 0; p < numParticles; ++p)
 			{
-				const std::string generated = workingDir + "particle_"
-				                              + std::to_string(generation) + "_"
-				                              + std::to_string(p) + ".bag";
+				const std::string particleFilename =
+					workingDir + "particle_"
+					+ std::to_string(generation) + "_"
+					+ std::to_string(p) + ".bag";
 
-				mps::DataLog loaderA(generated, {"particle"}, rosbag::BagMode::Read);
-				mps::OccupancyData a = loaderA.load<mps::OccupancyData>("particle");
+				mps::DataLog particleLog(particleFilename, {"particle"}, rosbag::BagMode::Read);
+				mps::OccupancyData a = particleLog.load<mps::OccupancyData>("particle");
 				a.voxelRegion = region;
 				if (a.vertexState.size() != a.voxelRegion->num_vertices()) { throw std::logic_error("Fake news (a)!"); }
 
 				mps::Metrics metrics(a, b, cmapGT, rng);
 
-				int trueNeg = 0;
-				int truePos = 0;
-				int other = 0;
-				for (size_t i = 0; i < b.voxelRegion->num_vertices(); ++i)
-				{
-					if (a.vertexState[i] == mps::VoxelRegion::FREE_SPACE
-					    && b.vertexState[i] == mps::VoxelRegion::FREE_SPACE)
-					{
-						++trueNeg;
-					}
-					else if (a.vertexState[i] != mps::VoxelRegion::FREE_SPACE
-					         && b.vertexState[i] != mps::VoxelRegion::FREE_SPACE)
-					{
-						++truePos;
-					}
-					else
-					{
-						++other;
-					}
-				}
-
 				std::cerr << generation << ": " << p << std::endl;
 				std::cerr << "\t" << metrics.match.match.first << std::endl;
-				std::cerr << "\t" << trueNeg << "\t" << truePos << "\t" << other << std::endl;
-				std::cerr << "\t" << trueNeg / (double) region->num_vertices() << "\t"
-				          << truePos / (double) region->num_vertices() << "\t"
-				          << other / (double) region->num_vertices() << std::endl;
 
 				header.stamp = ros::Time::now();
 				particlePubs[p]->publish(mps::visualize(a, header, metrics.cmapA));
 				particlePubGT.publish(mps::visualize(b, header, cmapGT));
+
+				if (generation < numGenerations-1)
+				{
+					const std::string trackingFilename =
+						workingDir + "dense_track_"
+						+ std::to_string(generation) + "_"
+						+ std::to_string(p) + ".bag";
+
+					mps::DataLog trackingLog(trackingFilename, {"particle"}, rosbag::BagMode::Read);
+
+					// For each (true) object
+					// For each time
+					// Compute and Display 2D overlap
+					// Compute and Display 3D overlap
+					// Plot scores
+				}
 			}
 		}
 	}
