@@ -98,9 +98,9 @@ public:
 			}
 		}
 
-		throw std::runtime_error("Failed to load message of type '" +
-		                         std::string(ros::message_traits::DataType<Msg>::value()) + "' from channel '" +
-		                         channel + "' in file '" + this->bag->getFileName() + "'.");
+		throw rosbag::BagException("Failed to load message of type '" +
+		                           std::string(ros::message_traits::DataType<Msg>::value()) + "' from channel '" +
+		                           channel + "' in file '" + this->bag->getFileName() + "'.");
 //		return false;
 	}
 

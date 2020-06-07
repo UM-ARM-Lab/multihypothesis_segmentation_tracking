@@ -48,6 +48,9 @@ MESSAGE_CONVERSION_BOILERPLATE_AUX(cv::Mat, sensor_msgs::Image, std_msgs::Header
 
 MESSAGE_CONVERSION_BOILERPLATE(image_geometry::PinholeCameraModel, sensor_msgs::CameraInfo)
 
+sensor_msgs::CompressedImage toMaskMessage(const cv::Mat& mask, const std_msgs::Header& header);
+cv::Mat fromCompressedMessage(const sensor_msgs::CompressedImage& msg);
+
 template <>
 void DataLog::log<image_geometry::PinholeCameraModel>(const std::string& channel, const image_geometry::PinholeCameraModel& msg);
 

@@ -29,6 +29,8 @@
 
 #include "mps_voxels/logging/log_cv_mat.h"
 
+#include <opencv2/imgcodecs.hpp>
+
 namespace mps
 {
 
@@ -96,6 +98,29 @@ ros_message_conversion<image_geometry::PinholeCameraModel>::fromMessage(const se
 	return msg;
 }
 
+
+sensor_msgs::CompressedImage toMaskMessage(const cv::Mat& mask, const std_msgs::Header& header)
+{
+	std::vector<int> compression_params;
+	compression_params.push_back(cv::IMWRITE_PNG_COMPRESSION);
+	compression_params.push_back(9);
+	compression_params.push_back(cv::IMWRITE_PNG_BILEVEL);
+	compression_params.push_back(1);
+
+	sensor_msgs::CompressedImage imgMsg;
+	imgMsg.header = header;
+	imgMsg.format = "png";
+	cv::imencode(".png", mask, imgMsg.data, compression_params);
+
+	return imgMsg;
+}
+
+cv::Mat fromCompressedMessage(const sensor_msgs::CompressedImage& msg)
+{
+	// NB: This seems to correctly handle 1-bit pngcv::IMREAD_GRAYSCALE
+	return cv::imdecode(msg.data, cv::IMREAD_UNCHANGED); //
+}
+
 template <>
 void DataLog::log<image_geometry::PinholeCameraModel>(const std::string& channel, const image_geometry::PinholeCameraModel& msg)
 {
@@ -111,7 +136,14 @@ image_geometry::PinholeCameraModel DataLog::load<image_geometry::PinholeCameraMo
 template <>
 cv::Mat DataLog::load<cv::Mat>(const std::string& channel)
 {
-	return fromMessage(load<sensor_msgs::Image>(channel));
+	try
+	{
+		return fromCompressedMessage(load<sensor_msgs::CompressedImage>(channel));
+	}
+	catch (const rosbag::BagException&)
+	{
+		return fromMessage(load<sensor_msgs::Image>(channel));
+	}
 }
 
 }
