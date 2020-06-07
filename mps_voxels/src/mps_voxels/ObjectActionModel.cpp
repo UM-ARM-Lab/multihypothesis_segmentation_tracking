@@ -187,6 +187,9 @@ ObjectActionModel::icpManifoldSequentialSampler(const std::vector<ros::Time>& st
 			error = icp.getFitnessScore();
 			std::cerr << "is Converged: " << icp.hasConverged() << "; Score = " << error << std::endl;
 
+			// TODO: add random disturbance after first icp
+
+
 			//// Visualization of ICP
 			if (scenario->shouldVisualize("icp"))
 			{
@@ -380,7 +383,7 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer, const cv
 	/////////////////////////////////////////////
 	std::cerr << "-------------------------------------------------------------------------------------" << std::endl;
 	//// SiamMask tracking: construct masks
-	std::map<ros::Time, cv::Mat> masks;
+	masks.clear();
 	bool denseTrackSuccess = denseTracker->track(steps, buffer, bbox, masks);
 	if (!denseTrackSuccess)
 	{
@@ -438,7 +441,7 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer, const cv
 	}
 
 	//// SIFT
-	sparseTracker->track(timeStartEnd, buffer_out, masks, "/home/kunhuang/Videos/" + std::to_string((int)label) + "_");
+	sparseTracker->track(timeStartEnd, buffer, masks, "/home/kunhuang/Videos/" + std::to_string((int)label) + "_");
 
 	/////////////////////////////////////////////
 	//// send request to jlinkage server & sample object motions

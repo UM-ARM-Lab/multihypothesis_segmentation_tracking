@@ -15,6 +15,7 @@ namespace mps
 
 class Scenario;
 struct RigidTF;
+class ObjectActionModel;
 
 class ParticleFilter
 {

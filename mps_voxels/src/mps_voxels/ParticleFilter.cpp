@@ -82,7 +82,7 @@ ParticleFilter::computeActionModel(
 	std::unique_ptr<DenseTracker>& denseTracker) const
 {
 	// Return type
-	std::map<ObjectIndex, RigidTF> labelToMotionLookup;
+	MotionModel labelToMotionLookup;
 
 	// Handle empty buffer
 	if (buffer.rgb.empty())
@@ -140,6 +140,8 @@ ParticleFilter::computeActionModel(
 		if (sampleActionSuccess)
 		{
 			labelToMotionLookup.emplace(pair.first, oam->actionSamples[0]);
+
+			// TODO: log label to masks here
 		}
 		else
 		{
