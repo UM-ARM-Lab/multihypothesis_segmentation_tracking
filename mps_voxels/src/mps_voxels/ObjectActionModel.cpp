@@ -383,7 +383,7 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer, const cv
 	/////////////////////////////////////////////
 	std::cerr << "-------------------------------------------------------------------------------------" << std::endl;
 	//// SiamMask tracking: construct masks
-	std::map<ros::Time, cv::Mat> masks;
+	masks.clear();
 	bool denseTrackSuccess = denseTracker->track(steps, buffer, bbox, masks);
 	if (!denseTrackSuccess)
 	{
