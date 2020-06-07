@@ -134,7 +134,7 @@ RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& step
 }
 
 ObjectActionModel::TimePoseLookup
-ObjectActionModel::icpManifoldSequencialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera)
+ObjectActionModel::icpManifoldSequentialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera)
 {
 	assert(steps.size() > 1);
 	icpRigidTF.tf = mps::Pose::Identity();
@@ -343,21 +343,21 @@ bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 //	return sampleAction(buffer_out, startMask, seg_out.roi, sparseTracker, denseTracker, label, bbox);
 //}
 
-bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, const cv::Mat& firstFrameSeg, const cv::Rect& roi,
+bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer, const cv::Mat& firstFrameSeg, const cv::Rect& roi,
 	std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker,
 	uint16_t label, mps_msgs::AABBox2d& bbox)
 {
 	assert(roi.x >= 0);
 	assert(roi.y >= 0);
-	assert(roi.x + roi.width <= buffer_out.rgb.begin()->second->image.cols);
-	assert(roi.y + roi.height <= buffer_out.rgb.begin()->second->image.rows);
+	assert(roi.x + roi.width <= buffer.rgb.begin()->second->image.cols);
+	assert(roi.y + roi.height <= buffer.rgb.begin()->second->image.rows);
 
 	actionSamples.clear();
 	/////////////////////////////////////////////
 	//// Construct tracking time steps
 	/////////////////////////////////////////////
 	std::vector<ros::Time> steps; // SiamMask tracks all these time steps except the first frame;
-	for (auto iter = buffer_out.rgb.begin(); iter != buffer_out.rgb.end(); std::advance(iter, 3)) //// decide downsample rate
+	for (auto iter = buffer.rgb.begin(); iter != buffer.rgb.end(); std::advance(iter, 3)) //// decide downsample rate
 	{
 		steps.push_back(iter->first);
 	}
@@ -370,7 +370,7 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, cons
 	/////////////////////////////////////////////
 	const std::string tableFrame = "table_surface";
 	tf::StampedTransform worldTcameraTF;
-	geometry_msgs::TransformStamped wTc = buffer_out.tfs->lookupTransform(tableFrame, buffer_out.cameraModel.tfFrame(), ros::Time(0));
+	geometry_msgs::TransformStamped wTc = buffer.tfs->lookupTransform(tableFrame, buffer.cameraModel.tfFrame(), ros::Time(0));
 	tf::transformStampedMsgToTF(wTc, worldTcameraTF);
 	mps::Pose worldTcamera;
 	tf::transformTFToEigen(worldTcameraTF, worldTcamera);
@@ -381,7 +381,7 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, cons
 	std::cerr << "-------------------------------------------------------------------------------------" << std::endl;
 	//// SiamMask tracking: construct masks
 	std::map<ros::Time, cv::Mat> masks;
-	bool denseTrackSuccess = denseTracker->track(steps, buffer_out, bbox, masks);
+	bool denseTrackSuccess = denseTracker->track(steps, buffer, bbox, masks);
 	if (!denseTrackSuccess)
 	{
 		ROS_ERROR_STREAM("Dense Track Failed!!!");
@@ -396,7 +396,7 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, cons
 	cv::Mat startMask;
 	if (firstFrameSeg.size() == cv::Size(roi.width, roi.height))
 	{
-		startMask = cv::Mat::zeros(buffer_out.rgb.begin()->second->image.size(), CV_8UC1);
+		startMask = cv::Mat::zeros(buffer.rgb.begin()->second->image.size(), CV_8UC1);
 		cv::Mat subwindow(startMask, roi);
 		subwindow = label == firstFrameSeg;
 	}
@@ -410,9 +410,9 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, cons
 	/////////////////////////////////////////////
 	//// Estimate motion using SiamMask
 	/////////////////////////////////////////////
-	Eigen::Vector3d roughMotion_w = sampleActionFromMask(masks.at(steps.front()), buffer_out.depth.at(steps.front())->image,
-	                                                     masks.at(steps.back()), buffer_out.depth.at(steps.back())->image,
-	                                                     buffer_out.cameraModel, worldTcamera);
+	Eigen::Vector3d roughMotion_w = sampleActionFromMask(masks.at(steps.front()), buffer.depth.at(steps.front())->image,
+	                                                     masks.at(steps.back()), buffer.depth.at(steps.back())->image,
+	                                                     buffer.cameraModel, worldTcamera);
 	std::cerr << "Rough Motion from SiamMask: " << roughMotion_w.x() << " " << roughMotion_w.y() << " " << roughMotion_w.z() << std::endl;
 	Eigen::Matrix4f guess = Eigen::Matrix4f::Identity();
 	guess.topRightCorner<3, 1>() = roughMotion_w.cast<float>();
@@ -421,14 +421,14 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, cons
 	/////////////////////////////////////////////
 	//// ICP check & store
 	/////////////////////////////////////////////
-	ObjectActionModel::TimePoseLookup timeToMotionLookup = icpManifoldSequencialSampler(steps, buffer_out, masks, worldTcamera);
+	ObjectActionModel::TimePoseLookup timeToMotionLookup = icpManifoldSequentialSampler(steps, buffer, masks, worldTcamera);
 
-	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer_out.rgb.at(steps[0])->image, buffer_out.depth.at(steps[0])->image,
-	                                                                buffer_out.cameraModel, masks.at(steps[0]));
+	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer.rgb.at(steps[0])->image, buffer.depth.at(steps[0])->image,
+	                                                                buffer.cameraModel, masks.at(steps[0]));
 	assert(!initCloudSegment->empty());
-	pcl::PointCloud<PointT>::Ptr lastCloudSegment = make_PC_segment(buffer_out.rgb.at(steps.back())->image,
-	                                                                buffer_out.depth.at(steps.back())->image,
-	                                                                buffer_out.cameraModel,
+	pcl::PointCloud<PointT>::Ptr lastCloudSegment = make_PC_segment(buffer.rgb.at(steps.back())->image,
+	                                                                buffer.depth.at(steps.back())->image,
+	                                                                buffer.cameraModel,
 	                                                                masks.at(steps.back()));
 	assert(!lastCloudSegment->empty());
 	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002, true, icpRigidTF.tf.matrix().cast<float>())) // TODO: decide the value of threshold
