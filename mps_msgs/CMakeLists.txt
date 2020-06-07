@@ -22,7 +22,6 @@ add_message_files(
     SparseMatrix.msg
     FlowVector.msg
     AABBox2d.msg
-    Video.msg
 )
 
 ## Generate services in the 'srv' folder

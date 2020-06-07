@@ -3,7 +3,7 @@ mps_msgs/AABBox2d bbox
 
 ---
 
-sensor_msgs/Image[] mask
+sensor_msgs/CompressedImage[] mask
 
 ---
 
