@@ -34,10 +34,11 @@
 #include <mps_voxels/visualization/visualize_voxel_region.h>
 #include <mps_voxels/OccupancyData.h>
 #include <mps_voxels/SensorHistorian.h>
+#include <mps_voxels/image_utils.h>
 #include <mps_voxels/logging/DataLog.h>
 #include <mps_voxels/logging/log_occupancy_data.h>
 #include <mps_voxels/logging/log_sensor_history.h>
-#include <mps_voxels/image_utils.h>
+#include <mps_voxels/logging/log_cv_mat.h>
 
 #include <mps_simulation/GazeboModel.h>
 #include <mps_simulation/GazeboModelState.h>
@@ -46,6 +47,8 @@
 #include <mps_test/CPUPixelizer.h>
 #include <mps_test/ROSVoxelizer.h>
 #include <tf_conversions/tf_eigen.h>
+
+#include <opencv2/highgui.hpp>
 
 #include <regex>
 #include <boost/filesystem.hpp>
@@ -108,6 +111,40 @@ public:
 	Metrics evaluate(const OccupancyData& occupancy, const std::vector<GazeboModelState>& states);
 };
 */
+
+
+cv::Mat colorByLabel(const cv::Mat& input, const VoxelColormap& colormap)
+{
+	mps::Colormap cv_cmap;
+	for (const auto& c : colormap)
+	{
+		cv_cmap.emplace(c.first, cv::Point3_<uint8_t>(255.0f*c.second.b, 255.0f*c.second.g, 255.0f*c.second.r));
+	}
+	return colorByLabel(input, cv_cmap);
+}
+
+}
+
+Eigen::Isometry3d getPose(const SensorHistoryBuffer& buffer, const std::string& globalFrame,
+                          const std::string& objectFrame, const ros::Time& queryTime)
+{
+	std::string tfError;
+	bool canTransform = buffer.tfs->canTransform(globalFrame, objectFrame, queryTime, &tfError);
+
+	if (!canTransform) // ros::Duration(5.0)
+	{
+		ROS_ERROR_STREAM("Failed to look up transform between '" << globalFrame << "' and '"
+		                                                         << objectFrame << "' with error '"
+		                                                         << tfError << "'.");
+		throw std::runtime_error("Sadness.");
+	}
+
+	tf::StampedTransform objectFrameInTableCoordinates;
+	const auto temp = buffer.tfs->lookupTransform(objectFrame, globalFrame, queryTime);
+	tf::transformStampedMsgToTF(temp, objectFrameInTableCoordinates);
+	Eigen::Isometry3d pose;
+	tf::transformTFToEigen(objectFrameInTableCoordinates.inverse(), pose);
+	return pose;
 }
 
 int main(int argc, char* argv[])
@@ -115,7 +152,7 @@ int main(int argc, char* argv[])
 	ros::init(argc, argv, "test_occupancy_comparison");
 	ros::NodeHandle nh, pnh("~");
 
-	const std::string workingDir = "/tmp/scene_explorer/2020-06-07T08:55:02.095309/";
+	const std::string workingDir = "/tmp/scene_explorer/2020-06-08T00:50:08.012629/";
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-05T16:24:42.273504/";
 //	const std::string ground_truth = "/tmp/gazebo_segmentation/gt_occupancy.bag";
 	const std::string globalFrame = "table_surface";
@@ -155,7 +192,7 @@ int main(int argc, char* argv[])
 	}
 
 	// Load Gazebo world file and get meshes
-	const std::string gazeboWorldFilename = parsePackageURL(rosparams["/simulation_world"].as<std::string>());
+	const std::string gazeboWorldFilename = parsePackageURL(rosparams["simulation_world"].as<std::string>());
 
 	std::vector<std::string> modelsToIgnore;
 	pnh.param("ignore", modelsToIgnore, std::vector<std::string>());
@@ -192,55 +229,52 @@ int main(int argc, char* argv[])
 	{
 		cmapGT.emplace(i+1, randomColorMsg(rng));
 	}
+	cmapGT.emplace(VoxelRegion::FREE_SPACE, std_msgs::ColorRGBA());
 
 //	b.voxelRegion = region;
 //	if (b.vertexState.size() != b.voxelRegion->num_vertices()) { throw std::logic_error("Fake news (b)!"); }
+
+	cv::namedWindow("Ground Truth", CV_WINDOW_NORMAL);
+	cv::namedWindow("Mask", CV_WINDOW_NORMAL);
 
 	while(ros::ok())
 	{
 		for (int generation = 0; generation < numGenerations; ++generation)
 		{
+			const bool isFinalGeneration = (generation >= numGenerations-1);
 			//-------------------------------------------------------------------------
 			// Ground Truth
 			//-------------------------------------------------------------------------
-			mps::DataLog sensorLog(workingDir + "buffer_ " + std::to_string(generation) + ".bag", {"buffer"}, rosbag::BagMode::Read);
+			const std::string bufferFilename =
+				workingDir + "buffer_"
+				+ std::to_string(isFinalGeneration ? generation-1 : generation) + ".bag";
+			mps::DataLog sensorLog(bufferFilename, {"buffer"}, rosbag::BagMode::Read);
 			mps::SensorHistoryBuffer motionData = sensorLog.load<mps::SensorHistoryBuffer>("buffer");
 
 			// Publish images here
 			// Compute poses from buffer
+			const ros::Time queryTime = (isFinalGeneration) ? ros::Time(0)
+			                                                : motionData.rgb.begin()->second->header.stamp + ros::Duration(1.0);
 			std::vector<Eigen::Isometry3d> poses;
 			for (const auto& pair : shapeModels)
 			{
-				// TODO: How to get time for particle generation?
 				const std::string objectFrame = "mocap_" + pair.first;
-				const ros::Time queryTime = (generation == 0) ? motionData.rgb.begin()->second->header.stamp + ros::Duration(15.0) : ros::Time(0); // buffer.rgb.begin()->first;
-				std::string tfError;
-				bool canTransform = motionData.tfs->canTransform(globalFrame, objectFrame, queryTime, &tfError);
-
-				if (!canTransform) // ros::Duration(5.0)
-				{
-					ROS_ERROR_STREAM("Failed to look up transform between '" << globalFrame << "' and '"
-					                                                         << objectFrame << "' with error '"
-					                                                         << tfError << "'.");
-					throw std::runtime_error("Sadness.");
-				}
-
-				tf::StampedTransform objectFrameInTableCoordinates;
-				const auto temp = motionData.tfs->lookupTransform(objectFrame, globalFrame, queryTime);
-				tf::transformStampedMsgToTF(temp, objectFrameInTableCoordinates);
-				Eigen::Isometry3d pose;
-				tf::transformTFToEigen(objectFrameInTableCoordinates.inverse(), pose);
-				poses.push_back(pose);
+				poses.push_back(getPose(motionData, globalFrame, objectFrame, queryTime));
 			}
+			Eigen::Isometry3d worldTcamera = getPose(motionData, globalFrame, motionData.cameraModel.tfFrame(), queryTime);
 
 			mps::VoxelRegion::VertexLabels labels = voxelizer->voxelize(*region, poses);
 			mps::OccupancyData b(region, labels);
+
+			const cv::Rect objectsROIGT = occupancyToROI(b, motionData.cameraModel, worldTcamera);
+			cv::Mat segGT = rayCastOccupancy(b, motionData.cameraModel, worldTcamera, objectsROIGT);
 
 			std_msgs::Header header;
 			header.frame_id = globalFrame;
 			header.stamp = ros::Time::now();
 			particlePubGT.publish(mps::visualize(b, header, cmapGT));
 
+			cv::imshow("Ground Truth", colorByLabel(segGT, cmapGT));
 
 			for (int p = 0; p < numParticles; ++p)
 			{
@@ -251,8 +285,12 @@ int main(int argc, char* argv[])
 
 				mps::DataLog particleLog(particleFilename, {"particle"}, rosbag::BagMode::Read);
 				mps::OccupancyData a = particleLog.load<mps::OccupancyData>("particle");
-				a.voxelRegion = region;
+
 				if (a.vertexState.size() != a.voxelRegion->num_vertices()) { throw std::logic_error("Fake news (a)!"); }
+
+				// Image region of objects currently
+				const cv::Rect objectsROI = occupancyToROI(a, motionData.cameraModel, worldTcamera);
+				cv::Mat segParticle = rayCastOccupancy(a, motionData.cameraModel, worldTcamera, objectsROI);
 
 				mps::Metrics metrics(a, b, cmapGT, rng);
 
@@ -263,16 +301,41 @@ int main(int argc, char* argv[])
 				particlePubs[p]->publish(mps::visualize(a, header, metrics.cmapA));
 				particlePubGT.publish(mps::visualize(b, header, cmapGT));
 
-				if (generation < numGenerations-1)
+				if (!isFinalGeneration)
 				{
 					const std::string trackingFilename =
 						workingDir + "dense_track_"
 						+ std::to_string(generation) + "_"
 						+ std::to_string(p) + ".bag";
 
-					mps::DataLog trackingLog(trackingFilename, {"particle"}, rosbag::BagMode::Read);
+					mps::DataLog trackingLog(trackingFilename, {}, rosbag::BagMode::Read);
 
-					// For each (true) object
+					// For each (perceived) object
+					for (const auto& obj : a.objects)
+					{
+						cv::Mat display1(segGT.size(), CV_8UC3, cv::Scalar(0, 0, 0));
+						auto bestGTMatch = metrics.match.match.second.left.find(obj.first.id);
+						if (bestGTMatch != metrics.match.match.second.left.end())
+						{
+							display1.setTo(cv::Scalar(0, 255, 0), segGT == bestGTMatch->second);
+						}
+						else
+						{
+							std::cerr << "No match found for " << obj.first.id << std::endl;
+						}
+
+//						cv::Mat display1(segParticle.size(), CV_8UC3, cv::Scalar(0, 0, 0));
+//						display1.setTo(cv::Scalar(0, 255, 0), segParticle == obj.first.id);
+
+						trackingLog.activeChannels.insert(std::to_string(obj.first.id));
+						auto trackMask = trackingLog.load<cv::Mat>("/" + std::to_string(obj.first.id));
+						cv::Mat display2(segParticle.size(), CV_8UC3, cv::Scalar(0, 0, 0));
+						display2.setTo(cv::Scalar(0, 0, 255), trackMask);
+
+						cv::imshow("Mask", display1 + display2);
+						cv::waitKey(0);
+					}
+
 					// For each time
 					// Compute and Display 2D overlap
 					// Compute and Display 3D overlap

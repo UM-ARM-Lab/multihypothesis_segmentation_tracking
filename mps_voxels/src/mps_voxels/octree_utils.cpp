@@ -30,6 +30,7 @@
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/colormap.h"
 #include "mps_voxels/util/assert.h"
+#include "mps_voxels/ROI.h"
 #include <mps_shape_completion_msgs/CompleteShape.h>
 
 #include <octomap_msgs/conversions.h>
@@ -322,6 +323,44 @@ octomap::point3d_collection getPoints(const octomap::OcTree* tree)
 //			unsigned idx = it.getDepth();
 
 			pts.emplace_back(it.getCoordinate());
+		}
+	}
+	pts.shrink_to_fit();
+	return pts;
+}
+
+octomap::point3d_collection
+getExteriorPoints(const octomap::OcTree* tree)
+{
+	octomap::point3d_collection pts;
+	pts.reserve(tree->size()/2); // Guess that the octree is half-full
+
+	for (octomap::OcTree::iterator it = tree->begin(tree->getTreeDepth()),
+		     end = tree->end(); it != end; ++it)
+	{
+		if (tree->isNodeOccupied(*it))
+		{
+			const unsigned idx = it.getDepth();
+			const auto halfRes = static_cast<float>(tree->getNodeSize(idx)/2.0);
+
+			const auto& center = it.getCoordinate();
+			octomap::point3d offset(halfRes, halfRes, halfRes);
+
+			octomap::point3d min = center - offset;
+			octomap::point3d max = center + offset;
+
+			// TODO: The main version of this is in ROI.h, but only supports [], not (). enable_if
+			// There will be 2^DIM corners to deal with
+			const unsigned nCorners = (1u << 3u);
+			for (unsigned perm = 0; perm < nCorners; ++perm)
+			{
+				octomap::point3d pt;
+				for (unsigned d = 0; d < 3; ++d)
+				{
+					pt(d) = (perm & (1u<<d)) ? min(d) : max(d);
+				}
+				pts.emplace_back(pt);
+			}
 		}
 	}
 	pts.shrink_to_fit();

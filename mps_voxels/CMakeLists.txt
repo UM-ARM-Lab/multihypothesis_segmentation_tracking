@@ -68,7 +68,7 @@ find_package(OCTOMAP REQUIRED)
 include_directories(SYSTEM ${OCTOMAP_INCLUDE_DIRS})
 link_libraries(${OCTOMAP_LIBRARIES})
 
-find_package(OpenCV 3.4 REQUIRED
+find_package(OpenCV 3.2 REQUIRED
   OPTIONAL_COMPONENTS
   xfeatures2d
 )
@@ -88,9 +88,9 @@ include_directories(SYSTEM COB/src/misc)
 
 #set(CMAKE_BUILD_TYPE RelWithDebInfo)
 set(CMAKE_BUILD_TYPE Debug)
+add_compile_options("-O0")
 add_compile_definitions("CGAL_DISABLE_ROUNDING_MATH_CHECK")
 add_compile_definitions("CGAL_NO_ASSERTIONS")
-#add_compile_options("-O0")
 
 use_strict_compile_flags()
 

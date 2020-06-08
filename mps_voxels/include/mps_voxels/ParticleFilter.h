@@ -35,6 +35,8 @@ public:
 	int numParticles;
 	std::vector<Particle> particles;
 
+	int generation = 0;
+
 	bool initializeParticles(const std::shared_ptr<const MeasurementSensorData>& data);
 
 	std::pair<ParticleIndex, MotionModel>

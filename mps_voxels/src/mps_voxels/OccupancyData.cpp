@@ -137,6 +137,7 @@ OccupancyData::OccupancyData(std::shared_ptr<VoxelRegion> _region,
 	{
 		pair.second->occupancy->updateInnerOccupancy();
 		pair.second->approximation = approximateShape(pair.second->occupancy.get());
+		assert(pair.second->approximation);
 	}
 
 //	segInfo = std::make_shared<SegmentationInfo>();

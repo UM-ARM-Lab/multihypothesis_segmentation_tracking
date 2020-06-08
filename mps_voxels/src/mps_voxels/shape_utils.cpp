@@ -46,7 +46,7 @@ template std::shared_ptr<shapes::Mesh> ZAMBB<octomap::point3d_collection, octoma
 std::shared_ptr<shapes::Mesh> approximateShape(const octomap::OcTree* tree)
 {
 	// Convex hull
-	octomap::point3d_collection pts = getPoints(tree);
+	octomap::point3d_collection pts = getExteriorPoints(tree);
 //	std::shared_ptr<shapes::Mesh> hull = convex_hull(pts);
 	std::shared_ptr<shapes::Mesh> hull = prism(pts);
 //	std::shared_ptr<shapes::Mesh> hull = ZAMBB(pts);

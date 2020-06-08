@@ -43,7 +43,7 @@ public:
 	explicit
 	CudaTracker(TrackingOptions _track_options = TrackingOptions());
 
-	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, std::string directory = " ") override;
+	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks) override;
 };
 
 }

@@ -50,7 +50,9 @@ class ObjectActionModel
 public:
 	using TimePoseLookup = std::map<std::pair<ros::Time, ros::Time>, moveit::Pose, std::less<>, Eigen::aligned_allocator<moveit::Pose>>;
 
-	explicit ObjectActionModel(std::shared_ptr<const Scenario> scenario_, int n=1);
+	ObjectActionModel(std::shared_ptr<const Scenario> scenario_, const SensorHistoryBuffer& buffer,
+	                  const cv::Mat& firstFrameSeg, uint16_t label, mps_msgs::AABBox2d& bbox,
+	                  std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, int n=1);
 
 	std::shared_ptr<const Scenario> scenario;
 
@@ -79,8 +81,9 @@ public:
 
 //	bool sampleAction(const SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox);
 
-	bool sampleAction(const SensorHistoryBuffer& buffer_out, const cv::Mat& firstFrameSeg, const cv::Rect& roi,
-		std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox);
+//	bool sampleAction(const SensorHistoryBuffer& buffer_out,
+//		const cv::Mat& firstFrameSeg, uint16_t label, mps_msgs::AABBox2d& bbox,
+//		std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker);
 
 	void weightedSampleSIFT(int n = 1);
 
@@ -88,6 +91,9 @@ public:
 	                             const mps::Pose& worldTcamera, const double& scoreThreshold,
 	                             const bool& useGuess = false, const Eigen::Matrix4f& guessCamera = Eigen::Matrix4f::Identity());
 };
+std::shared_ptr<ObjectActionModel> estimateMotion(std::shared_ptr<const Scenario> scenario_, const SensorHistoryBuffer& buffer,
+                                                  const cv::Mat& firstFrameSeg, uint16_t label, mps_msgs::AABBox2d& bbox,
+                                                  std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, int n=1);
 
 Eigen::Matrix4d convertTFformat(Eigen::Vector3d linear, Eigen::Vector3d angular);
 

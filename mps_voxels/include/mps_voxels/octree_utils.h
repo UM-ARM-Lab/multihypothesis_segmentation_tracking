@@ -80,6 +80,7 @@ public:
 
 
 octomap::point3d_collection getPoints(const octomap::OcTree* octree);
+octomap::point3d_collection getExteriorPoints(const octomap::OcTree* octree);
 
 std::pair<octomap::point3d_collection, std::shared_ptr<octomap::OcTree>> getOcclusionsInFOV(
 	octomap::OcTree* octree,

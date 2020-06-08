@@ -98,7 +98,7 @@ cv::Mat& Tracker::getMask(const SensorHistoryBuffer& buffer)
 
 // NB: May not exist if cv_xfeatures2d was not found
 #if USE_CPU_SIFT
-void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const std::string directory)
+void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks)
 {
 	if (steps.size() > masks.size())
 	{
@@ -134,8 +134,8 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 
 	double fps = std::max(1.0, steps.size() / (tLast - tFirst).toSec());
 	std::string sourceVideo, trackingVideo;
-	if (directory == " ") { sourceVideo = "source.avi"; trackingVideo = "tracking.avi"; }
-	else { sourceVideo = directory + "source.avi"; trackingVideo = directory + "tracking.avi"; }
+	if (track_options.directory.empty()) { sourceVideo = "source.avi"; trackingVideo = "tracking.avi"; }
+	else { sourceVideo = track_options.directory + "source.avi"; trackingVideo = track_options.directory + "tracking.avi"; }
 	cv::VideoWriter video(sourceVideo, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(), true);
 	cv::VideoWriter tracking(trackingVideo, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(),
 	                         true);
@@ -246,7 +246,7 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 	tracking.release();
 }
 #else
-void Tracker::track(const std::vector<ros::Time>&, const SensorHistoryBuffer&, const std::map<ros::Time, cv::Mat>&, const std::string)
+void Tracker::track(const std::vector<ros::Time>&, const SensorHistoryBuffer&, const std::map<ros::Time, cv::Mat>&)
 {
 	throw std::logic_error("CPU SIFT currently disabled!");
 }

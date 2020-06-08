@@ -112,6 +112,7 @@ public:
 		float pixelRadius;
 		float meterRadius;
 		ROI roi;
+		std::string directory = "";
 
 		TrackingOptions()
 			:featureRadius(250.0f), pixelRadius(30.0f), meterRadius(0.05),
@@ -143,7 +144,7 @@ public:
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup;
 
 	virtual
-	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks = std::map<ros::Time, cv::Mat>(), const std::string directory = " ");
+	void track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks = std::map<ros::Time, cv::Mat>());
 
 //	virtual
 //	void siftOnMask(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, LabelT label);

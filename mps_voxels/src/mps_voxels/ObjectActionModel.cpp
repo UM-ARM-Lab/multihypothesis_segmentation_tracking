@@ -27,13 +27,20 @@
 namespace mps
 {
 
-ObjectActionModel::ObjectActionModel(std::shared_ptr<const Scenario> scenario_, int n)
-	: scenario(std::move(scenario_)),
-	  numSamples(n),
-	  jlinkageActionClient("cluster_flow", true)
+std::shared_ptr<ObjectActionModel> estimateMotion(std::shared_ptr<const Scenario> scenario_, const SensorHistoryBuffer& buffer,
+                                                  const cv::Mat& firstFrameSeg, uint16_t label, mps_msgs::AABBox2d& bbox,
+                                                  std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, int n)
 {
-
+	try
+	{
+		return std::make_shared<ObjectActionModel>(scenario_, buffer, firstFrameSeg, label, bbox, sparseTracker, denseTracker, n);
+	}
+	catch (const std::runtime_error&)
+	{
+		return {};
+	}
 }
+
 
 Eigen::Vector3d
 ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& depth1,
@@ -186,9 +193,6 @@ ObjectActionModel::icpManifoldSequentialSampler(const std::vector<ros::Time>& st
 			icp.align(Final);
 			error = icp.getFitnessScore();
 			std::cerr << "is Converged: " << icp.hasConverged() << "; Score = " << error << std::endl;
-
-			// TODO: add random disturbance after first icp
-
 
 			//// Visualization of ICP
 			if (scenario->shouldVisualize("icp"))
@@ -346,16 +350,13 @@ bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 //	return sampleAction(buffer_out, startMask, seg_out.roi, sparseTracker, denseTracker, label, bbox);
 //}
 
-bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer, const cv::Mat& firstFrameSeg, const cv::Rect& roi,
-	std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker,
-	uint16_t label, mps_msgs::AABBox2d& bbox)
+ObjectActionModel::ObjectActionModel(std::shared_ptr<const Scenario> scenario_, const SensorHistoryBuffer& buffer,
+                                     const cv::Mat& firstFrameSeg, uint16_t label, mps_msgs::AABBox2d& bbox,
+                                     std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, int n)
+	: scenario(std::move(scenario_)),
+	  numSamples(n),
+	  jlinkageActionClient("cluster_flow", true)
 {
-	assert(roi.x >= 0);
-	assert(roi.y >= 0);
-	assert(roi.x + roi.width <= buffer.rgb.begin()->second->image.cols);
-	assert(roi.y + roi.height <= buffer.rgb.begin()->second->image.rows);
-
-	actionSamples.clear();
 	/////////////////////////////////////////////
 	//// Construct tracking time steps
 	/////////////////////////////////////////////
@@ -365,8 +366,11 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer, const cv
 		steps.push_back(iter->first);
 	}
 	std::vector<ros::Time> timeStartEnd;
-	timeStartEnd.push_back(steps[0]);
+	timeStartEnd.push_back(steps.front());
 	timeStartEnd.push_back(steps.back());
+
+	assert(firstFrameSeg.size() == buffer.rgb.at(steps.front())->image.size());
+	assert(firstFrameSeg.size() == buffer.rgb.at(steps.back())->image.size());
 
 	/////////////////////////////////////////////
 	//// Look up worldTcamera
@@ -388,25 +392,15 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer, const cv
 	if (!denseTrackSuccess)
 	{
 		ROS_ERROR_STREAM("Dense Track Failed!!!");
-		return false;
+		throw std::runtime_error("Tracking call failed.");
 	}
 	if (masks.find(steps.back()) == masks.end())
 	{
 		ROS_ERROR_STREAM("Failed to estimate motion: SiamMask did not return masks for all frames! Return!");
-		return false;
+		throw std::runtime_error("Tracking estimation failed.");
 	}
 	//// Fill in the first frame mask
-	cv::Mat startMask;
-	if (firstFrameSeg.size() == cv::Size(roi.width, roi.height))
-	{
-		startMask = cv::Mat::zeros(buffer.rgb.begin()->second->image.size(), CV_8UC1);
-		cv::Mat subwindow(startMask, roi);
-		subwindow = label == firstFrameSeg;
-	}
-	else
-	{
-		startMask = label == firstFrameSeg;
-	}
+	cv::Mat startMask = label == firstFrameSeg;
 
 	masks.insert(masks.begin(), {steps.front(), startMask});
 
@@ -441,7 +435,7 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer, const cv
 	}
 
 	//// SIFT
-	sparseTracker->track(timeStartEnd, buffer, masks, "/home/kunhuang/Videos/" + std::to_string((int)label) + "_");
+	sparseTracker->track(timeStartEnd, buffer, masks);
 
 	/////////////////////////////////////////////
 	//// send request to jlinkage server & sample object motions
@@ -471,7 +465,6 @@ bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer, const cv
 		std::cerr << "Final action sample:\n";
 		std::cerr << as.tf.matrix() << std::endl;
 	}
-	return true;
 }
 
 void ObjectActionModel::weightedSampleSIFT(int n)

@@ -11,6 +11,10 @@
 
 #include <tf_conversions/tf_eigen.h>
 
+#include "mps_voxels/logging/DataLog.h"
+#include "mps_voxels/logging/log_cv_mat.h"
+#include <boost/filesystem.hpp>
+
 namespace mps
 {
 
@@ -133,15 +137,33 @@ ParticleFilter::computeActionModel(
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, objectsROI, 5);
 	std::cerr << "number of bounding boxes in segParticle: " << labelToBBoxLookup.size() << std::endl;
 
-	std::unique_ptr<ObjectActionModel> oam = std::make_unique<ObjectActionModel>(scenario, 1);
 	for (auto& pair : labelToBBoxLookup)
 	{
-		bool sampleActionSuccess = oam->sampleAction(buffer, segParticle, workspaceROI, sparseTracker, denseTracker, pair.first, pair.second);
-		if (sampleActionSuccess)
+		const auto label = pair.first;
+		std::shared_ptr<const ObjectActionModel> oam = estimateMotion(scenario, buffer, segParticle, pair.first, pair.second, sparseTracker, denseTracker, 1);
+		if (oam)
 		{
 			labelToMotionLookup.emplace(pair.first, oam->actionSamples[0]);
 
 			// TODO: log label to masks here
+			const std::string trackingFilename =
+				scenario->experiment->experiment_dir + "/"
+				+ "dense_track_"
+				+ std::to_string(generation) + "_"
+				+ std::to_string(inputParticle.particle.id) + ".bag";
+
+			const std::string channel = "/" + std::to_string(label);
+			auto mode = boost::filesystem::exists(trackingFilename) ? rosbag::BagMode::Append : rosbag::BagMode::Write;
+			mps::DataLog trackingLog(trackingFilename, {channel}, mode);
+
+			std_msgs::Header header;
+			header.frame_id = cameraModel.tfFrame();
+			for (const auto& m : oam->masks)
+			{
+				header.stamp = m.first;
+				trackingLog.log(channel, toMaskMessage(m.second, header));
+			}
+
 		}
 		else
 		{
@@ -215,6 +237,7 @@ void ParticleFilter::computeAndApplyActionModel(
 		auto newParticle = applyActionModel(particles[p], motion.second);
 		particles[p] = newParticle;
 	}
+	++generation;
 }
 
 void ParticleFilter::applyMeasurementModel(const std::shared_ptr<const Scene>& newScene)
