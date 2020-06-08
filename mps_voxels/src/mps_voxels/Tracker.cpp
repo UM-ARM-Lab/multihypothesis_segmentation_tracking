@@ -29,6 +29,7 @@
 
 #include "mps_voxels/Tracker.h"
 #include "mps_voxels/project_point.hpp"
+#include "mps_voxels/image_output.h"
 
 #include <opencv2/optflow.hpp>
 #include <opencv2/highgui.hpp>
@@ -133,6 +134,8 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 	const ros::Time& tLast = steps.back();
 
 	double fps = std::max(1.0, steps.size() / (tLast - tFirst).toSec());
+
+	// TODO: Only write video if directory exists
 	std::string sourceVideo, trackingVideo;
 	if (track_options.directory.empty()) { sourceVideo = "source.avi"; trackingVideo = "tracking.avi"; }
 	else { sourceVideo = track_options.directory + "source.avi"; trackingVideo = track_options.directory + "tracking.avi"; }
@@ -147,6 +150,7 @@ void Tracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuff
 	cv::Mat instanceMask;
 	if (!masks.empty()) { instanceMask = mask & masks.at(tFirst); }
 	else { instanceMask = mask; }
+	IMSHOW("objectMask", instanceMask);
 
 	// TODO: add a visualization flag or something
 	visualization_msgs::MarkerArray ma;

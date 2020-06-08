@@ -54,6 +54,7 @@ public:
 		if (iter == imagePubs.end())
 		{
 			auto res = imagePubs.emplace(channel, std::make_unique<image_transport::Publisher>(it.advertise(channel, 1, true)));
+			sleep(2);
 			return res.first->second.get();
 		}
 		else

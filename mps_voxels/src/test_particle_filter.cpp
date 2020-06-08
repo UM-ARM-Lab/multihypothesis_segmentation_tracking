@@ -27,12 +27,14 @@
 #include "mps_voxels/CudaTracker.h"
 #endif
 
+#define USE_CPU_SIFT true
+
 #include <moveit/robot_model_loader/robot_model_loader.h>
 
 using namespace mps;
 
 const std::string testDirName = "package://mps_test_data/";
-const std::string expDirName = "2020-06-05T06:25:12.600309/";
+const std::string expDirName = "2020-06-07T08:55:02.095309/";
 
 class ParticleFilterTestFixture
 {
@@ -50,6 +52,8 @@ public:
 	{
 		ros::NodeHandle nh, pnh("~");
 
+		std::string logDir = parsePackageURL(testDirName);
+
 		// Load robot and scenario configurations
 		mpLoader = std::make_unique<robot_model_loader::RobotModelLoader>();
 		pModel = mpLoader->getModel();
@@ -57,10 +61,12 @@ public:
 		scenario->segmentationClient = std::make_shared<RGBDSegmenter>(nh);
 		scenario->completionClient = std::make_shared<VoxelCompleter>(nh);
 
+		Tracker::TrackingOptions opts;
+		opts.directory = logDir + expDirName;
 		#if HAS_CUDA_SIFT
-		sparseTracker = std::make_unique<CudaTracker>();
+		sparseTracker = std::make_unique<CudaTracker>(opts);
 		#else
-		sparseTracker = std::make_unique<Tracker>();
+		sparseTracker = std::make_unique<Tracker>(opts);
 		sparseTracker->track_options.featureRadius = 200.0f;
 		sparseTracker->track_options.pixelRadius = 1000.0f;
 		sparseTracker->track_options.meterRadius = 1.0f;
@@ -76,7 +82,6 @@ public:
 		/////////////////////////////////////////////
 		//// Load initial scene data
 		/////////////////////////////////////////////
-		std::string logDir = parsePackageURL(testDirName);
 		{
 			DataLog loader(logDir + expDirName + "buffer_" + std::to_string(0) + ".bag", {}, rosbag::bagmode::Read);
 			loader.activeChannels.insert("buffer");
@@ -84,13 +89,13 @@ public:
 			std::cerr << "Successfully loaded buffer." << std::endl;
 		}
 		std::cerr << "number of frames: " << motionData.rgb.size() << std::endl;
-		SegmentationInfo seg_out;
-		{
-			DataLog loader(logDir + expDirName + "segInfo_" + std::to_string(0) + ".bag", {}, rosbag::bagmode::Read);
-			loader.activeChannels.insert("segInfo");
-			seg_out = loader.load<SegmentationInfo>("segInfo");
-			std::cerr << "Successfully loaded segInfo." << std::endl;
-		}
+//		SegmentationInfo seg_out;
+//		{
+//			DataLog loader(logDir + expDirName + "segInfo_" + std::to_string(0) + ".bag", {}, rosbag::bagmode::Read);
+//			loader.activeChannels.insert("segInfo");
+//			seg_out = loader.load<SegmentationInfo>("segInfo");
+//			std::cerr << "Successfully loaded segInfo." << std::endl;
+//		}
 
 		ros::Time initialTime = motionData.rgb.begin()->first;
 		initialScene = computeSceneFromSensorHistorian(scenario, motionData, initialTime, scenario->worldFrame);
@@ -170,7 +175,7 @@ int main(int argc, char **argv)
 		auto pfMarkers = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
 		visualPub.publish(pfMarkers);
 		std::cerr << "New state particle " << i << " shown!" << std::endl;
-		sleep(2);
+		sleep(10);
 	}
 
 	// TODO: Apply scene #2 measurement to particles
