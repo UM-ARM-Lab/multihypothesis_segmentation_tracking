@@ -126,17 +126,23 @@ cv::Mat colorByLabel(const cv::Mat& input, const VoxelColormap& colormap)
 }
 
 Eigen::Isometry3d getPose(const SensorHistoryBuffer& buffer, const std::string& globalFrame,
-                          const std::string& objectFrame, const ros::Time& queryTime)
+                          const std::string& objectFrame, ros::Time queryTime)
 {
 	std::string tfError;
 	bool canTransform = buffer.tfs->canTransform(globalFrame, objectFrame, queryTime, &tfError);
 
+	// Fuzzy lookup of time info
 	if (!canTransform) // ros::Duration(5.0)
 	{
-		ROS_ERROR_STREAM("Failed to look up transform between '" << globalFrame << "' and '"
-		                                                         << objectFrame << "' with error '"
-		                                                         << tfError << "'.");
-		throw std::runtime_error("Sadness.");
+		queryTime = queryTime + ros::Duration(0.5);
+		canTransform = buffer.tfs->canTransform(globalFrame, objectFrame, queryTime, &tfError);
+		if (!canTransform)
+		{
+			ROS_ERROR_STREAM("Failed to look up transform between '" << globalFrame << "' and '"
+			                                                         << objectFrame << "' with error '"
+			                                                         << tfError << "'.");
+			throw std::runtime_error("Sadness.");
+		}
 	}
 
 	tf::StampedTransform objectFrameInTableCoordinates;
@@ -152,7 +158,7 @@ int main(int argc, char* argv[])
 	ros::init(argc, argv, "test_occupancy_comparison");
 	ros::NodeHandle nh, pnh("~");
 
-	const std::string workingDir = "/tmp/scene_explorer/2020-06-08T00:50:08.012629/";
+	const std::string workingDir = "/tmp/scene_explorer/2020-06-08T22:22:26.462318/";
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-05T16:24:42.273504/";
 //	const std::string ground_truth = "/tmp/gazebo_segmentation/gt_occupancy.bag";
 	const std::string globalFrame = "table_surface";
@@ -243,7 +249,7 @@ int main(int argc, char* argv[])
 		{
 			const bool isFinalGeneration = (generation >= numGenerations-1);
 			//-------------------------------------------------------------------------
-			// Ground Truth
+			// Ground Truth - State
 			//-------------------------------------------------------------------------
 			const std::string bufferFilename =
 				workingDir + "buffer_"
@@ -255,15 +261,15 @@ int main(int argc, char* argv[])
 			// Compute poses from buffer
 			const ros::Time queryTime = (isFinalGeneration) ? ros::Time(0)
 			                                                : motionData.rgb.begin()->second->header.stamp + ros::Duration(1.0);
-			std::vector<Eigen::Isometry3d> poses;
+			std::vector<Eigen::Isometry3d> statePoses;
 			for (const auto& pair : shapeModels)
 			{
 				const std::string objectFrame = "mocap_" + pair.first;
-				poses.push_back(getPose(motionData, globalFrame, objectFrame, queryTime));
+				statePoses.push_back(getPose(motionData, globalFrame, objectFrame, queryTime));
 			}
 			Eigen::Isometry3d worldTcamera = getPose(motionData, globalFrame, motionData.cameraModel.tfFrame(), queryTime);
 
-			mps::VoxelRegion::VertexLabels labels = voxelizer->voxelize(*region, poses);
+			mps::VoxelRegion::VertexLabels labels = voxelizer->voxelize(*region, statePoses);
 			mps::OccupancyData b(region, labels);
 
 			const cv::Rect objectsROIGT = occupancyToROI(b, motionData.cameraModel, worldTcamera);
