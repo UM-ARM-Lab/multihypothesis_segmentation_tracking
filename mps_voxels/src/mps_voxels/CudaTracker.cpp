@@ -50,7 +50,7 @@ CudaTracker::CudaTracker(TrackingOptions _track_options)
 
 }
 
-void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& /*masks*/)
+void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks)
 {
 	if (buffer.rgb.empty() || buffer.depth.empty())
 	{
@@ -70,10 +70,21 @@ void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	const ros::Time& tFirst = steps.front();
 	const ros::Time& tLast = steps.back();
 
-	double fps = std::max(1.0, steps.size() / (tLast - tFirst).toSec());
-	cv::VideoWriter video("source.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(), true);
-	cv::VideoWriter tracking("tracking.avi", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), fps, buffer.rgb.at(tFirst)->image.size(),
-	                         true);
+	cv::Mat maskPrev;
+	if (!masks.empty()) { maskPrev = mask & masks.at(tFirst); }
+	else { maskPrev = mask; }
+
+
+	std::unique_ptr<cv::VideoWriter> video, tracking;
+	bool shouldRecord = !track_options.directory.empty();
+	if (shouldRecord)
+	{
+		auto format = cv::VideoWriter::fourcc('M', 'J', 'P', 'G');
+		auto size = buffer.rgb.at(tFirst)->image.size();
+		double fps = std::max(1.0, steps.size() / (tLast - tFirst).toSec());
+		video = std::make_unique<cv::VideoWriter>(track_options.directory + "/source.avi", format, fps, size, true);
+		tracking = std::make_unique<cv::VideoWriter>(track_options.directory + "/tracking.avi", format, fps, size, true);
+	}
 
 	const unsigned int w = buffer.rgb.at(tFirst)->image.cols;
 	const unsigned int h = buffer.rgb.at(tFirst)->image.rows;
@@ -101,12 +112,27 @@ void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	img1.Download();
 	cudaSift::ExtractSift(siftData1, img1, 5, initBlur, thresh, 0.0f, false);
 
+	// TODO: Apply mask before performing matching
+//	for (int p = 0; p < siftData1.numPts; ++p)
+//	{
+//		const cudaSift::SiftPoint& sp = siftData1.h_data[p];
+//		const cv::Point2i pt1(sp.xpos, sp.ypos);
+//		if (!maskPrev.at<uint8_t>(pt1))
+//		{
+//
+//		}
+//	}
+
 	for (int i = 1; i < static_cast<int>(steps.size()) && ros::ok(); ++i)
 	{
 		const ros::Time& tPrev = steps[i - 1];
 		const ros::Time& tCurr = steps[i];
 
 		buffer.rgb.at(tPrev)->image.copyTo(display);
+
+		cv::Mat maskCurr;
+		if (!masks.empty()) { maskCurr = mask & masks.at(tCurr); }
+		else { maskCurr = mask; }
 
 		// Convert to 32-bit grayscale and compute SIFT
 		cv::cvtColor(buffer.rgb.at(tCurr)->image, tempGray, cv::COLOR_BGR2GRAY);
@@ -116,9 +142,6 @@ void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 		img2.Download();
 		cudaSift::ExtractSift(siftData2, img2, 5, initBlur, thresh, 0.0f, false);
 
-//		cv::Mat instanceMask;
-//		if (!masks.empty()) { instanceMask = mask & masks.at(tFirst); }
-//		else { instanceMask = mask; }
 
 		// TODO: Apply mask before performing matching
 		cudaSift::MatchSiftData(siftData1, siftData2);
@@ -140,7 +163,7 @@ void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 				cv::Point2i pt2(spm.xpos, spm.ypos);
 
 				// Check mask
-				if (!mask.at<uint8_t>(pt1) || !mask.at<uint8_t>(pt2))
+				if (!maskPrev.at<uint8_t>(pt1) || !maskCurr.at<uint8_t>(pt2))
 				{
 					continue;
 				}
@@ -177,14 +200,27 @@ void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 		flows2[{tPrev, tCurr}] = flow2;
 		flows3[{tPrev, tCurr}] = flow3;
 
-		video.write(buffer.rgb.at(tPrev)->image);
-		tracking.write(display);
-//		cv::imshow("prev", display);
-//		cv::waitKey(1);
+		if (shouldRecord)
+		{
+//			video->write(buffer.rgb.at(tPrev)->image);
+//			tracking->write(display);
+//			cv::namedWindow("Matches", cv::WINDOW_NORMAL);
+//			cv::namedWindow("Mask", cv::WINDOW_NORMAL);
+//
+//			cv::Mat display1(display.size(), CV_8UC3, cv::Scalar(0, 0, 0));
+//			display1.setTo(cv::Scalar(255, 0, 0), maskPrev);
+//			cv::Mat display2(display.size(), CV_8UC3, cv::Scalar(0, 0, 0));
+//			display2.setTo(cv::Scalar(0, 0, 255), maskCurr);
+//
+//			cv::imshow("Matches", display);
+//			cv::imshow("Mask", display1 + display2);
+//			cv::waitKey(0);
+		}
 
 		std::swap(gray1, gray2);
 		std::swap(img1, img2);
 		std::swap(siftData1, siftData2);
+		cv::swap(maskPrev, maskCurr);
 
 		img2.Destroy();
 	}
@@ -192,9 +228,12 @@ void CudaTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	cudaSift::FreeSiftData(siftData1);
 	cudaSift::FreeSiftData(siftData2);
 
-	video.write(buffer.rgb.at(tLast)->image);
-	video.release();
-	tracking.release();
+	if (shouldRecord)
+	{
+		video->write(buffer.rgb.at(tLast)->image);
+		video->release();
+		tracking->release();
+	}
 }
 
 }
