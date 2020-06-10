@@ -53,44 +53,15 @@ ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& dep
 	assert(depth1.type() == CV_16UC1);
 	assert(depth2.type() == CV_16UC1);
 
-	float centerRow1 = 0;
-	float centerCol1 = 0;
-	float centerRow2 = 0;
-	float centerCol2 = 0;
-	float mask1size = 0;
-	float mask2size = 0;
-
 	// TODO: Use moments command:
-//	cv::Moments m1 = cv::moments(mask1,true);
-//	cv::Point2f p1(m1.m10/m1.m00, m1.m01/m1.m00);
-	for (int i = 0; i < mask1.rows; i++)
-	{
-		for (int j = 0; j < mask1.cols; j++)
-		{
-			if(mask1.at<bool>(i, j))
-			{
-				centerRow1 += (float)i;
-				centerCol1 += (float)j;
-				mask1size += 1.0;
-			}
-			if(mask2.at<bool>(i, j))
-			{
-				centerRow2 += (float)i;
-				centerCol2 += (float)j;
-				mask2size += 1.0;
-			}
-		}
-	}
-
-	if (mask1size < 1 || mask2size < 1)
-	{
-		ROS_WARN_STREAM("Attempted to compute step based on 2D mask, but mask was empty.");
-		return Eigen::Vector3d::Zero();
-	}
-	centerRow1 /= mask1size;
-	centerCol1 /= mask1size;
-	centerRow2 /= mask2size;
-	centerCol2 /= mask2size;
+	cv::Moments m1 = cv::moments(mask1,true);
+	cv::Point2f p1(m1.m10/m1.m00, m1.m01/m1.m00);
+	cv::Moments m2 = cv::moments(mask2,true);
+	cv::Point2f p2(m2.m10/m2.m00, m2.m01/m2.m00);
+	float centerRow1 = p1.y;
+	float centerCol1 = p1.x;
+	float centerRow2 = p2.y;
+	float centerCol2 = p2.x;
 
 	auto dVal1 = depth1.at<uint16_t>((int)floor(centerRow1), (int)floor(centerCol1));
 	auto dVal2 = depth2.at<uint16_t>((int)floor(centerRow2), (int)floor(centerCol2));
@@ -109,7 +80,8 @@ ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& dep
 	return objectAction;
 }
 
-RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera)
+RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer,
+                                              const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera)
 {
 	//// Construct PointCloud Segments
 	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer.rgb.at(steps[0])->image, buffer.depth.at(steps[0])->image,
@@ -141,7 +113,8 @@ RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& step
 }
 
 ObjectActionModel::TimePoseLookup
-ObjectActionModel::icpManifoldSequentialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera)
+ObjectActionModel::icpManifoldSequentialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer,
+                                                const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera)
 {
 	assert(steps.size() > 1);
 	icpRigidTF.tf = mps::Pose::Identity();
@@ -213,6 +186,7 @@ ObjectActionModel::icpManifoldSequentialSampler(const std::vector<ros::Time>& st
 				Final.header.frame_id = buffer.cameraModel.tfFrame();
 				pcl_conversions::toPCL(ros::Time::now(), Final.header.stamp);
 				pcPub3.publish(Final);
+				sleep(0.8);
 			}
 			if (scenario->shouldVisualize("poseArray"))
 			{
@@ -231,7 +205,8 @@ ObjectActionModel::icpManifoldSequentialSampler(const std::vector<ros::Time>& st
 					T = T.inverse(Eigen::Isometry);
 					tf::transformEigenToTF(T, temp);
 					scenario->broadcaster->sendTransform(
-						tf::StampedTransform(temp, ros::Time::now(), "object" + std::to_string(t), "object" + std::to_string(t + 1)));
+						tf::StampedTransform(temp, ros::Time::now(),
+						                     "object" + std::to_string(t), "object" + std::to_string(t + 1)));
 //					sleep(1);
 
 					T = mps::Pose(icpRigidTF.tf);
@@ -342,7 +317,8 @@ bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 	return isClusterExist;
 }
 
-//bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out, std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
+//bool ObjectActionModel::sampleAction(const SensorHistoryBuffer& buffer_out, SegmentationInfo& seg_out,
+// std::unique_ptr<Tracker>& sparseTracker, std::unique_ptr<DenseTracker>& denseTracker, uint16_t label, mps_msgs::AABBox2d& bbox)
 //{
 //	cv::Mat startMask = cv::Mat::zeros(buffer_out.rgb.begin()->second->image.size(), CV_8UC1);
 //	cv::Mat subwindow(startMask, seg_out.roi);
@@ -385,7 +361,7 @@ ObjectActionModel::ObjectActionModel(std::shared_ptr<const Scenario> scenario_, 
 	/////////////////////////////////////////////
 	//// Tracking
 	/////////////////////////////////////////////
-	std::cerr << "-------------------------------------------------------------------------------------" << std::endl;
+//	std::cerr << "-------------------------------------------------------------------------------------" << std::endl;
 	//// SiamMask tracking: construct masks
 	masks.clear();
 	bool denseTrackSuccess = denseTracker->track(steps, buffer, bbox, masks);
@@ -428,7 +404,10 @@ ObjectActionModel::ObjectActionModel(std::shared_ptr<const Scenario> scenario_, 
 	                                                                buffer.cameraModel,
 	                                                                masks.at(steps.back()));
 	assert(!lastCloudSegment->empty());
-	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002, true, icpRigidTF.tf.matrix().cast<float>())) // TODO: decide the value of threshold
+//	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002,
+//	                             buffer.cameraModel.tfFrame(), true, icpRigidTF.tf.matrix().cast<float>())) // TODO: decide the value of threshold
+	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002,
+	                             buffer.cameraModel.tfFrame()))
 	{
 		//// Generate reasonable disturbance in ParticleFilter together with failed situations
 		std::cerr << "Although ICP tells us SiamMask isn't reasonable, we still use it for now." << std::endl;
@@ -488,8 +467,8 @@ void ObjectActionModel::weightedSampleSIFT(int n)
 }
 
 bool ObjectActionModel::isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::Ptr& initCloudSegment, const pcl::PointCloud<PointT>::Ptr& lastCloudSegment,
-                             const mps::Pose& worldTcamera, const double& scoreThreshold,
-                             const bool& useGuess, const Eigen::Matrix4f& guessCamera)
+                                                const mps::Pose& worldTcamera, const double& scoreThreshold, const std::string& frame_id,
+                                                const bool& useGuess, const Eigen::Matrix4f& guessCamera)
 {
 	assert(!initCloudSegment->empty());
 	assert(!lastCloudSegment->empty());
@@ -507,6 +486,29 @@ bool ObjectActionModel::isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::P
 	else { icp.align(Final); }
 	double score = icp.getFitnessScore();
 	std::cerr << "ICP is Converged: " << icp.hasConverged() << "; Score = " << score << std::endl;
+
+	//// Visualization of ICP
+	if (scenario->shouldVisualize("icp"))
+	{
+		static ros::NodeHandle pnh("~");
+		static ros::Publisher pcPub1 = pnh.advertise<pcl::PointCloud<PointT>>("icp_source", 1, true);
+		static ros::Publisher pcPub2 = pnh.advertise<pcl::PointCloud<PointT>>("icp_target", 1, true);
+		static ros::Publisher pcPub3 = pnh.advertise<pcl::PointCloud<PointT>>("icp_registered", 1, true);
+
+		initCloudSegment->header.frame_id = frame_id;
+		pcl_conversions::toPCL(ros::Time::now(), initCloudSegment->header.stamp);
+		pcPub1.publish(*initCloudSegment);
+
+		lastCloudSegment->header.frame_id = frame_id;
+		pcl_conversions::toPCL(ros::Time::now(), lastCloudSegment->header.stamp);
+		pcPub2.publish(*lastCloudSegment);
+
+		Final.header.frame_id = frame_id;
+		pcl_conversions::toPCL(ros::Time::now(), Final.header.stamp);
+		pcPub3.publish(Final);
+		sleep(3);
+	}
+
 	if (score > scoreThreshold)
 	{
 		ROS_ERROR_STREAM("SiamMask result doesn't make sense according to ICP.");

@@ -6,6 +6,7 @@
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_occupancy_data.h"
 #include "mps_voxels/logging/log_sensor_history.h"
+#include "mps_voxels/logging/log_siammask.h"
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/SensorHistorian.h"
 #include "mps_voxels/ParticleFilter.h"
@@ -21,6 +22,7 @@ using namespace mps;
 
 const std::string testDirName = "package://mps_test_data/";
 const std::string expDirName = "2020-06-07T08:55:02.095309/";
+std::string logDir = parsePackageURL(testDirName);
 
 class icpTestFixture
 {
@@ -37,7 +39,6 @@ public:
 	{
 		ros::NodeHandle nh, pnh("~");
 
-		std::string logDir = parsePackageURL(testDirName);
 
 		// Load robot and scenario configurations
 		mpLoader = std::make_unique<robot_model_loader::RobotModelLoader>();
@@ -137,6 +138,9 @@ int main(int argc, char **argv)
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, objectsROI, 5);
 	std::cerr << "number of bounding boxes in segParticle: " << labelToBBoxLookup.size() << std::endl;
 
+	using LabelT = uint16_t;
+	std::map<LabelT, std::map<ros::Time, cv::Mat>> siammasks;
+
 	for (auto& pair : labelToBBoxLookup)
 	{
 		if (pair.first != 19 && pair.first != 23 && pair.first != 24) continue;
@@ -144,6 +148,26 @@ int main(int argc, char **argv)
 		std::cout << "Current label is " << pair.first << std::endl;
 		std::shared_ptr<const ObjectActionModel> oam = estimateMotion(fixture.scenario, fixture.motionData,
 			segParticle, pair.first, pair.second, fixture.sparseTracker, fixture.denseTracker, 1);
+		if (oam)
+		{
+			siammasks.emplace(pair.first, oam->masks);
+		}
+	}
+
+	const std::string trackingFilename =
+		logDir + expDirName + "dense_track_" + std::to_string(0) + "_" + std::to_string(0) + ".bag";
+	{
+		DataLog logger(trackingFilename);
+		logger.log<label2t2mask>("label2t2mask", siammasks);
+		ROS_INFO_STREAM("Logged siammasks");
+	}
+	label2t2mask siam_out;
+	{
+		DataLog logger(trackingFilename, {}, rosbag::bagmode::Read);
+		logger.activeChannels.insert("label2t2mask/19");
+		logger.activeChannels.insert("label2t2mask/23");
+		siam_out = logger.load<label2t2mask>("label2t2mask");
+		ROS_INFO_STREAM("Loaded siammasks");
 	}
 
 	return 0;

@@ -137,12 +137,15 @@ ParticleFilter::computeActionModel(
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, objectsROI, 5);
 	std::cerr << "number of bounding boxes in segParticle: " << labelToBBoxLookup.size() << std::endl;
 
+	using LabelT = uint16_t;
+	std::map<LabelT, std::map<ros::Time, cv::Mat>> siammasks;
 	for (auto& pair : labelToBBoxLookup)
 	{
 		const auto label = pair.first;
 		std::shared_ptr<const ObjectActionModel> oam = estimateMotion(scenario, buffer, segParticle, pair.first, pair.second, sparseTracker, denseTracker, 1);
 		if (oam)
 		{
+			siammasks.emplace(pair.first, oam->masks);
 			labelToMotionLookup.emplace(pair.first, oam->actionSamples[0]);
 
 			// TODO: log label to masks here

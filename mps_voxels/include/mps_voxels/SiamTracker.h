@@ -44,6 +44,23 @@ public:
 //	void siamtrack(LabelT label, const std::vector<ros::Time>& steps, mps_msgs::AABBox2d bbox, const SensorHistoryBuffer& buffer);
 };
 
+//TODO: finish HistoryTracker
+//class DataLog;
+//
+//class HistoryTracker : public DenseTracker
+//{
+//public:
+//	using LabelT = uint16_t;
+//
+//	HistoryTracker(const std::string& path);
+//
+//	std::map<LabelT, std::map<ros::Time, cv::Mat>> masks;
+//
+//	bool track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks) override;
+//
+//	bool track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks) override;
+//};
+
 }
 
 #endif //SRC_SIAMTRACKER_H

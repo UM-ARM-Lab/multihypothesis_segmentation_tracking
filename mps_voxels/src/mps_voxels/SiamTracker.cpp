@@ -118,4 +118,9 @@ bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	return true;
 }
 
+//HistoryTracker::HistoryTracker(const std::string &path)
+//{
+//
+//}
+
 }

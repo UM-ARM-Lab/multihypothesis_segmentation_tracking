@@ -88,7 +88,7 @@ public:
 	void weightedSampleSIFT(int n = 1);
 
 	bool isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::Ptr& initCloudSegment, const pcl::PointCloud<PointT>::Ptr& lastCloudSegment,
-	                             const mps::Pose& worldTcamera, const double& scoreThreshold,
+	                             const mps::Pose& worldTcamera, const double& scoreThreshold, const std::string& frame_id,
 	                             const bool& useGuess = false, const Eigen::Matrix4f& guessCamera = Eigen::Matrix4f::Identity());
 };
 std::shared_ptr<ObjectActionModel> estimateMotion(std::shared_ptr<const Scenario> scenario_, const SensorHistoryBuffer& buffer,
