@@ -58,6 +58,8 @@ bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 {
 	ros::NodeHandle nh;
 
+	MPS_ASSERT(this->manipulators.empty());
+
 	if (robotModel && robotModel.get() != pModel.get())
 	{
 		ROS_WARN("Overwriting Robot Model.");
@@ -81,6 +83,9 @@ bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 				ROS_INFO_STREAM("\t-" << eeName << "\t" << ee->getFixedJointModels().size());
 				for (const std::string& eeSubName : ee->getAttachedEndEffectorNames())
 				{
+					// Hack for Victor (multiple nearly-identical EE's)
+					if (eeSubName.find("kuka") != std::string::npos) { continue; }
+
 					ROS_INFO_STREAM("\t\t-" << eeSubName << "\t" << pModel->getEndEffector(eeSubName)->getFixedJointModels().size());
 
 					auto manip = std::make_shared<VictorManipulator>(nh, pModel, jmg, ee, pModel->getEndEffector(eeSubName)->getLinkModelNames().front());
@@ -92,11 +97,13 @@ bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 					}
 					for (const std::string& jName : manip->arm->getJointModelNames())
 					{
-						this->jointToManipulator[jName] = manip;
+						auto res = jointToManipulator.emplace(jName, manip);
+						MPS_ASSERT(res.second); // Lookup must be unique
 					}
 					for (const std::string& jName : manip->gripper->getJointModelNames())
 					{
-						this->jointToManipulator[jName] = manip;
+						auto res = jointToManipulator.emplace(jName, manip);
+						MPS_ASSERT(res.second); // Lookup must be unique
 					}
 				}
 			}
@@ -107,6 +114,8 @@ bool Scenario::loadManipulators(robot_model::RobotModelPtr& pModel)
 //			ROS_INFO_STREAM("\t is " << (jmg->isEndEffector()?"":"not ") << "end-effector.");
 //		}
 	}
+
+	MPS_ASSERT(this->manipulators.size() == 2);
 
 	return true;
 }
