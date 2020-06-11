@@ -88,11 +88,14 @@ bool GazeboMocap::getTransforms()
 
 void GazeboMocap::sendTransforms(bool sendBaseFrame)
 {
+	std::vector<tf::StampedTransform> transforms;
+	ros::Time t = ros::Time::now();
+
 	// For debugging
 	if (sendBaseFrame)
 	{
-		gazeboTmocap.stamp_ = ros::Time::now();
-		tb->sendTransform(gazeboTmocap);
+		gazeboTmocap.stamp_ = t;
+		transforms.push_back(gazeboTmocap);
 	}
 
 	for (const auto& pair : markerOffsets)
@@ -101,8 +104,9 @@ void GazeboMocap::sendTransforms(bool sendBaseFrame)
 
 		tf::Transform mocapTmarker = gazeboTmocap.inverse() * linkPoses[pair.first] * linkTmarker;
 
-		tb->sendTransform(tf::StampedTransform(mocapTmarker, ros::Time::now(), mocap_frame_id, "mocap_" + pair.first.tfName()));
+		transforms.emplace_back(tf::StampedTransform(mocapTmarker, t, mocap_frame_id, "mocap_" + pair.first.tfName()));
 	}
+	tb->sendTransform(transforms);
 }
 
 }

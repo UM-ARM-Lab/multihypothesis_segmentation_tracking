@@ -1,11 +1,12 @@
-//Process finished with exit code 139 (interrupted by signal 11: SIGSEGV)
-
+//
 // Created by kunhuang on 2/21/20.
 //
 
 #include "mps_voxels/logging/log_voxel_region.h"
 #include <std_msgs/Float64.h>
 #include <geometry_msgs/Vector3.h>
+#include <ros/console.h>
+
 namespace mps
 {
 

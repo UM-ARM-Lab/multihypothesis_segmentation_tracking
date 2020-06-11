@@ -7,7 +7,7 @@
  *
  * \copyright
  *
- * Copyright (c) 2016, Georgia Tech Research Corporation
+ * Copyright (c) 2020, Andrew Price
  * All rights reserved.
  *
  * This file is provided under the following "BSD-style" License:
