@@ -102,8 +102,6 @@ int main(int argc, char **argv)
 	ros::Publisher visualPub = nh.advertise<visualization_msgs::MarkerArray>("visualization", 1, true);
 	std::default_random_engine rng;
 
-	std::string logDir = parsePackageURL(testDirName);
-
 	/////////////////////////////////////////////
 	//// sample object motions
 	/////////////////////////////////////////////
@@ -138,8 +136,7 @@ int main(int argc, char **argv)
 	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, objectsROI, 5);
 	std::cerr << "number of bounding boxes in segParticle: " << labelToBBoxLookup.size() << std::endl;
 
-	using LabelT = uint16_t;
-	std::map<LabelT, std::map<ros::Time, cv::Mat>> siammasks;
+	SiamMaskData siammasks;
 
 	for (auto& pair : labelToBBoxLookup)
 	{
@@ -158,15 +155,15 @@ int main(int argc, char **argv)
 		logDir + expDirName + "dense_track_" + std::to_string(0) + "_" + std::to_string(0) + ".bag";
 	{
 		DataLog logger(trackingFilename);
-		logger.log<label2t2mask>("label2t2mask", siammasks);
+		logger.log<SiamMaskData>("label2t2mask", siammasks);
 		ROS_INFO_STREAM("Logged siammasks");
 	}
-	label2t2mask siam_out;
+	SiamMaskData siam_out;
 	{
 		DataLog logger(trackingFilename, {}, rosbag::bagmode::Read);
 		logger.activeChannels.insert("label2t2mask/19");
 		logger.activeChannels.insert("label2t2mask/23");
-		siam_out = logger.load<label2t2mask>("label2t2mask");
+		siam_out = logger.load<SiamMaskData>("label2t2mask");
 		ROS_INFO_STREAM("Loaded siammasks");
 	}
 

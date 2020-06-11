@@ -8,6 +8,7 @@
 
 namespace mps
 {
+using LabelT = uint16_t;
 using t2mask = std::map<ros::Time, cv::Mat>;
 
 template <>
