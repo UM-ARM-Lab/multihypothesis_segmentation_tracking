@@ -155,15 +155,16 @@ int main(int argc, char **argv)
 		logDir + expDirName + "dense_track_" + std::to_string(0) + "_" + std::to_string(0) + ".bag";
 	{
 		DataLog logger(trackingFilename);
-		logger.log<SiamMaskData>("label2t2mask", siammasks);
+		logger.log<SiamMaskData>("SiamMaskData", siammasks);
 		ROS_INFO_STREAM("Logged siammasks");
 	}
+
 	SiamMaskData siam_out;
 	{
 		DataLog logger(trackingFilename, {}, rosbag::bagmode::Read);
-		logger.activeChannels.insert("label2t2mask/19");
-		logger.activeChannels.insert("label2t2mask/23");
-		siam_out = logger.load<SiamMaskData>("label2t2mask");
+		logger.activeChannels.insert("SiamMaskData/19");
+		logger.activeChannels.insert("SiamMaskData/23");
+		siam_out = logger.load<SiamMaskData>("SiamMaskData");
 		ROS_INFO_STREAM("Loaded siammasks");
 	}
 

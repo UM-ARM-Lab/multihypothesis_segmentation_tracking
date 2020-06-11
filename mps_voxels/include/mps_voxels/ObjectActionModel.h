@@ -70,10 +70,10 @@ public:
 	                     const cv::Mat& mask2, const cv::Mat& depth2,
 	                     const image_geometry::PinholeCameraModel& cameraModel, const mps::Pose& worldTcamera);
 
-	RigidTF icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera);
+//	RigidTF icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera);
 
 	TimePoseLookup
-	icpManifoldSequentialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera);
+	icpManifoldSequentialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, /*const std::map<ros::Time, cv::Mat>& masks,*/ const mps::Pose& worldTcamera);
 
 	actionlib::SimpleActionClient<mps_msgs::ClusterRigidMotionsAction> jlinkageActionClient;
 

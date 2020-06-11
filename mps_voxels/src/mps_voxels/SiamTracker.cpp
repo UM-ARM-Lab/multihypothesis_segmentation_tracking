@@ -3,6 +3,7 @@
 //
 
 #include "mps_voxels/SiamTracker.h"
+#include "mps_voxels/logging/log_siammask.h"
 
 #include <ros/ros.h>
 #include <actionlib/client/simple_action_client.h>
@@ -23,7 +24,7 @@ SiamTracker::SiamTracker()
 
 }
 
-bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks)
+bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, uint16_t label, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks)
 {
 	cv::Rect box = cv::boundingRect(initMask);
 
@@ -33,10 +34,10 @@ bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	bbox.ymin = box.y;
 	bbox.ymax = box.y + box.height;
 
-	return track(steps, buffer, bbox, masks);
+	return track(steps, buffer, label, bbox, masks);
 }
 
-bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks)
+bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, uint16_t /*label*/, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks)
 {
 
 	ROS_INFO("Waiting for SiamMask server to start.");
@@ -118,9 +119,24 @@ bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	return true;
 }
 
-//HistoryTracker::HistoryTracker(const std::string &path)
-//{
-//
-//}
+HistoryTracker::HistoryTracker(const std::string &path)
+	: logger(path, {}, rosbag::bagmode::Read)
+{
+
+}
+
+bool HistoryTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, uint16_t label, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks)
+{
+	mps_msgs::AABBox2d bbox;
+	return track(steps, buffer, label, bbox, masks);
+}
+
+bool HistoryTracker::track(const std::vector<ros::Time>& /*steps*/, const SensorHistoryBuffer& /*buffer*/, uint16_t label,
+                           const mps_msgs::AABBox2d& /*initRegion*/, std::map<ros::Time, cv::Mat>& /*masks*/)
+{
+	logger.activeChannels.insert("SiamMaskData/" + std::to_string(label));
+	SiamMaskData siam_out = logger.load<SiamMaskData>("SiamMaskData");
+	return true;
+}
 
 }

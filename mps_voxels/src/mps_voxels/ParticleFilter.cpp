@@ -129,7 +129,7 @@ ParticleFilter::computeActionModel(
 	cv::Mat segParticle = rayCastOccupancy(*inputParticle.state, cameraModel, worldTcamera, objectsROI);
 
 	// Image region where objects could be after moving
-	const cv::Rect workspaceROI = workspaceToROI(*inputParticle.state->voxelRegion, cameraModel, worldTcamera);
+//	const cv::Rect workspaceROI = workspaceToROI(*inputParticle.state->voxelRegion, cameraModel, worldTcamera);
 
 //	const cv::Mat& segParticle = inputParticle.state->segInfo->objectness_segmentation->image;
 //	const cv::Rect& roi = inputParticle.state->segInfo->roi;

@@ -80,41 +80,41 @@ ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& dep
 	return objectAction;
 }
 
-RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer,
-                                              const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera)
-{
-	//// Construct PointCloud Segments
-	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer.rgb.at(steps[0])->image, buffer.depth.at(steps[0])->image,
-	                                                                buffer.cameraModel, masks.at(steps[0]));
-	assert(!initCloudSegment->empty());
-	pcl::PointCloud<PointT>::Ptr lastCloudSegment = make_PC_segment(buffer.rgb.at(steps[ steps.size()-1 ])->image,
-	                                                                buffer.depth.at(steps[ steps.size()-1 ])->image,
-	                                                                buffer.cameraModel,
-	                                                                masks.at(steps[ steps.size()-1 ]));
-	assert(!lastCloudSegment->empty());
-
-	//// ICP
-	pcl::IterativeClosestPoint<PointT, PointT> icp;
-	icp.setInputSource(initCloudSegment);
-	icp.setInputTarget(lastCloudSegment);
-	pcl::PointCloud<PointT> Final;
-	icp.align(Final);
-	std::cout << "is Converged: " << icp.hasConverged() << "; Score = " << icp.getFitnessScore() << std::endl;
-	// TODO: use icp.getFitnessScore() to add random disturbance
-	Eigen::Matrix<float, 4, 4> Mcamera = icp.getFinalTransformation();
-	Eigen::Matrix<double, 4, 4> Mworld = worldTcamera.matrix() * Mcamera.cast<double>() * worldTcamera.inverse().matrix();
-//	std::cout << Mworld << std::endl;
-
-	RigidTF rtf;
-	rtf.tf = Mworld;
-	std::cerr << "ICP TF: \n";
-	std::cerr << rtf.tf.matrix() << std::endl;
-	return rtf;
-}
+//RigidTF ObjectActionModel::icpManifoldSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer,
+//                                              const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera)
+//{
+//	//// Construct PointCloud Segments
+//	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer.rgb.at(steps[0])->image, buffer.depth.at(steps[0])->image,
+//	                                                                buffer.cameraModel, masks.at(steps[0]));
+//	assert(!initCloudSegment->empty());
+//	pcl::PointCloud<PointT>::Ptr lastCloudSegment = make_PC_segment(buffer.rgb.at(steps[ steps.size()-1 ])->image,
+//	                                                                buffer.depth.at(steps[ steps.size()-1 ])->image,
+//	                                                                buffer.cameraModel,
+//	                                                                masks.at(steps[ steps.size()-1 ]));
+//	assert(!lastCloudSegment->empty());
+//
+//	//// ICP
+//	pcl::IterativeClosestPoint<PointT, PointT> icp;
+//	icp.setInputSource(initCloudSegment);
+//	icp.setInputTarget(lastCloudSegment);
+//	pcl::PointCloud<PointT> Final;
+//	icp.align(Final);
+//	std::cout << "is Converged: " << icp.hasConverged() << "; Score = " << icp.getFitnessScore() << std::endl;
+//	// TODO: use icp.getFitnessScore() to add random disturbance
+//	Eigen::Matrix<float, 4, 4> Mcamera = icp.getFinalTransformation();
+//	Eigen::Matrix<double, 4, 4> Mworld = worldTcamera.matrix() * Mcamera.cast<double>() * worldTcamera.inverse().matrix();
+////	std::cout << Mworld << std::endl;
+//
+//	RigidTF rtf;
+//	rtf.tf = Mworld;
+//	std::cerr << "ICP TF: \n";
+//	std::cerr << rtf.tf.matrix() << std::endl;
+//	return rtf;
+//}
 
 ObjectActionModel::TimePoseLookup
 ObjectActionModel::icpManifoldSequentialSampler(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer,
-                                                const std::map<ros::Time, cv::Mat>& masks, const mps::Pose& worldTcamera)
+                                                /*const std::map<ros::Time, cv::Mat>& masks,*/ const mps::Pose& worldTcamera)
 {
 	assert(steps.size() > 1);
 	icpRigidTF.tf = mps::Pose::Identity();
@@ -364,7 +364,7 @@ ObjectActionModel::ObjectActionModel(std::shared_ptr<const Scenario> scenario_, 
 //	std::cerr << "-------------------------------------------------------------------------------------" << std::endl;
 	//// SiamMask tracking: construct masks
 	masks.clear();
-	bool denseTrackSuccess = denseTracker->track(steps, buffer, bbox, masks);
+	bool denseTrackSuccess = denseTracker->track(steps, buffer, label, bbox, masks);
 	if (!denseTrackSuccess)
 	{
 		ROS_ERROR_STREAM("Dense Track Failed!!!");
@@ -394,7 +394,7 @@ ObjectActionModel::ObjectActionModel(std::shared_ptr<const Scenario> scenario_, 
 	/////////////////////////////////////////////
 	//// ICP check & store
 	/////////////////////////////////////////////
-	ObjectActionModel::TimePoseLookup timeToMotionLookup = icpManifoldSequentialSampler(steps, buffer, masks, worldTcamera);
+	ObjectActionModel::TimePoseLookup timeToMotionLookup = icpManifoldSequentialSampler(steps, buffer, worldTcamera);
 
 	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer.rgb.at(steps[0])->image, buffer.depth.at(steps[0])->image,
 	                                                                buffer.cameraModel, masks.at(steps[0]));
