@@ -86,9 +86,9 @@ add_definitions(${PCL_DEFINITIONS})
 
 include_directories(SYSTEM COB/src/misc)
 
-#set(CMAKE_BUILD_TYPE RelWithDebInfo)
-set(CMAKE_BUILD_TYPE Debug)
-add_compile_options("-O0")
+set(CMAKE_BUILD_TYPE RelWithDebInfo)
+#set(CMAKE_BUILD_TYPE Debug)
+#add_compile_options("-O0")
 add_compile_definitions("CGAL_DISABLE_ROUNDING_MATH_CHECK")
 add_compile_definitions("CGAL_NO_ASSERTIONS")
 
@@ -202,6 +202,9 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/VoxelRegion.cpp
   src/${PROJECT_NAME}/Scene.cpp
   src/${PROJECT_NAME}/util/package_paths.cpp
+  src/${PROJECT_NAME}/util/geometry.cpp
+  src/${PROJECT_NAME}/util/samplers.cpp
+  src/${PROJECT_NAME}/util/VoronoiTessellator.cpp
   src/${PROJECT_NAME}/ObjectLogger.cpp
   src/${PROJECT_NAME}/logging/DataLog.cpp
   src/${PROJECT_NAME}/logging/log_cv_mat.cpp
