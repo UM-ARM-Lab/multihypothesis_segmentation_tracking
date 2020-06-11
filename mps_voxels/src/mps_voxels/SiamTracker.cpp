@@ -132,10 +132,11 @@ bool HistoryTracker::track(const std::vector<ros::Time>& steps, const SensorHist
 }
 
 bool HistoryTracker::track(const std::vector<ros::Time>& /*steps*/, const SensorHistoryBuffer& /*buffer*/, uint16_t label,
-                           const mps_msgs::AABBox2d& /*initRegion*/, std::map<ros::Time, cv::Mat>& /*masks*/)
+                           const mps_msgs::AABBox2d& /*initRegion*/, std::map<ros::Time, cv::Mat>& masks)
 {
 	logger.activeChannels.insert("SiamMaskData/" + std::to_string(label));
 	SiamMaskData siam_out = logger.load<SiamMaskData>("SiamMaskData");
+	masks = siam_out[label];
 	return true;
 }
 
