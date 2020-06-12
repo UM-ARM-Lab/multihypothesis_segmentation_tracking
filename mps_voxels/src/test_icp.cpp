@@ -15,6 +15,9 @@
 #include "mps_voxels/util/package_paths.h"
 #include "mps_voxels/Scene.h"
 #include "mps_voxels/octree_utils.h"
+#if HAS_CUDA_SIFT
+#include "mps_voxels/CudaTracker.h"
+#endif
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 
