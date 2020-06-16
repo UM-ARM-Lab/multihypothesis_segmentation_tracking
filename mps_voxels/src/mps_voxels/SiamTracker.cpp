@@ -119,8 +119,13 @@ bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	return true;
 }
 
+bool SiamTracker::isHistoryTracker(std::string& /*fname*/)
+{
+	return false;
+}
+
 HistoryTracker::HistoryTracker(const std::string &path)
-	: logger(path, {}, rosbag::bagmode::Read)
+	: logger(path, {}, rosbag::bagmode::Read), trackingFilename(path)
 {
 
 }
@@ -136,7 +141,14 @@ bool HistoryTracker::track(const std::vector<ros::Time>& /*steps*/, const Sensor
 {
 	logger.activeChannels.insert("SiamMaskData/" + std::to_string(label));
 	SiamMaskData siam_out = logger.load<SiamMaskData>("SiamMaskData");
+	if (siam_out.empty()) return false;
 	masks = siam_out[label];
+	return true;
+}
+
+bool HistoryTracker::isHistoryTracker(std::string& fname)
+{
+	fname = trackingFilename;
 	return true;
 }
 

@@ -150,7 +150,8 @@ ParticleFilter::computeActionModel(
 		std::shared_ptr<const ObjectActionModel> oam = estimateMotion(scenario, buffer, segParticle, pair.first, pair.second, sparseTracker, denseTracker, 1);
 		if (oam)
 		{
-			if (shouldLogSiamMask) siammasks.emplace(label, oam->masks);
+			std::string temp = "";
+			if (shouldLogSiamMask && !denseTracker->isHistoryTracker(temp)) { siammasks.emplace(label, oam->masks); }
 			labelToMotionLookup.emplace(label, oam->actionSamples[0]);
 		}
 		else
@@ -162,7 +163,8 @@ ParticleFilter::computeActionModel(
 			labelToMotionLookup.emplace(label, randomSteadyTF);
 		}
 	}
-	if (shouldLogSiamMask)
+	std::string temp = "";
+	if (shouldLogSiamMask && !denseTracker->isHistoryTracker(temp))
 	{
 		const std::string trackingFilename =
 			scenario->experiment->experiment_dir + "/"
@@ -232,6 +234,16 @@ void ParticleFilter::computeAndApplyActionModel(
 {
 	for (size_t p = 0; p < this->particles.size(); ++p)
 	{
+		std::string trackingFilename = "";
+		if (denseTracker->isHistoryTracker(trackingFilename))
+		{
+			if (generation == 0)
+			{
+				trackingFilename[trackingFilename.size()-5] = '0' + p;
+				denseTracker = std::make_unique<HistoryTracker>(trackingFilename);
+			}
+			else denseTracker = std::make_unique<SiamTracker>();
+		}
 		auto motion = computeActionModel(particles[p], buffer, sparseTracker, denseTracker);
 		auto newParticle = applyActionModel(particles[p], motion.second);
 		particles[p] = newParticle;
