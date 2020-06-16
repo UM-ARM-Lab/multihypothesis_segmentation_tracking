@@ -1229,7 +1229,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	Tracker::TrackingOptions opts;
 	opts.roi.minExtent = {scenario->minExtent.x(), scenario->minExtent.y(), scenario->minExtent.z()};
 	opts.roi.maxExtent = {scenario->maxExtent.x(), scenario->maxExtent.y(), scenario->maxExtent.z()};
-	opts.directory = experiment->experiment_dir;
+	opts.directory = scenario->experiment->experiment_dir;
 #if !USE_CPU_SIFT
 	sparseTracker = std::make_unique<CudaTracker>(opts);
 #else
