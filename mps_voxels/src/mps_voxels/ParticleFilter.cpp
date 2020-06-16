@@ -13,10 +13,12 @@
 
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_cv_mat.h"
+#include "mps_voxels/logging/log_siammask.h"
 #include <boost/filesystem.hpp>
 
 namespace mps
 {
+const bool shouldLogSiamMask = true;
 
 ParticleFilter::ParticleFilter(std::shared_ptr<const Scenario> scenario_, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n)
 	: scenario(std::move(scenario_)), numParticles(n)
@@ -137,39 +139,19 @@ ParticleFilter::computeActionModel(
 //	const cv::Mat& segParticle = inputParticle.state->segInfo->objectness_segmentation->image;
 //	const cv::Rect& roi = inputParticle.state->segInfo->roi;
 
-	std::map<uint16_t, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, objectsROI, 5);
+	using LabelT = uint16_t;
+	std::map<LabelT, mps_msgs::AABBox2d> labelToBBoxLookup = getBBox(segParticle, objectsROI, 5);
 	std::cerr << "number of bounding boxes in segParticle: " << labelToBBoxLookup.size() << std::endl;
 
-	using LabelT = uint16_t;
-	std::map<LabelT, std::map<ros::Time, cv::Mat>> siammasks;
+	SiamMaskData siammasks;
 	for (auto& pair : labelToBBoxLookup)
 	{
 		const auto label = pair.first;
 		std::shared_ptr<const ObjectActionModel> oam = estimateMotion(scenario, buffer, segParticle, pair.first, pair.second, sparseTracker, denseTracker, 1);
 		if (oam)
 		{
-			siammasks.emplace(pair.first, oam->masks);
-			labelToMotionLookup.emplace(pair.first, oam->actionSamples[0]);
-
-			// TODO: log label to masks here
-			const std::string trackingFilename =
-				scenario->experiment->experiment_dir + "/"
-				+ "dense_track_"
-				+ std::to_string(generation) + "_"
-				+ std::to_string(inputParticle.particle.id) + ".bag";
-
-			const std::string channel = "/" + std::to_string(label);
-			auto mode = boost::filesystem::exists(trackingFilename) ? rosbag::BagMode::Append : rosbag::BagMode::Write;
-			mps::DataLog trackingLog(trackingFilename, {channel}, mode);
-
-			std_msgs::Header header;
-			header.frame_id = cameraModel.tfFrame();
-			for (const auto& m : oam->masks)
-			{
-				header.stamp = m.first;
-				trackingLog.log(channel, toMaskMessage(m.second, header));
-			}
-
+			if (shouldLogSiamMask) siammasks.emplace(label, oam->masks);
+			labelToMotionLookup.emplace(label, oam->actionSamples[0]);
 		}
 		else
 		{
@@ -177,8 +159,19 @@ ParticleFilter::computeActionModel(
 			//TODO: generate reasonable disturbance
 			RigidTF randomSteadyTF;
 			randomSteadyTF.tf = mps::Pose::Identity();
-			labelToMotionLookup.emplace(pair.first, randomSteadyTF);
+			labelToMotionLookup.emplace(label, randomSteadyTF);
 		}
+	}
+	if (shouldLogSiamMask)
+	{
+		const std::string trackingFilename =
+			scenario->experiment->experiment_dir + "/"
+			+ "dense_track_"
+			+ std::to_string(generation) + "_"
+			+ std::to_string(inputParticle.particle.id) + ".bag";
+		DataLog logger(trackingFilename);
+		logger.log<SiamMaskData>("SiamMaskData", siammasks);
+		ROS_INFO_STREAM("Logged siammasks");
 	}
 
 	// Validation code
