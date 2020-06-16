@@ -143,12 +143,11 @@ std::shared_ptr<Scenario> scenarioFactory(ros::NodeHandle& nh, ros::NodeHandle& 
 	setIfMissing(pnh, "sensor_model/max_range", 8.0);
 	setIfMissing(pnh, "planning_samples", 25);
 	setIfMissing(pnh, "planning_time", 60.0);
-	setIfMissing(pnh, "track_color", "green");
 	setIfMissing(pnh, "use_memory", true);
 	setIfMissing(pnh, "use_completion", "optional");
-	setIfMissing(pnh, "visualize", std::vector<std::string>{"particles", "icp"});
+	setIfMissing(pnh, "visualize", std::vector<std::string>{"particles", "icp", "occlusions", "object_sampling"});
 
-	bool gotParam;
+	bool gotParam = false;
 
 	// Get shape completion requirements
 	FEATURE_AVAILABILITY useShapeCompletion;
@@ -177,6 +176,8 @@ std::shared_ptr<Scenario> scenarioFactory(ros::NodeHandle& nh, ros::NodeHandle& 
 	gotParam = pnh.getParam("use_memory", use_memory); MPS_ASSERT(gotParam);
 
 	std::shared_ptr<Scenario> scenario = std::make_shared<Scenario>(use_memory, useShapeCompletion);
+
+	MPS_ASSERT(!robotModel->getJointModelGroupNames().empty());
 	scenario->loadManipulators(robotModel);
 
 	scenario->experiment = experiment;
@@ -857,7 +858,9 @@ bool SceneProcessor::buildObjects(const Scene& s, OccupancyData& occupancy)
 	/////////////////////////////////////////////////////////////////
 	// Compute the Most Occluding Segment
 	/////////////////////////////////////////////////////////////////
-	auto octree = s.sceneOctree;
+	auto* octree = s.sceneOctree;
+	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> coordToObject;
+
 	for (const auto& seg : occupancy.segments)
 	{
 		// PC may be rejected by object fitting
@@ -868,8 +871,7 @@ bool SceneProcessor::buildObjects(const Scene& s, OccupancyData& occupancy)
 		{
 			Eigen::Vector3f worldPt = s.worldTcamera.cast<float>()*pt.getVector3fMap();
 			octomap::point3d coord = octree->keyToCoord(octree->coordToKey(octomap::point3d(worldPt.x(), worldPt.y(), worldPt.z())));
-			occupancy.surfaceCoordToObject.insert({coord, seg.first});
-			occupancy.coordToObject.insert({coord, seg.first});
+			coordToObject.insert({coord, seg.first});
 		}
 	}
 
@@ -885,13 +887,13 @@ bool SceneProcessor::buildObjects(const Scene& s, OccupancyData& occupancy)
 		MPS_ASSERT(hit);
 		collision = octree->keyToCoord(octree->coordToKey(collision)); // regularize
 
-		const auto& iter = occupancy.coordToObject.find(collision);
-		if (iter != occupancy.coordToObject.end())
+		const auto& iter = coordToObject.find(collision);
+		if (iter != coordToObject.end())
 		{
 			#pragma omp critical
 			{
 				occupancy.occludedBySegmentCount[iter->second]++;
-				occupancy.coordToObject.insert({pt_world, iter->second});
+				coordToObject.insert({pt_world, iter->second});
 				occupancy.objects.at(iter->second)->shadow.push_back(pt_world);
 			}
 		}

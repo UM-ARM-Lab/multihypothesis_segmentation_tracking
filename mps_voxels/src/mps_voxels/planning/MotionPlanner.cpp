@@ -181,6 +181,7 @@ ObjectSampler::ObjectSampler(const Scenario* scenario, const Scene* scene, const
 {
 	// By default, search through all shadow points
 	const octomap::point3d_collection* shadowPoints = &scene->occludedPts;
+	if (!shadowPoints || shadowPoints->empty()) { throw std::runtime_error("No points shadowed in scene?!"); }
 
 	if (!env->obstructions.empty())
 	{
@@ -240,11 +241,19 @@ ObjectSampler::ObjectSampler(const Scenario* scenario, const Scene* scene, const
 		if (scenario->shouldVisualize("object_sampling"))
 		{
 			// Display occluded point and push frame
+			std::vector<tf::StampedTransform> tfs;
+			const auto time = ros::Time::now();
+
 			Eigen::Vector3d pt(samplePoint.x(), samplePoint.y(), samplePoint.z());
 			tf::Transform t = tf::Transform::getIdentity();
 			Eigen::Vector3d pt_camera = scene->worldTcamera.inverse(Eigen::Isometry)*pt;
 			t.setOrigin({pt_camera.x(), pt_camera.y(), pt_camera.z()});
-			scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), scene->cameraFrame, "occluded_point"));
+			tfs.emplace_back(tf::StampedTransform(t, time, scene->cameraFrame, "occluded_point"));
+
+			t.setOrigin({collision.x(), collision.y(), collision.z()});
+			tfs.emplace_back(tf::StampedTransform(t, time, scenario->worldFrame, "collision_point"));
+
+			scenario->broadcaster->sendTransform(tfs);
 		}
 
 //		if (!env->obstructions.empty())
@@ -252,9 +261,13 @@ ObjectSampler::ObjectSampler(const Scenario* scenario, const Scene* scene, const
 //			return;
 //		}
 
-		const auto& iter = env->surfaceCoordToObject.find(collision);
-		if (iter==env->surfaceCoordToObject.end()) { continue; }
-		ObjectIndex pushSegmentID = iter->second;
+		const auto& objIdx = env->coordToObject({collision.x(), collision.y(), collision.z()});
+		if (objIdx.id == VoxelRegion::FREE_SPACE)
+		{
+			ROS_ERROR("Voxel was occluded by free space?");
+			continue;
+		}
+		ObjectIndex pushSegmentID = objIdx;
 
 		id = pushSegmentID;
 		succeeded = true;
@@ -438,6 +451,11 @@ computeCollisionWorld(const Scene* scene, const OccupancyData& occupancy)
 //	                   std::make_shared<shapes::OcTree>(std::shared_ptr<octomap::OcTree>(std::shared_ptr<octomap::OcTree>{}, sceneOctree)),
 //	                   robotTworld);
 
+	if (occupancy.objects.empty())
+	{
+		ROS_WARN("No objects found in current occupancy state.");
+	}
+
 	for (const auto& obj : occupancy.objects)
 	{
 		const std::shared_ptr<octomap::OcTree>& segment = obj.second->occupancy;
@@ -609,12 +627,12 @@ bool MotionPlanner::addVisualObstructions(const ObjectIndex target, OccupancyDat
 		if (hit)
 		{
 			collision = scene->sceneOctree->keyToCoord(scene->sceneOctree->coordToKey(collision));
-			const auto& iter = env->surfaceCoordToObject.find(collision);
-			if (iter!=env->surfaceCoordToObject.end())
+			const auto& objIdx = env->coordToObject({collision.x(), collision.y(), collision.z()});
+			if (objIdx.id == VoxelRegion::FREE_SPACE)
 			{
-				if (iter->second.id!=target.id)
+				if (objIdx.id!=target.id)
 				{
-					collisionObjects[iter->second] += 1.0;
+					collisionObjects[objIdx] += 1.0;
 					hasVisualObstruction = true;
 				}
 			}
@@ -926,7 +944,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 
 		for (unsigned int manip_idx : manip_indices)
 		{
-			auto& manipulator = scenario->manipulators[manip_idx];
+			const auto& manipulator = scenario->manipulators[manip_idx];
 			std::vector<std::vector<double>> sln = manipulator->IK(gripperPose, robotTworld, robotState);
 			if (!sln.empty())
 			{
@@ -1150,7 +1168,7 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 
 		for (unsigned int manip_idx : manip_indices)
 		{
-			auto& manipulator = scenario->manipulators[manip_idx];
+			const auto& manipulator = scenario->manipulators[manip_idx];
 			std::vector<std::vector<double>> sln = manipulator->IK(gripperPose, robotTworld, robotState);
 			if (sln.empty())
 			{

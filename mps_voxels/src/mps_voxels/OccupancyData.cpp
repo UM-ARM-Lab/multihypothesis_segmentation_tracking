@@ -158,6 +158,12 @@ OccupancyData::OccupancyData(std::shared_ptr<VoxelRegion> _region,
 //	}
 }
 
+ObjectIndex OccupancyData::coordToObject(const Eigen::Vector3d& pt) const
+{
+	if (!voxelRegion->isInRegion(pt)) { return ObjectIndex(VoxelRegion::FREE_SPACE); }
+	return ObjectIndex(vertexState.at(voxelRegion->index_of(voxelRegion->coordToVertexDesc(pt))));
+}
+
 cv::Rect2d occupancyToROI(const OccupancyData& state, const image_geometry::PinholeCameraModel& cameraModel, const moveit::Pose& worldTcamera)
 {
 	Eigen::AlignedBox2d aabb;

@@ -53,6 +53,11 @@ ObjectActionModel::sampleActionFromMask(const cv::Mat& mask1, const cv::Mat& dep
 	assert(depth1.type() == CV_16UC1);
 	assert(depth2.type() == CV_16UC1);
 
+	if (0 == cv::countNonZero(mask1) || 0 == cv::countNonZero(mask2))
+	{
+		return Eigen::Vector3d::Zero();
+	}
+
 	// TODO: Use moments command:
 	cv::Moments m1 = cv::moments(mask1,true);
 	cv::Point2f p1(m1.m10/m1.m00, m1.m01/m1.m00);
