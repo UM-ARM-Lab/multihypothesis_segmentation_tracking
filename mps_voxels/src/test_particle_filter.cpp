@@ -176,22 +176,13 @@ int main(int argc, char **argv)
 		visualPub.publish(pfMarkers);
 		std::cerr << "New state particle " << i << " shown!" << std::endl;
 		sleep(10);
+		{
+			DataLog logger(logDir + expDirName + "particle_" + std::to_string(1) + "_" + std::to_string(i) + ".bag");
+			logger.activeChannels.insert("particle");
+			logger.log<OccupancyData>("particle", *fixture.particleFilter->particles[i].state);
+			ROS_INFO_STREAM("Logged new particle " << i);
+		}
 	}
-
-	// TODO: Apply scene #2 measurement to particles
-
-	/////////////////////////////////////////////
-	//// Free space refinement
-	/////////////////////////////////////////////
-//	pcl::PointCloud<PointT>::Ptr finalPC = imagesToCloud(fixture.motionData.rgb.rbegin()->second->image, fixture.motionData.depth.rbegin()->second->image, fixture.motionData.cameraModel);
-//	scenario->mapServer->insertCloud(finalPC, worldTcamera);
-//	sceneOctree = scenario->mapServer->getOctree();
-//
-//	refineParticleFreeSpace(outputParticle, sceneOctree);
-//	pfnewmarker = mps::visualize(*outputParticle.state, header, rng);
-//	visualPub.publish(pfnewmarker);
-//	std::cerr << "Refined predicted state particle shown!" << std::endl;
-//	sleep(5);
 
 	return 0;
 }
