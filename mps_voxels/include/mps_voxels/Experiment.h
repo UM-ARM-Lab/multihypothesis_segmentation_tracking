@@ -50,10 +50,13 @@ public:
 	std::string experiment_dir;
 	ros::ServiceClient externalVideoClient;
 
+	bool visualizeAll = false;
 	std::map<std::string, bool> visualize;
 	inline
 	bool shouldVisualize(const std::string& channel) const
 	{
+		if (visualizeAll) { return true; }
+
 		const auto& iter = visualize.find(channel);
 		return (iter != visualize.end() && iter->second);
 	}

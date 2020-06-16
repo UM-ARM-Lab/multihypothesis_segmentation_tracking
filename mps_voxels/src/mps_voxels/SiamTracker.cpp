@@ -125,7 +125,7 @@ HistoryTracker::HistoryTracker(const std::string &path)
 
 }
 
-bool HistoryTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, uint16_t label, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks)
+bool HistoryTracker::track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, uint16_t label, const cv::Mat& /*initMask*/, std::map<ros::Time, cv::Mat>& masks)
 {
 	mps_msgs::AABBox2d bbox;
 	return track(steps, buffer, label, bbox, masks);

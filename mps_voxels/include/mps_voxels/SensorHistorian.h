@@ -90,7 +90,7 @@ public:
 //			  it(nh),
               hints("compressed", ros::TransportHints(), pnh),
              queue_size(10),
-             buffer_duration(tf2_ros::Buffer::DEFAULT_CACHE_TIME),
+             buffer_duration(10*tf2_ros::Buffer::DEFAULT_CACHE_TIME),
              topic_prefix(prefix),
              rgb_topic(topic_prefix+"/image_color_rect"),
              depth_topic(topic_prefix+"/image_depth_rect"),
