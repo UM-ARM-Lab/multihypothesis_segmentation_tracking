@@ -541,7 +541,7 @@ VoxelRegion::objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::uniqu
                                           const Eigen::Vector3d& subRegionMinExtent)
 {
 	mps::VoxelRegion::VertexLabels res(num_vertices(), VoxelRegion::FREE_SPACE);
-	mps::VoxelRegion::vertex_descriptor subRegionMinVD = coordToVertexDesc(resolution, regionMin, subRegionMinExtent);
+	mps::VoxelRegion::vertex_descriptor subRegionMinVD = mps::coordToVertexDesc(resolution, regionMin, subRegionMinExtent);
 
 	for (const auto& pair : objects)
 	{
@@ -567,6 +567,12 @@ VoxelRegion::objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::uniqu
 		}
 	}
 	return res;
+}
+
+mps::VoxelRegion::vertex_descriptor
+VoxelRegion::coordToVertexDesc(const Eigen::Vector3d& query) const
+{
+	return mps::coordToVertexDesc(this->resolution, this->regionMin, query);
 }
 
 }

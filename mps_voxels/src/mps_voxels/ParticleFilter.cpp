@@ -21,7 +21,7 @@ namespace mps
 ParticleFilter::ParticleFilter(std::shared_ptr<const Scenario> scenario_, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n)
 	: scenario(std::move(scenario_)), numParticles(n)
 {
-	voxelRegion = std::make_shared<VoxelRegion>(res, rmin, rmax);
+	voxelRegion = std::make_shared<VoxelRegion>(res, rmin, rmax, scenario->worldFrame);
 }
 
 bool
@@ -85,6 +85,9 @@ ParticleFilter::computeActionModel(
 	std::unique_ptr<Tracker>& sparseTracker,
 	std::unique_ptr<DenseTracker>& denseTracker) const
 {
+	// TODO: TOTAL HACK!!!
+	system("bash -c 'source /home/pricear/mps_ws/devel/setup.bash ; rosnode kill shape_completion_node'");
+
 	// Return type
 	MotionModel labelToMotionLookup;
 

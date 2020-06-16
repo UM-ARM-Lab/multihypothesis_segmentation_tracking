@@ -47,9 +47,10 @@ struct VoxelRegionBuilder
 		Eigen::Vector3d maxExtent(getParam<double>(p, "max/x"),
 		                          getParam<double>(p, "max/y"),
 		                          getParam<double>(p, "max/z"));
-		double resolution = getParam<double>(p, "resolution");
+		auto resolution = getParam<double>(p, "resolution");
+		auto frame = getParam<std::string>(p, "frame_id");
 
-		return {resolution, minExtent, maxExtent};
+		return {resolution, minExtent, maxExtent, frame};
 	}
 };
 

@@ -31,6 +31,8 @@
 
 #include <victor_hardware_interface/SetControlMode.h>
 
+#include <utility>
+
 namespace hal = victor_hardware_interface;
 
 std::vector<double> getQHome(robot_model::JointModelGroup* arm)
@@ -54,7 +56,7 @@ VictorManipulator::VictorManipulator(ros::NodeHandle& nh,
                                      robot_model::JointModelGroup* _arm,
                                      robot_model::JointModelGroup* _gripper,
                                      std::string _palmName)
-	: Manipulator(_pModel, _arm, _gripper, _palmName), qHome(getQHome(_arm))
+	: Manipulator(std::move(_pModel), _arm, _gripper, std::move(_palmName)), qHome(getQHome(_arm))
 {
 	// TODO: nh.param
 	std::string serviceName = "";

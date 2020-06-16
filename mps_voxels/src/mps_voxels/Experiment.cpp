@@ -82,8 +82,10 @@ Experiment::Experiment(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 //	if (!visualizeChannels.empty())
 	{
 		ROS_INFO_STREAM("Visualizing channels:");
-		for (const auto& m : visualizeChannels)
+		for (auto& m : visualizeChannels)
 		{
+			std::transform(m.begin(), m.end(), m.begin(), ::tolower);
+			if (m == "all") { visualizeAll = true; }
 			ROS_INFO_STREAM("\t" << m);
 			visualize.emplace(m, true);
 		}

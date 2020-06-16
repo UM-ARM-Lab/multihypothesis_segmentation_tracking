@@ -351,6 +351,8 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 {
 	if (!ros::ok()) { return false; }
 	ros::Duration totalTime(0.0);
+	ros::Duration executionTimeTolerance(ros::Time::isSimTime() ? 1.0 : 10.0);
+
 	if (motion && motion->action && std::dynamic_pointer_cast<CompositeAction>(motion->action))
 	{
 		auto actions = std::dynamic_pointer_cast<CompositeAction>(motion->action);
@@ -405,11 +407,11 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 				tol.acceleration = 1.0;
 				goal.goal_tolerance.push_back(tol);
 			}
-			goal.goal_time_tolerance = ros::Duration(10.0);
+			goal.goal_time_tolerance = executionTimeTolerance;
 
 			std::cerr << "Sending joint trajectory." << std::endl;
 
-			auto res = trajectoryClient->sendGoalAndWait(goal, ros::Duration(10.0) + totalTime, ros::Duration(1.0));
+			auto res = trajectoryClient->sendGoalAndWait(goal, executionTimeTolerance + totalTime, ros::Duration(1.0));
 			if (!res.isDone() || (res.state_!=actionlib::SimpleClientGoalState::SUCCEEDED))
 			{
 				if (!res.isDone())
@@ -612,38 +614,35 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	if (scenario->shouldVisualize("particles"))
 	{
+		// Clear visualization
+		{
+			visualization_msgs::MarkerArray ma;
+			ma.markers.resize(1);
+			ma.markers.front().action = visualization_msgs::Marker::DELETEALL;
+			visualPub.publish(ma);
+		}
+
+		IMSHOW("orig_segmentation", colorByLabel(scene->segInfo->objectness_segmentation->image));
+		WAIT_KEY(0);
+
+		{
+			visualization_msgs::MarkerArray ma = visualizeOctree(octree, globalFrame);
+			for (visualization_msgs::Marker& m : ma.markers)
+			{
+				m.ns = "";
+			}
+			allMarkers["map"] = ma;
+			visualPub.publish(allMarkers.flatten());
+		}
+
 		for (const auto& particle : particleFilter->particles)
 		{
-
-			// Clear visualization
-			{
-				visualization_msgs::MarkerArray ma;
-				ma.markers.resize(1);
-				ma.markers.front().action = visualization_msgs::Marker::DELETEALL;
-				visualPub.publish(ma);
-			}
-
-//			IMSHOW("segmentation", colorByLabel(particle.state->segInfo->objectness_segmentation->image));
-
-			IMSHOW("orig_segmentation", colorByLabel(scene->segInfo->objectness_segmentation->image));
-			WAIT_KEY(0);
-
-			{
-				visualization_msgs::MarkerArray ma = visualizeOctree(octree, globalFrame);
-				for (visualization_msgs::Marker& m : ma.markers)
-				{
-					m.ns = "";
-				}
-				allMarkers["map"] = ma;
-				visualPub.publish(allMarkers.flatten());
-			}
-
 			{
 				std_msgs::Header header;
 				header.frame_id = globalFrame;
 				header.stamp = cam_msg->header.stamp;
-				this->allMarkers["particle"] = mps::visualize(*particle.state, header, scenario->rng());
-				this->visualPub.publish(this->allMarkers.flatten());
+				allMarkers["particle_" + std::to_string(particle.particle.id)] = mps::visualize(*particle.state, header, scenario->rng());
+				visualPub.publish(allMarkers.flatten());
 			}
 		}
 	}
@@ -727,6 +726,21 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 
 	PROFILE_RECORD("Segment Scene");
 
+	/////////////////////////////////////////////
+	//// log scene->segInfo
+	/////////////////////////////////////////////
+	if (shouldLog)
+	{
+		static int iter = 0;
+		{
+			DataLog logger(scenario->experiment->experiment_dir + "/segInfo_" + std::to_string(iter) + ".bag");
+			logger.activeChannels.insert("segInfo");
+			logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
+			ROS_INFO("Successfully logged scene->segInfo.");
+		}
+		++iter;
+	}
+
 	// Clear visualization
 //	{
 //		visualization_msgs::MarkerArray ma;
@@ -735,55 +749,24 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 //		visualPub.publish(ma);
 //	}
 
-	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-	PROFILE_START("Complete Scene");
-
-
-
-	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-
-/*
-	// Remove objects from "map" tree visualization
-	for (const auto& obj : scene->bestGuess->objects)
+	if (scenario->shouldVisualize("occlusions"))
 	{
-		auto& mapPts = allMarkers["map"];
-		for (auto& m : mapPts.markers)
+		std_msgs::ColorRGBA shadowColor;
+		shadowColor.a = 1.0f;
+		shadowColor.r = 0.5f;
+		shadowColor.g = 0.5f;
+		shadowColor.b = 0.5f;
+		visualization_msgs::MarkerArray ma = visualizeOctree(scene->occlusionTree.get(), globalFrame, &shadowColor);
+		for (visualization_msgs::Marker& m : ma.markers)
 		{
-			m.color = mapColor;
-			m.colors.clear();
-			m.points.erase(std::remove_if(m.points.begin(), m.points.end(),
-			                              [&](const geometry_msgs::Point& p)
-			                              {
-				                              auto* v = obj.second->occupancy->search(p.x, p.y, p.z);
-				                              return (v && v->getOccupancy() >= obj.second->occupancy->getOccupancyThres());
-			                              }), m.points.end());
-		}
+			m.ns = "hidden";
+//			m.colors.clear();
+//			m.color.a=1.0f;
+        }
+		allMarkers["hidden"] = ma;
+		visualPub.publish(allMarkers.flatten());
 	}
-
- */
-
-	PROFILE_RECORD("Complete Scene");
-
-	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
-
-//	{//visualize the shadow
-//		std_msgs::ColorRGBA shadowColor;
-//		shadowColor.a = 1.0f;
-//		shadowColor.r = 0.5f;
-//		shadowColor.g = 0.5f;
-//		shadowColor.b = 0.5f;
-//		visualization_msgs::MarkerArray ma = visualizeOctree(scene->occlusionTree.get(), globalFrame, &shadowColor);
-//		for (visualization_msgs::Marker& m : ma.markers)
-//		{
-//			m.ns = "hidden";
-////			m.colors.clear();
-////			m.color.a=1.0f;
-////			m.color.r
-//        }
-//		allMarkers["hidden"] = ma;
-//		visualPub.publish(allMarkers.flatten());
-//	}
 //    std::cerr << "Published " << scene->occludedPts.size() << " points." << std::endl;
 
 //    {
@@ -933,23 +916,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				continue;
 			}
 
-			MotionPlanner::Introspection slideInfo;
-			std::shared_ptr<Motion> motionSlide = planner->sampleSlide(rs, &slideInfo);
-			if (motionSlide)
-			{
-				double reward = planner->reward(rs, motionSlide.get());
-				#pragma omp critical
-				{
-					motionQueue.push({reward, {motionSlide, slideInfo}});
-				}
-			}
-
-			if (ros::Time::now() > planningDeadline)
-			{
-				ROS_WARN_STREAM("Planning timed out. (" << planning_time << "s).");
-				continue;
-			}
-
 //			MotionPlanner::Introspection pushInfo;
 			std::shared_ptr<Motion> motionPush = planner->samplePush(rs, &pushInfo);
 			if (motionPush)
@@ -960,6 +926,23 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				#pragma omp critical
 				{
 					motionQueue.push({reward, {motionPush, pushInfo}});
+				}
+			}
+
+			if (ros::Time::now() > planningDeadline)
+			{
+				ROS_WARN_STREAM("Planning timed out. (" << planning_time << "s).");
+				continue;
+			}
+
+			MotionPlanner::Introspection slideInfo;
+			std::shared_ptr<Motion> motionSlide = planner->sampleSlide(rs, &slideInfo);
+			if (motionSlide)
+			{
+				double reward = planner->reward(rs, motionSlide.get());
+				#pragma omp critical
+				{
+					motionQueue.push({reward, {motionSlide, slideInfo}});
 				}
 			}
 		}
@@ -1022,12 +1005,6 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				logger.activeChannels.insert("buffer");
 				logger.log<SensorHistoryBuffer>("buffer", historian->buffer);
 				ROS_INFO("Successfully logged buffer.");
-			}
-			{
-				DataLog logger(scenario->experiment->experiment_dir + "/segInfo_" + std::to_string(iter) + ".bag");
-				logger.activeChannels.insert("segInfo");
-				logger.log<SegmentationInfo>("segInfo", *scene->segInfo);
-				ROS_INFO("Successfully logged scene->segInfo.");
 			}
 			++iter;
 		}
@@ -1174,7 +1151,8 @@ moveit_msgs::DisplayTrajectory SceneExplorer::visualize(const std::shared_ptr<Mo
 
 SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 {
-	auto experiment = std::make_shared<Experiment>(nh, pnh);
+	system("bash -c 'source /home/pricear/mps_ws/devel/setup.bash ; rosnode kill shape_completion_node'");
+
     sensor_queue = std::make_unique<ros::CallbackQueue>();
 	sensor_spinner = std::make_unique<ros::AsyncSpinner>(1, sensor_queue.get());
 	listener = std::make_unique<tf::TransformListener>(ros::Duration(60.0));
@@ -1182,77 +1160,6 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 
 	auto joint_sub_options = ros::SubscribeOptions::create<sensor_msgs::JointState>("joint_states", 2, handleJointState, ros::VoidPtr(), sensor_queue.get());
 	ros::Subscriber joint_sub = nh.subscribe(joint_sub_options);
-
-	setIfMissing(pnh, "frame_id", "table_surface");
-	setIfMissing(pnh, "roi/frame_id", "table_surface");
-	setIfMissing(pnh, "roi/resolution", 0.010);
-	setIfMissing(pnh, "latch", false);
-	setIfMissing(pnh, "filter_ground", false);
-	setIfMissing(pnh, "filter_speckles", true);
-	setIfMissing(pnh, "publish_free_space", false);
-
-	setIfMissing(pnh, "roi/min/x", -0.4);
-	setIfMissing(pnh, "roi/min/y", -0.6);
-	setIfMissing(pnh, "roi/min/z", -0.020);
-	setIfMissing(pnh, "roi/max/x",  0.4);
-	setIfMissing(pnh, "roi/max/y",  0.6);
-	setIfMissing(pnh, "roi/max/z",  0.5);
-
-	setIfMissing(pnh, "sensor_model/max_range", 8.0);
-	setIfMissing(pnh, "planning_samples", 10);
-	setIfMissing(pnh, "planning_time", 60.0);
-	setIfMissing(pnh, "track_color", "green");
-	setIfMissing(pnh, "use_memory", true);
-	setIfMissing(pnh, "use_completion", "optional");
-	setIfMissing(pnh, "visualize", std::vector<std::string>{"particles", "icp"});
-
-	bool gotParam = false;
-
-	// Get target color
-	std::string track_color;
-	gotParam = pnh.getParam("track_color", track_color); MPS_ASSERT(gotParam);
-	std::transform(track_color.begin(), track_color.end(), track_color.begin(), ::tolower);
-	if (track_color == "green")
-	{
-		targetDetector = std::make_unique<TargetDetector>(TargetDetector::TRACK_COLOR::GREEN);
-	}
-	else if (track_color == "purple")
-	{
-		targetDetector = std::make_unique<TargetDetector>(TargetDetector::TRACK_COLOR::PURPLE);
-	}
-	else
-	{
-		ROS_ERROR_STREAM("Color must be one of {green, purple}.");
-		throw std::runtime_error("Invalid tracking color.");
-	}
-
-	// Get shape completion requirements
-	FEATURE_AVAILABILITY useShapeCompletion;
-	std::string use_completion;
-	gotParam = pnh.getParam("use_completion", use_completion); MPS_ASSERT(gotParam);
-	std::transform(use_completion.begin(), use_completion.end(), use_completion.begin(), ::tolower);
-	if (use_completion == "forbidden")
-	{
-		useShapeCompletion = FEATURE_AVAILABILITY::FORBIDDEN;
-	}
-	else if (use_completion == "optional")
-	{
-		useShapeCompletion = FEATURE_AVAILABILITY::OPTIONAL;
-	}
-	else if (use_completion == "required")
-	{
-		useShapeCompletion = FEATURE_AVAILABILITY::REQUIRED;
-	}
-	else
-	{
-		ROS_ERROR_STREAM("Color must be one of {forbidden, optional, required}.");
-		throw std::runtime_error("Invalid completion option.");
-	}
-
-	bool use_memory;
-	gotParam = pnh.getParam("use_memory", use_memory); MPS_ASSERT(gotParam);
-	gotParam = pnh.getParam("planning_samples", planning_samples); MPS_ASSERT(gotParam);
-	gotParam = pnh.getParam("planning_time", planning_time); MPS_ASSERT(gotParam);
 
 	visualPub = nh.advertise<visualization_msgs::MarkerArray>("visualization", 1, true);
 	gripperLPub = std::make_unique<realtime_tools::RealtimePublisher<victor_hardware_interface::Robotiq3FingerCommand>>(nh, "/left_arm/gripper_command", 1, false);
@@ -1270,11 +1177,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 
 	mpLoader = std::make_unique<robot_model_loader::RobotModelLoader>();
 	pModel = mpLoader->getModel();
-
-	MPS_ASSERT(!pModel->getJointModelGroupNames().empty());
-
-	scenario = std::make_shared<Scenario>(use_memory, useShapeCompletion);
-	scenario->loadManipulators(pModel);
+	scenario = scenarioFactory(nh, pnh, pModel);
 
 	std::cerr << scenario->manipulators.front()->isGrasping(getCurrentRobotState()) << std::endl;
 	std::cerr << scenario->manipulators.back()->isGrasping(getCurrentRobotState()) << std::endl;
@@ -1291,31 +1194,37 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	selfModels.erase("victor_left_arm_link_0");
 	selfModels.erase("victor_right_arm_link_0");
 
-	double resolution = NAN;
-	scenario->minExtent = Eigen::Vector4d::Ones();
-	scenario->maxExtent = Eigen::Vector4d::Ones();
-	pnh.getParam("roi/resolution", resolution);
-	pnh.getParam("roi/min/x", scenario->minExtent.x());
-	pnh.getParam("roi/min/y", scenario->minExtent.y());
-	pnh.getParam("roi/min/z", scenario->minExtent.z());
-	pnh.getParam("roi/max/x", scenario->maxExtent.x());
-	pnh.getParam("roi/max/y", scenario->maxExtent.y());
-	pnh.getParam("roi/max/z", scenario->maxExtent.z());
-	pnh.getParam("roi/frame_id", scenario->worldFrame);
+	bool gotParam = false;
 
-	mapServer = std::make_shared<LocalOctreeServer>(resolution, scenario->worldFrame);
+	// Get target color
+	std::string track_color;
+	setIfMissing(pnh, "track_color", "green");
+	gotParam = pnh.getParam("track_color", track_color); MPS_ASSERT(gotParam);
+	std::transform(track_color.begin(), track_color.end(), track_color.begin(), ::tolower);
+	if (track_color == "green")
+	{
+		targetDetector = std::make_unique<TargetDetector>(TargetDetector::TRACK_COLOR::GREEN);
+	}
+	else if (track_color == "purple")
+	{
+		targetDetector = std::make_unique<TargetDetector>(TargetDetector::TRACK_COLOR::PURPLE);
+	}
+	else
+	{
+		ROS_ERROR_STREAM("Color must be one of {green, purple}.");
+		throw std::runtime_error("Invalid tracking color.");
+	}
 
-	scenario->listener = std::make_shared<tf2_ros::TransformListener>(scenario->transformBuffer);//listener.get();
-	scenario->transformBuffer.setUsingDedicatedThread(true);
+
+	mapServer = scenario->mapServer;
+
 	scenario->broadcaster = broadcaster.get();
-	scenario->mapServer = mapServer;
 	scenario->completionClient = completionClient;
 	scenario->segmentationClient = segmentationClient;
-	scenario->experiment = experiment;
 
-	particleFilter = std::make_unique<ParticleFilter>(scenario, resolution,
+	particleFilter = std::make_unique<ParticleFilter>(scenario, scenario->mapServer->m_res,
 	                                                  scenario->minExtent.head<3>(),
-	                                                  scenario->maxExtent.head<3>(), 5);
+	                                                  scenario->maxExtent.head<3>(), 2);
 
 	Tracker::TrackingOptions opts;
 	opts.roi.minExtent = {scenario->minExtent.x(), scenario->minExtent.y(), scenario->minExtent.z()};
@@ -1340,7 +1249,9 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 		usleep(100000);
 		if (latestJoints) { break; }
 	}
-	scenario->homeState = std::make_shared<robot_state::RobotState>(getCurrentRobotState());
+	// HACK
+	auto q = getCurrentRobotState(); q.setToDefaultValues();
+	scenario->homeState = std::make_shared<robot_state::RobotState>(q);
 
 	const std::string mocapFrame = "world_origin";
 	if (listener->waitForTransform(mapServer->getWorldFrame(), mocapFrame, ros::Time(0), ros::Duration(5.0)))

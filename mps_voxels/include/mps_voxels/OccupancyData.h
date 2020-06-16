@@ -85,9 +85,7 @@ struct OccupancyData
 	// Objects in this scene
 	std::map<ObjectIndex, std::unique_ptr<Object>> objects;
 
-	// TODO: These are probably obviated by the vertexState type
-	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> coordToObject;
-	std::map<octomap::point3d, ObjectIndex, vector_less_than<3, octomap::point3d>> surfaceCoordToObject;
+	ObjectIndex coordToObject(const Eigen::Vector3d& pt) const;
 	std::map<ObjectIndex, int> occludedBySegmentCount;
 
 	using ObstructionList = std::map<ObjectIndex, double>;
