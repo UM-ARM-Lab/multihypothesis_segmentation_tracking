@@ -26,7 +26,7 @@ public:
 
 	// TODO: Classes for storing intermediate results
 
-	ParticleFilter(std::shared_ptr<const Scenario> scenario_, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n=10);
+	ParticleFilter(std::shared_ptr<const Scenario> scenario_, const double& res, const Eigen::Vector3d& rmin, const Eigen::Vector3d& rmax, int n=10, int mix=1);
 
 	std::shared_ptr<const Scenario> scenario;
 
@@ -55,9 +55,15 @@ public:
 		std::unique_ptr<Tracker>& sparseTracker,
 		std::unique_ptr<DenseTracker>& denseTracker);
 
-	void applyMeasurementModel(const std::shared_ptr<const Scene>& newScene);
+	Particle newSceneParticle;
+	void refine(const std::shared_ptr<const MeasurementSensorData>& newScene);
+
+	void applyMeasurementModel(const std::shared_ptr<const MeasurementSensorData>& newScene);
 
 	void resample(std::default_random_engine& rng);
+
+	int numNewSceneParticle;
+	bool introNewSceneParticle(const std::shared_ptr<const MeasurementSensorData>& newScene);
 };
 
 }

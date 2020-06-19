@@ -130,37 +130,37 @@ int main(int argc, char **argv)
 	}
 
 
+	//// Look up transformation
+	moveit::Pose worldTcamera;
+	const auto& cameraModel = fixture.motionData.cameraModel;
+	const ros::Time queryTime = ros::Time(0); // buffer.rgb.begin()->first;
+	const ros::Duration timeout = ros::Duration(5.0);
+	std::string tfError;
+	bool canTransform = fixture.motionData.tfs->canTransform(scenario->worldFrame, cameraModel.tfFrame(), queryTime, &tfError);
+	if (!canTransform) // ros::Duration(5.0)
+	{
+		ROS_ERROR_STREAM("Failed to look up transform between '" << scenario->worldFrame << "' and '"
+		                                                         << cameraModel.tfFrame() << "' with error '"
+		                                                         << tfError << "'.");
+		throw std::runtime_error("Sadness.");
+	}
+	tf::StampedTransform cameraFrameInTableCoordinates;
+	const auto temp = fixture.motionData.tfs->lookupTransform(cameraModel.tfFrame(), scenario->worldFrame, queryTime);
+	tf::transformStampedMsgToTF(temp, cameraFrameInTableCoordinates);
+	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
+
+
 	/////////////////////////////////////////////
-	//// Free space refinement
+	//// Compute new sceneOctree
 	/////////////////////////////////////////////
 	pcl::PointCloud<PointT>::Ptr finalPC = imagesToCloud(fixture.motionData.rgb.rbegin()->second->image,
 	                                                     fixture.motionData.depth.rbegin()->second->image, fixture.motionData.cameraModel);
-	moveit::Pose worldTcamera;
-	const auto& cameraModel = fixture.motionData.cameraModel;
-	{
-		const ros::Time queryTime = ros::Time(0); // buffer.rgb.begin()->first;
-		const ros::Duration timeout = ros::Duration(5.0);
-		std::string tfError;
-		bool canTransform = fixture.motionData.tfs->canTransform(scenario->worldFrame, cameraModel.tfFrame(), queryTime, &tfError);
-
-		if (!canTransform) // ros::Duration(5.0)
-		{
-			ROS_ERROR_STREAM("Failed to look up transform between '" << scenario->worldFrame << "' and '"
-			                                                         << cameraModel.tfFrame() << "' with error '"
-			                                                         << tfError << "'.");
-			throw std::runtime_error("Sadness.");
-		}
-
-		tf::StampedTransform cameraFrameInTableCoordinates;
-		const auto temp = fixture.motionData.tfs->lookupTransform(cameraModel.tfFrame(), scenario->worldFrame, queryTime);
-		tf::transformStampedMsgToTF(temp, cameraFrameInTableCoordinates);
-		tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
-	}
-
 	scenario->mapServer->insertCloud(finalPC, worldTcamera);
 	octomap::OcTree* sceneOctree = scenario->mapServer->getOctree();
 
-
+	/////////////////////////////////////////////
+	//// Free space refinement
+	/////////////////////////////////////////////
 	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
 	{
 		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree);
@@ -169,9 +169,67 @@ int main(int argc, char **argv)
 		header.stamp = ros::Time::now();
 		auto pfnewmarker = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
 		visualPub.publish(pfnewmarker);
-		std::cerr << "Refined predicted state particle " << i << " shown!" << std::endl;
+		std::cerr << "Free-space refined predicted state particle " << i << " shown!" << std::endl;
+		sleep(2);
+	}
+
+	//// Compute new scene
+	ros::Time finalTime = fixture.motionData.rgb.rbegin()->first;
+	std::shared_ptr<Scene> newScene = computeSceneFromSensorHistorian(scenario, fixture.motionData, finalTime, scenario->worldFrame);
+
+	/////////////////////////////////////////////
+	//// Generate optimal particle for newScene
+	/////////////////////////////////////////////
+	fixture.particleFilter->newSceneParticle.state = std::make_shared<OccupancyData>(fixture.particleFilter->voxelRegion);
+
+	const auto segInfo = newScene->segInfo;
+
+	bool execSegmentation = SceneProcessor::performSegmentation(*newScene, segInfo->objectness_segmentation->image,
+	                                                            *fixture.particleFilter->newSceneParticle.state);
+	if (!execSegmentation)
+	{
+		std::cerr << "New Optimal Particle failed to segment." << std::endl;
+	}
+
+	bool getCompletion = SceneProcessor::buildObjects(*newScene, *fixture.particleFilter->newSceneParticle.state);
+	if (!getCompletion)
+	{
+		std::cerr << "New Optimal Particle failed to shape complete." << std::endl;
+	}
+
+	fixture.particleFilter->newSceneParticle.state->vertexState =
+		fixture.particleFilter->voxelRegion->objectsToSubRegionVoxelLabel(fixture.particleFilter->newSceneParticle.state->objects,
+		                                                                  newScene->minExtent.head<3>());
+	fixture.particleFilter->newSceneParticle.state->uniqueObjectLabels =
+		getUniqueObjectLabels(fixture.particleFilter->newSceneParticle.state->vertexState);
+
+	{
+		std_msgs::Header header;
+		header.frame_id = scenario->mapServer->getWorldFrame();
+		header.stamp = ros::Time::now();
+		auto pfMarkers = mps::visualize(*fixture.particleFilter->newSceneParticle.state, header, rng);
+		visualPub.publish(pfMarkers);
+		std::cerr << "New optimal state particle shown!" << std::endl;
 		sleep(5);
 	}
+
+	/////////////////////////////////////////////
+	//// Refinement based on new optimal particle
+	/////////////////////////////////////////////
+	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
+	{
+		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree);
+		std_msgs::Header header;
+		header.frame_id = scenario->mapServer->getWorldFrame();
+		header.stamp = ros::Time::now();
+		auto pfnewmarker = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
+		visualPub.publish(pfnewmarker);
+		std::cerr << "Refinement based on new optimal particle " << i << " shown!" << std::endl;
+		sleep(2);
+	}
+
+	//TODO: 	JaccardMatch3D(const OccupancyData& labels1, const OccupancyData& labels2);
+
 
 	return 0;
 }
