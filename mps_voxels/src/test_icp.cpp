@@ -25,7 +25,9 @@ using namespace mps;
 
 const std::string testDirName = "package://mps_test_data/";
 const std::string expDirName = "2020-06-07T08:55:02.095309/";
-std::string logDir = parsePackageURL(testDirName);
+const std::string logDir = parsePackageURL(testDirName);
+const std::string trackingFilename = logDir + expDirName + "dense_track_" + std::to_string(0) + "_" + std::to_string(0) + ".bag";
+const bool shouldLog = false;
 
 class icpTestFixture
 {
@@ -60,7 +62,8 @@ public:
 		sparseTracker->track_options.pixelRadius = 1000.0f;
 		sparseTracker->track_options.meterRadius = 1.0f;
 #endif
-		denseTracker = std::make_unique<SiamTracker>();
+//		denseTracker = std::make_unique<SiamTracker>();
+		denseTracker = std::make_unique<HistoryTracker>(trackingFilename);
 
 		double resolution = 0.010;
 		pnh.getParam("resolution", resolution);
@@ -148,27 +151,17 @@ int main(int argc, char **argv)
 		std::cout << "Current label is " << pair.first << std::endl;
 		std::shared_ptr<const ObjectActionModel> oam = estimateMotion(fixture.scenario, fixture.motionData,
 			segParticle, pair.first, pair.second, fixture.sparseTracker, fixture.denseTracker, 1);
-		if (oam)
+		if (oam && shouldLog)
 		{
 			siammasks.emplace(pair.first, oam->masks);
 		}
 	}
 
-	const std::string trackingFilename =
-		logDir + expDirName + "dense_track_" + std::to_string(0) + "_" + std::to_string(0) + ".bag";
+	if (shouldLog)
 	{
 		DataLog logger(trackingFilename);
 		logger.log<SiamMaskData>("SiamMaskData", siammasks);
 		ROS_INFO_STREAM("Logged siammasks");
-	}
-
-	SiamMaskData siam_out;
-	{
-		DataLog logger(trackingFilename, {}, rosbag::bagmode::Read);
-		logger.activeChannels.insert("SiamMaskData/19");
-		logger.activeChannels.insert("SiamMaskData/23");
-		siam_out = logger.load<SiamMaskData>("SiamMaskData");
-		ROS_INFO_STREAM("Loaded siammasks");
 	}
 
 	return 0;

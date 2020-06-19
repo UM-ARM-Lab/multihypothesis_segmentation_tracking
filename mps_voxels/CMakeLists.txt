@@ -335,6 +335,14 @@ target_link_libraries(${PROJECT_NAME}_test_particle_filter
   ${catkin_LIBRARIES}
 )
 
+add_executable(${PROJECT_NAME}_test_refinement src/test_refinement.cpp)
+set_target_properties(${PROJECT_NAME}_test_refinement PROPERTIES OUTPUT_NAME test_refinement PREFIX "")
+add_dependencies(${PROJECT_NAME}_test_refinement ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_test_refinement
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+
 # Notify any IDE that headers are part of project
 file(GLOB_RECURSE IncludeFiles "include/*")
 add_custom_target(${PROJECT_NAME}_headers SOURCES ${IncludeFiles})

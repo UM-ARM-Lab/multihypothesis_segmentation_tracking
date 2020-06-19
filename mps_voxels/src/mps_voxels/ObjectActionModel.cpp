@@ -191,7 +191,7 @@ ObjectActionModel::icpManifoldSequentialSampler(const std::vector<ros::Time>& st
 				Final.header.frame_id = buffer.cameraModel.tfFrame();
 				pcl_conversions::toPCL(ros::Time::now(), Final.header.stamp);
 				pcPub3.publish(Final);
-				sleep(0.8);
+//				usleep(500000);
 			}
 			if (scenario->shouldVisualize("poseArray"))
 			{

@@ -24,6 +24,9 @@ public:
 	bool track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, uint16_t label, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks) = 0;
 
 	virtual
+	bool isHistoryTracker(std::string& fname) = 0;
+
+	virtual
 	~DenseTracker() = default;
 
 };
@@ -38,19 +41,24 @@ public:
 	bool track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, uint16_t label, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks) override;
 
 	bool track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, uint16_t label, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks) override;
+
+	bool isHistoryTracker(std::string& fname) override;
 };
 
-//TODO: finish HistoryTracker
 class HistoryTracker : public DenseTracker
 {
 public:
 	DataLog logger;
+
+	std::string trackingFilename;
 
 	HistoryTracker(const std::string& path);
 
 	bool track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, uint16_t label, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks) override;
 
 	bool track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, uint16_t label, const mps_msgs::AABBox2d& initRegion, std::map<ros::Time, cv::Mat>& masks) override;
+
+	bool isHistoryTracker(std::string& fname) override;
 };
 
 }

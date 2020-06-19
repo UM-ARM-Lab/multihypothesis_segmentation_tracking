@@ -35,6 +35,8 @@ using namespace mps;
 
 const std::string testDirName = "package://mps_test_data/";
 const std::string expDirName = "2020-06-07T08:55:02.095309/";
+const std::string logDir = parsePackageURL(testDirName);
+const std::string trackingFilename = logDir + expDirName + "dense_track_" + std::to_string(0) + "_" + std::to_string(0) + ".bag";
 
 class ParticleFilterTestFixture
 {
@@ -51,8 +53,6 @@ public:
 	void SetUp()
 	{
 		ros::NodeHandle nh, pnh("~");
-
-		std::string logDir = parsePackageURL(testDirName);
 
 		// Load robot and scenario configurations
 		mpLoader = std::make_unique<robot_model_loader::RobotModelLoader>();
@@ -71,7 +71,8 @@ public:
 		sparseTracker->track_options.pixelRadius = 1000.0f;
 		sparseTracker->track_options.meterRadius = 1.0f;
 		#endif
-		denseTracker = std::make_unique<SiamTracker>();
+//		denseTracker = std::make_unique<SiamTracker>();
+		denseTracker = std::make_unique<HistoryTracker>(trackingFilename);
 
 		double resolution = 0.010;
 		pnh.getParam("resolution", resolution);
@@ -116,6 +117,7 @@ public:
 			DataLog loader(logDir + expDirName + "particle_0_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
 			loader.activeChannels.insert("particle");
 			*p.state = loader.load<OccupancyData>("particle");
+			p.particle.id = i;
 			particleFilter->particles.push_back(p);
 			particleFilter->particles[i].state->uniqueObjectLabels = getUniqueObjectLabels(particleFilter->particles[i].state->vertexState);
 			std::cerr << "Successfully loaded." << std::endl;
@@ -139,8 +141,6 @@ int main(int argc, char **argv)
 
 	ros::Publisher visualPub = nh.advertise<visualization_msgs::MarkerArray>("visualization", 1, true);
 	std::default_random_engine rng;
-
-	std::string logDir = parsePackageURL(testDirName);
 
 	/////////////////////////////////////////////
 	//// Initialize mapServer
@@ -176,22 +176,13 @@ int main(int argc, char **argv)
 		visualPub.publish(pfMarkers);
 		std::cerr << "New state particle " << i << " shown!" << std::endl;
 		sleep(10);
+		{
+			DataLog logger(logDir + expDirName + "particle_" + std::to_string(1) + "_" + std::to_string(i) + ".bag");
+			logger.activeChannels.insert("particle");
+			logger.log<OccupancyData>("particle", *fixture.particleFilter->particles[i].state);
+			ROS_INFO_STREAM("Logged new particle " << i);
+		}
 	}
-
-	// TODO: Apply scene #2 measurement to particles
-
-	/////////////////////////////////////////////
-	//// Free space refinement
-	/////////////////////////////////////////////
-//	pcl::PointCloud<PointT>::Ptr finalPC = imagesToCloud(fixture.motionData.rgb.rbegin()->second->image, fixture.motionData.depth.rbegin()->second->image, fixture.motionData.cameraModel);
-//	scenario->mapServer->insertCloud(finalPC, worldTcamera);
-//	sceneOctree = scenario->mapServer->getOctree();
-//
-//	refineParticleFreeSpace(outputParticle, sceneOctree);
-//	pfnewmarker = mps::visualize(*outputParticle.state, header, rng);
-//	visualPub.publish(pfnewmarker);
-//	std::cerr << "Refined predicted state particle shown!" << std::endl;
-//	sleep(5);
 
 	return 0;
 }
