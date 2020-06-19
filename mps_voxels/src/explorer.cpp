@@ -923,7 +923,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				double reward = (ros::Time::isSimTime()) ? 10000000 : planner->reward(rs, motionPush.get());
 //				double reward = planner->reward(rs, motionPush.get());
 //				double reward = 10000000; // TODO: remove this line to use grasp
-				#pragma omp critical
+//				#pragma omp critical
 				{
 					motionQueue.push({reward, {motionPush, pushInfo}});
 				}
@@ -940,7 +940,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			if (motionSlide)
 			{
 				double reward = planner->reward(rs, motionSlide.get());
-				#pragma omp critical
+//				#pragma omp critical
 				{
 					motionQueue.push({reward, {motionSlide, slideInfo}});
 				}
