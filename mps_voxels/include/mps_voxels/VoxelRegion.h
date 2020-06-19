@@ -70,7 +70,7 @@ public:
 	size_t getEdgeIndex(vertex_descriptor a, vertex_descriptor b);
 
 	// From edge graph to vertex labels
-	VertexLabels components(EdgeState& edges) const;
+	std::pair<int, VertexLabels> components(EdgeState& edges) const;
 
 	using edges_size_type = Grid::edges_size_type;
 	using edge_descriptor = Grid::edge_descriptor;

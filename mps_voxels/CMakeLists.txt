@@ -219,6 +219,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/planning/State.cpp
   src/${PROJECT_NAME}/planning/Action.cpp
   src/${PROJECT_NAME}/planning/MotionPlanner.cpp
+  src/${PROJECT_NAME}/visualization/dispersed_colormap.cpp
   src/${PROJECT_NAME}/visualization/visualize_object.cpp
   src/${PROJECT_NAME}/visualization/visualize_voxel_region.cpp
   src/${PROJECT_NAME}/visualization/visualize_occupancy.cpp

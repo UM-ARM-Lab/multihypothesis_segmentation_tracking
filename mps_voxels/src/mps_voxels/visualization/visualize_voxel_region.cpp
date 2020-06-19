@@ -155,13 +155,12 @@ visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
                                           const std_msgs::Header& header,
                                           std::default_random_engine& re)
 {
-	visualization_msgs::MarkerArray vertexLabelVis;
-	vertexLabelVis.markers.resize(1);
-
-	VoxelRegion::VertexLabels vlabels = region.components(const_cast<VoxelRegion::EdgeState&>(edges));
+	VoxelRegion::VertexLabels vlabels = region.components(const_cast<VoxelRegion::EdgeState&>(edges)).second;
 
 	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
 	std::map<int, std_msgs::ColorRGBA> colormap;
+
+	visualization_msgs::Marker m;
 
 	for (VoxelRegion::edges_size_type e = 0; e < region.num_edges(); ++e)
 	{
@@ -176,13 +175,13 @@ visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
 			cubeCenter.y = i[1];
 			cubeCenter.z = i[2];
 
-			vertexLabelVis.markers[0].points.push_back(cubeCenter);
+			m.points.push_back(cubeCenter);
 
 			cubeCenter.x = j[0];
 			cubeCenter.y = j[1];
 			cubeCenter.z = j[2];
 
-			vertexLabelVis.markers[0].points.push_back(cubeCenter);
+			m.points.push_back(cubeCenter);
 
 			// Colors
 			std_msgs::ColorRGBA color;
@@ -201,27 +200,35 @@ visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
 				color.a = 1.0;
 				colormap.emplace(label, color);
 			}
-			vertexLabelVis.markers[0].colors.push_back(color);
+
+			// Need color for start and end of line
+			m.colors.push_back(color);
+			m.colors.push_back(color);
 		}
 	}
 
-	vertexLabelVis.markers[0].header = header;
-	vertexLabelVis.markers[0].ns = "edge_state";
-	vertexLabelVis.markers[0].id = 0;
-	vertexLabelVis.markers[0].type = visualization_msgs::Marker::LINE_LIST;
-	vertexLabelVis.markers[0].scale.x = region.resolution/10.0;
-	vertexLabelVis.markers[0].scale.y = region.resolution/10.0;
-	vertexLabelVis.markers[0].scale.z = region.resolution/10.0;
-	vertexLabelVis.markers[0].color.r = 1;
-	vertexLabelVis.markers[0].color.g = 0.2;
-	vertexLabelVis.markers[0].color.b = 0;
-	vertexLabelVis.markers[0].color.a = 1;
+	m.header = header;
+	m.ns = "edge_state";
+	m.id = 0;
+	m.type = visualization_msgs::Marker::LINE_LIST;
+	m.pose.orientation.w = 1;
+	m.scale.x = region.resolution/10.0;
+//	m.scale.y = region.resolution/10.0;
+//	m.scale.z = region.resolution/10.0;
+	m.color.r = 1;
+	m.color.g = 0.2;
+	m.color.b = 0;
+	m.color.a = 1;
 
-	if (vertexLabelVis.markers[0].points.empty())
-		vertexLabelVis.markers[0].action = visualization_msgs::Marker::DELETE;
+	assert(m.points.size() == m.colors.size());
+
+	if (m.points.empty())
+		m.action = visualization_msgs::Marker::DELETE;
 	else
-		vertexLabelVis.markers[0].action = visualization_msgs::Marker::ADD;
+		m.action = visualization_msgs::Marker::ADD;
 
+	visualization_msgs::MarkerArray vertexLabelVis;
+	vertexLabelVis.markers.push_back(m);
 	return vertexLabelVis;
 }
 

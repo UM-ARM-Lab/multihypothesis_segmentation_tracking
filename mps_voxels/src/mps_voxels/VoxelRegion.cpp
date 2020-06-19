@@ -91,7 +91,7 @@ size_t VoxelRegion::getEdgeIndex(VoxelRegion::vertex_descriptor a, VoxelRegion::
 	return index_of({a, b});
 }
 
-VoxelRegion::VertexLabels VoxelRegion::components(VoxelRegion::EdgeState& edges) const
+std::pair<int, VoxelRegion::VertexLabels> VoxelRegion::components(VoxelRegion::EdgeState& edges) const
 {
 	DisjointSetForest<int> dsf(num_vertices());
 
@@ -113,7 +113,7 @@ VoxelRegion::VertexLabels VoxelRegion::components(VoxelRegion::EdgeState& edges)
 		auto i = index_of(source(edge, *this));
 		auto j = index_of(target(edge, *this));
 
-		edges[e] = (dsf.nodes[i] == dsf.nodes[j]);
+		edges[e] = (dsf.getAncestor(i) == dsf.getAncestor(j));
 	}
 
 	// Flatten and relabel tree as root labels
@@ -125,16 +125,29 @@ VoxelRegion::VertexLabels VoxelRegion::components(VoxelRegion::EdgeState& edges)
 		sizes[ObjectIndex(label)]++;
 	}
 
+	// Remap to FREE, 1, 2, ...
+	std::map<ObjectIndex, int> remap;
+	VoxelRegion::VertexLabels labels(num_vertices());
 	for (size_t i = 0; i < dsf.nodes.size(); ++i)
 	{
 		ObjectIndex label(dsf.getAncestor(i));
-		if (sizes[label] == 1)
+		if (sizes.at(label) == 1)
 		{
-			dsf.nodes[i] = VoxelRegion::FREE_SPACE;
+			labels[i] = VoxelRegion::FREE_SPACE;
+			sizes.erase(label);
+		}
+		else
+		{
+			auto iter = remap.find(label);
+			if (iter == remap.end())
+			{
+				iter = remap.emplace(label, remap.size() + 1).first;
+			}
+			labels[i] = iter->second;
 		}
 	}
 
-	return dsf.nodes;
+	return {sizes.size(), labels};
 }
 
 void VoxelRegion::precalculate()
