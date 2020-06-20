@@ -38,7 +38,6 @@ public:
 	std::unique_ptr<robot_model_loader::RobotModelLoader> mpLoader;
 	robot_model::RobotModelPtr pModel;
 	std::shared_ptr<Scenario> scenario;
-	std::shared_ptr<Scene> initialScene;
 	SensorHistoryBuffer motionData;
 
 	void SetUp()
@@ -71,9 +70,6 @@ public:
 			std::cerr << "Successfully loaded buffer." << std::endl;
 		}
 		std::cerr << "number of frames: " << motionData.rgb.size() << std::endl;
-
-		ros::Time initialTime = motionData.rgb.begin()->first;
-		initialScene = computeSceneFromSensorHistorian(scenario, motionData, initialTime, scenario->worldFrame);
 
 		/////////////////////////////////////////////
 		//// Load initial particles
@@ -116,6 +112,9 @@ int main(int argc, char **argv)
 	scenario->mapServer->m_octree->setBBXMin(tMin);
 	scenario->mapServer->m_octree->setBBXMax(tMax);
 
+	//// Compute new scene
+	ros::Time finalTime = fixture.motionData.rgb.rbegin()->first;
+	std::shared_ptr<Scene> newScene = computeSceneFromSensorHistorian(scenario, fixture.motionData, finalTime, scenario->worldFrame);
 
 	/////////////////////////////////////////////
 	/// Visualize particles
@@ -129,6 +128,14 @@ int main(int argc, char **argv)
 		sleep(2);
 	}
 
+	/////////////////////////////////////////////
+	//// Compute weights
+	/////////////////////////////////////////////
+	fixture.particleFilter->applyMeasurementModel(newScene);
+	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
+	{
+		std::cerr << "Particle " << i << " weight: " << fixture.particleFilter->particles[i].weight << std::endl;
+	}
 
 	//// Look up transformation
 	moveit::Pose worldTcamera;
@@ -173,9 +180,14 @@ int main(int argc, char **argv)
 		sleep(2);
 	}
 
-	//// Compute new scene
-	ros::Time finalTime = fixture.motionData.rgb.rbegin()->first;
-	std::shared_ptr<Scene> newScene = computeSceneFromSensorHistorian(scenario, fixture.motionData, finalTime, scenario->worldFrame);
+	/////////////////////////////////////////////
+	//// Compute weights
+	/////////////////////////////////////////////
+	fixture.particleFilter->applyMeasurementModel(newScene);
+	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
+	{
+		std::cerr << "Particle " << i << " after refinement weight: " << fixture.particleFilter->particles[i].weight << std::endl;
+	}
 
 	/////////////////////////////////////////////
 	//// Generate optimal particle for newScene
@@ -216,17 +228,17 @@ int main(int argc, char **argv)
 	/////////////////////////////////////////////
 	//// Refinement based on new optimal particle
 	/////////////////////////////////////////////
-	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
-	{
-		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree);
-		std_msgs::Header header;
-		header.frame_id = scenario->mapServer->getWorldFrame();
-		header.stamp = ros::Time::now();
-		auto pfnewmarker = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
-		visualPub.publish(pfnewmarker);
-		std::cerr << "Refinement based on new optimal particle " << i << " shown!" << std::endl;
-		sleep(2);
-	}
+//	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
+//	{
+//		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree);
+//		std_msgs::Header header;
+//		header.frame_id = scenario->mapServer->getWorldFrame();
+//		header.stamp = ros::Time::now();
+//		auto pfnewmarker = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
+//		visualPub.publish(pfnewmarker);
+//		std::cerr << "Refinement based on new optimal particle " << i << " shown!" << std::endl;
+//		sleep(2);
+//	}
 
 	//TODO: 	JaccardMatch3D(const OccupancyData& labels1, const OccupancyData& labels2);
 
