@@ -494,6 +494,7 @@ visualization_msgs::MarkerArray visualizeOctree(octomap::OcTree* tree, const std
 		occupiedNodesVis.markers[i].color.g = 0.2;
 		occupiedNodesVis.markers[i].color.b = 1;
 		occupiedNodesVis.markers[i].color.a = 1;
+		occupiedNodesVis.markers[i].pose.orientation.w = 1;
 
 		if (occupiedNodesVis.markers[i].points.size()>0)
 			occupiedNodesVis.markers[i].action = visualization_msgs::Marker::ADD;

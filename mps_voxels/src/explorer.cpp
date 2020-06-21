@@ -53,6 +53,7 @@
 #include "mps_voxels/ObjectLogger.h"
 #include "mps_voxels/util/assert.h"
 #include "mps_voxels/ObjectActionModel.h"
+#include "mps_voxels/voxel_recombination.h"
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_sensor_history.h"
 #include "mps_voxels/logging/log_segmentation_info.h"
@@ -576,6 +577,20 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	else
 	{
 //		particleFilter->computeAndApplyActionModel(historian->buffer, sparseTracker, denseTracker);
+		auto newSamples = particleFilter->createParticlesFromSegmentation(scene, particleFilter->numParticles);
+
+		std::vector<const VoxelRegion::VertexLabels*> toCombine;
+		for (const auto& v : particleFilter->particles)
+		{
+			toCombine.emplace_back(&v.state->vertexState);
+		}
+		for (const auto& v : newSamples)
+		{
+			toCombine.emplace_back(&v.state->vertexState);
+		}
+
+		computeSegmentationGraph(*particleFilter->voxelRegion, toCombine);
+
 		particleFilter->applyMeasurementModel(scene);
 	}
 

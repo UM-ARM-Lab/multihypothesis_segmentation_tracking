@@ -38,6 +38,7 @@ public:
 	int generation = 0;
 
 	bool initializeParticles(const std::shared_ptr<const MeasurementSensorData>& data);
+	std::vector<Particle> createParticlesFromSegmentation(const std::shared_ptr<const MeasurementSensorData>& data, const int n) const;
 
 	std::pair<ParticleIndex, MotionModel>
 	computeActionModel(
