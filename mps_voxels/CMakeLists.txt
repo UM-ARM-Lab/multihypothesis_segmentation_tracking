@@ -200,6 +200,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/graph_matrix_utils.cpp
   src/${PROJECT_NAME}/LocalOctreeServer.cpp
   src/${PROJECT_NAME}/VoxelRegion.cpp
+  src/${PROJECT_NAME}/voxel_recombination.cpp
   src/${PROJECT_NAME}/Scene.cpp
   src/${PROJECT_NAME}/util/package_paths.cpp
   src/${PROJECT_NAME}/util/geometry.cpp
@@ -398,8 +399,8 @@ list(SORT unit_tests_source)
 foreach(utest_src_file ${unit_tests_source})
   get_filename_component(test_base ${utest_src_file} NAME_WE)
 
-  catkin_add_gtest(${PROJECT_NAME}_${test_base} ${utest_src_file})
-  #  add_executable(${test_base} ${utest_src_file})
+#  catkin_add_gtest(${PROJECT_NAME}_${test_base} ${utest_src_file})
+    add_executable(${PROJECT_NAME}_${test_base} ${utest_src_file})
 
   target_link_libraries(${PROJECT_NAME}_${test_base}
     ${PROJECT_NAME}

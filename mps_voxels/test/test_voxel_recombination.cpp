@@ -27,18 +27,15 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "mps_voxels/VoxelRegion.h"
-
-#include <gtest/gtest.h>
-
-#define VISUALIZE false
+#define VISUALIZE true
 #if VISUALIZE
 #include <ros/ros.h>
-#include <mps_voxels/MarkerSet.h>
-#include <mps_voxels/visualization/dispersed_colormap.h>
-#include <mps_voxels/visualization/visualize_voxel_region.h>
-#include <mps_voxels/visualization/visualize_occupancy.h>
 #endif
+
+#include "mps_voxels/VoxelRegion.h"
+#include "mps_voxels/voxel_recombination.h"
+
+#include <gtest/gtest.h>
 
 
 using namespace mps;
@@ -68,128 +65,15 @@ std::vector<mps::VoxelRegion::VertexLabels> generateParticles()
 	return result;
 }
 
-using IndivisibleCluster = std::vector<mps::VoxelRegion::vertex_descriptor>;
-
-namespace mps
-{
-
-std::pair<VoxelRegion::VertexLabels, std::map<std::pair<int, int>, double>> computeSegmentationGraph(const VoxelRegion& vox, const std::vector<VoxelRegion::VertexLabels>& particles)
-{
-	#if VISUALIZE
-	static ros::NodeHandle nh;
-	static ros::Publisher visualPub = nh.advertise<visualization_msgs::MarkerArray>("test", 1, true);
-	static std::random_device rd;
-	static std::default_random_engine re(rd());
-	#endif
-	// Crop to active region?
-	// Compute indivisible clusters
-	VoxelRegion::EdgeState definiteEdges(vox.num_edges(), true);
-	VoxelRegion::EdgeState possibleEdges(vox.num_edges(), false);
-	std::vector<bool> mightBeOccupied(vox.num_vertices(), false);
-
-	for (size_t p = 0; p < particles.size(); ++p)
-	{
-		for (VoxelRegion::vertices_size_type v = 0; v < vox.num_vertices(); ++v)
-		{
-			if (particles[p][v] != VoxelRegion::FREE_SPACE)
-			{
-				mightBeOccupied[v] = true;
-			}
-		}
-	}
-
-//	#pragma omp parallel for
-	for (size_t p = 0; p < particles.size(); ++p)
-	{
-		for (VoxelRegion::edges_size_type e = 0; e < vox.num_edges(); ++e)
-		{
-			const VoxelRegion::edge_descriptor edge = vox.edge_at(e);
-			auto i = vox.index_of(source(edge, vox));
-			auto j = vox.index_of(target(edge, vox));
-
-			auto a = particles[p][i];
-			auto b = particles[p][j];
-
-			bool isPossibleEdge = mightBeOccupied[i] && mightBeOccupied[j] && (a == b);
-//			#pragma omp critical
-			{
-				definiteEdges[e] = definiteEdges[e] && isPossibleEdge;
-				possibleEdges[e] = possibleEdges[e] || isPossibleEdge;
-			}
-		}
-	}
-	for (VoxelRegion::edges_size_type e = 0; e < vox.num_edges(); ++e)
-	{
-		if (definiteEdges[e]) { possibleEdges[e] = false; }
-	}
-	auto clusters = vox.components(definiteEdges);
-
-	#if VISUALIZE
-	std::map<int, std_msgs::ColorRGBA> cmap;
-	auto colors = dispersedColormap(clusters.first);
-	for (size_t i = 0; i < colors.size(); ++i) { cmap.emplace(static_cast<int>(i)+1, colors[i]); }
-	while (ros::ok())
-	{
-		sleep(1);
-		std_msgs::Header header;
-		header.frame_id = "table_surface";
-		header.stamp = ros::Time::now();
-		MarkerSet allMarkers;
-		allMarkers["clusters"] = mps::visualize(vox, clusters.second, header, cmap);
-		allMarkers["definiteEdges"] = mps::visualize(vox, definiteEdges, header, re);
-		allMarkers["possibleEdges"] = mps::visualize(vox, possibleEdges, header, re);
-		allMarkers["a"] = mps::visualize(vox, particles[0], header, re);
-		allMarkers["b"] = mps::visualize(vox, particles[1], header, re);
-		visualPub.publish(allMarkers.flatten());
-		assert(possibleEdges[30]);
-	}
-	#endif
-
-	// Compute graph
-	using ClusterEdge = std::pair<int, int>;
-	std::map<ClusterEdge, double> weights;
-	for (VoxelRegion::edges_size_type e = 0; e < vox.num_edges(); ++e)
-	{
-		if (possibleEdges[e])
-		{
-			const VoxelRegion::edge_descriptor edge = vox.edge_at(e);
-			auto i = vox.index_of(source(edge, vox));
-			auto j = vox.index_of(target(edge, vox));
-
-			auto alpha = clusters.second[i];
-			auto beta = clusters.second[j];
-			assert(alpha != VoxelRegion::FREE_SPACE);
-			assert(beta != VoxelRegion::FREE_SPACE);
-
-			for (size_t p = 0; p < particles.size(); ++p)
-			{
-				auto a = particles[p][i];
-				auto b = particles[p][j];
-
-				bool isEdgeInParticle = mightBeOccupied[i] && mightBeOccupied[j] && (a == b);
-				if (isEdgeInParticle)
-				{
-					weights[{alpha, beta}] = 1.0; // += 1.0;
-				}
-			}
-		}
-	}
-
-	for (const auto& w : weights)
-	{
-		std::cout << w.first.first << " -> " << w.first.second << ": " << w.second << std::endl;
-	}
-
-	return {clusters.second, weights};
-}
-
-}
 
 TEST(recombination, clustering)
 {
 	mps::VoxelRegion vox({3, 3, 3}, 0.1, Eigen::Vector3d::Zero(), "table_surface");
 
-	computeSegmentationGraph(vox, generateParticles());
+	std::vector<const VoxelRegion::VertexLabels*> toCombine;
+	auto P = generateParticles();
+	for (const auto& p : P) { toCombine.emplace_back(&p);}
+	computeSegmentationGraph(vox, toCombine);
 
 	std::cerr << "# Vertices: " << vox.num_vertices() << std::endl;
 	std::cerr << "# Edges: " << vox.num_edges() << std::endl;

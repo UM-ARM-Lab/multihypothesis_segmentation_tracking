@@ -31,16 +31,26 @@ ParticleFilter::initializeParticles(
 	const std::shared_ptr<const MeasurementSensorData>& scene)
 {
 	assert(particles.empty());
-	particles.reserve(numParticles);
+
+	particles = createParticlesFromSegmentation(scene, numParticles);
+
+	return static_cast<int>(particles.size()) == numParticles;
+}
+
+std::vector<Particle>
+ParticleFilter::createParticlesFromSegmentation(const std::shared_ptr<const MeasurementSensorData>& scene, const int n) const
+{
+	std::vector<Particle> newParticles;
+	newParticles.reserve(n);
 
 	SegmentationTreeSampler treeSampler(scene->segInfo);
-	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), numParticles, true);
+	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), n, true);
 
 	// Currently this is only local, but may need to move up to the class level
 	std::map<ParticleIndex, std::shared_ptr<SegmentationInfo>> particleToInitialSegmentation;
 
 	// TODO: This should probably be wrapped into its own thing
-	for (int p = 0; p < numParticles; ++p)
+	for (int p = 0; p < n; ++p)
 	{
 		// Generate a particle corresponding to this segmentation
 		Particle particle;
@@ -60,13 +70,13 @@ ParticleFilter::initializeParticles(
 		if (!execSegmentation)
 		{
 			std::cerr << "Particle " << particle.particle << " failed to segment." << std::endl;
-			return false;
+			return {};
 		}
 
 		bool getCompletion = SceneProcessor::buildObjects(*scene, *particle.state);
 		if (!getCompletion)
 		{
-			return false;
+			return {};
 		}
 
 		particle.state->vertexState = voxelRegion->objectsToSubRegionVoxelLabel(particle.state->objects, scene->minExtent.head<3>());
@@ -74,10 +84,10 @@ ParticleFilter::initializeParticles(
 
 		auto uniqueImageLabels = unique(segInfo->objectness_segmentation->image);
 
-		particles.push_back(particle);
+		newParticles.push_back(particle);
 	}
 
-	return true;
+	return newParticles;
 }
 
 std::pair<ParticleIndex, ParticleFilter::MotionModel>
