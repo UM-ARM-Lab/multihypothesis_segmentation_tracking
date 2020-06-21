@@ -65,6 +65,7 @@ struct Particle
 
 void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOctree);
 
+void refineNewOptimalParticleBased(Particle& particle, const Particle& newOptimalParticle);
 }
 
 #endif //MPS_PARTICLE_H

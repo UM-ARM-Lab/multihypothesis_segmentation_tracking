@@ -31,4 +31,9 @@ void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOct
 	}
 }
 
+void refineNewOptimalParticleBased(Particle& particle, const Particle& newOptimalParticle)
+{
+
+}
+
 }
