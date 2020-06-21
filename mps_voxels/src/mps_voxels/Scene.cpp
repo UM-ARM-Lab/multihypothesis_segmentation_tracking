@@ -902,6 +902,79 @@ bool SceneProcessor::buildObjects(const Scene& s, OccupancyData& occupancy)
 	return true;
 }
 
+bool SceneProcessor::buildObjSurface(const Scene& s, OccupancyData& occupancy)
+{
+	occupancy.objects.clear();
+
+	for (const auto& seg : occupancy.segments)
+	{
+		if (!ros::ok()) { return false; }
+
+		const pcl::PointCloud<PointT>::Ptr& segment_cloud = seg.second;
+		assert(!segment_cloud->empty());
+
+		// Compute bounding box
+		Eigen::Vector3d min, max;
+		getBoundingCube(*segment_cloud, min, max);
+		double edge_length = max.x()-min.x(); // all edge of cube are same size
+		double inflation = edge_length/5.0;
+		min -= inflation*Eigen::Vector3d::Ones();
+		max += inflation*Eigen::Vector3d::Ones();
+
+		std::shared_ptr<octomap::OcTree> subtree(s.sceneOctree->create());
+		subtree->setProbMiss(0.05);
+		subtree->setProbHit(0.95);
+		setBBox(s.minExtent, s.maxExtent, subtree.get());
+		insertCloudInOctree(segment_cloud, s.worldTcamera, subtree.get());
+		MPS_ASSERT(subtree->size()>0);
+
+		// Delete speckle nodes
+		std::vector<octomap::OcTree::iterator> iters;
+		std::vector<octomap::OcTreeKey> toDelete;
+		for (octomap::OcTree::iterator it = subtree->begin(subtree->getTreeDepth()),
+			     end = subtree->end(); it!=end; ++it)
+		{
+			if (subtree->isNodeOccupied(*it))
+			{
+				iters.push_back(it);
+			}
+		}
+
+#pragma omp parallel for
+		for (size_t i = 0; i<iters.size(); ++i)
+		{
+			const auto& it = iters[i];
+			const octomap::OcTreeKey& key = it.getKey();
+			if (isSpeckleNode(key, subtree.get()))
+			{
+#pragma omp critical
+				{
+					toDelete.push_back(key);
+				}
+			}
+		}
+
+		for (const octomap::OcTreeKey& key : toDelete) { subtree->deleteNode(key); }
+		subtree->updateInnerOccupancy();
+
+		setBBox(Eigen::Vector3f(-2, -2, -2), Eigen::Vector3f(2, 2, 2), subtree.get());
+
+
+		// Compute approximate shape
+		auto approx = approximateShape(subtree.get());
+		if (approx)
+		{
+			auto res = occupancy.objects.emplace(seg.first, std::make_unique<Object>(seg.first, subtree));
+			res.first->second->segment = seg.second;
+			res.first->second->approximation = approx;
+			res.first->second->points = getPoints(subtree.get());
+			getAABB(*res.first->second->approximation, res.first->second->minExtent, res.first->second->maxExtent);
+		}
+	}
+
+	return true;
+}
+
 bool SceneProcessor::removeAccountedForOcclusion(
 	const Scenario* scenario,
 	octomap::point3d_collection& occludedPts,

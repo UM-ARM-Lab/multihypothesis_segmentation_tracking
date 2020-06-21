@@ -111,4 +111,25 @@ SegmentationTreeSampler::sample(RNG& rng, const size_t nSamples, const bool maxi
 
 SegmentationTreeSampler::~SegmentationTreeSampler() = default;
 
+SegmentationCut SegmentationTreeSampler::treeCut2segCut(const mps::tree::TreeCut& cut)
+{
+	const auto& os = originalInfo->objectness_segmentation;
+	SegmentationInfo newSeg = *originalInfo; // Mostly shallow copy
+	newSeg.objectness_segmentation = boost::make_shared<cv_bridge::CvImage>(
+		os->header, os->encoding,
+		cv::Mat(os->image.size(),
+		        os->image.type()));
+
+	std::map<int, int> index_to_label;
+	for (const auto& pair : um->label_to_index)
+	{
+		index_to_label.insert({pair.second, pair.first});
+	}
+
+	newSeg.objectness_segmentation->image =
+		relabelCut(vt, cut, index_to_label, newSeg.labels);
+
+	return {newSeg, cut};
+}
+
 }
