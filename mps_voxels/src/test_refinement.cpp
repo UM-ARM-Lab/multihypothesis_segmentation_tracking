@@ -22,14 +22,61 @@
 #include "mps_voxels/util/package_paths.h"
 #include "mps_voxels/Scene.h"
 #include "mps_voxels/octree_utils.h"
+#include "mps_voxels/SegmentationTreeSampler.h"
+#include "mps_voxels/ValueTree_impl.hpp"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
+#include <fstream>
+#include <boost/filesystem.hpp>
 
 using namespace mps;
 
 const std::string testDirName = "package://mps_test_data/";
 const std::string expDirName = "2020-06-07T08:55:02.095309/";
 const std::string logDir = parsePackageURL(testDirName);
+
+std::string rgb2hex(int r, int g, int b, bool with_head)
+{
+	std::stringstream ss;
+	if (with_head)
+		ss << "#";
+	ss << std::hex << (r << 16 | g << 8 | b );
+	return ss.str();
+}
+
+template <typename T>
+void printGraphviz(std::ostream& os, const T& t, const tree::TreeCut& cut)
+{
+	os << "digraph g {" << std::endl;
+	os << "rankdir=\"BT\";" << std::endl;
+	Eigen::Map<const Eigen::VectorXd> dataMap(t.value_.data(), size(t));
+	double minVal = dataMap.minCoeff();
+	double maxVal = dataMap.maxCoeff();
+	for (size_t n = 0; n < size(t); ++n)
+	{
+		if (cut.find(n) != cut.end())
+		{
+			os << n << R"([style="filled" fillcolor="red"];)";
+		}
+		else
+		{
+			double normedVal = (value(t, n) - minVal) / (maxVal - minVal);
+			assert(0 <= normedVal);
+			assert(normedVal <= 1.0);
+
+			double r, g, b;
+			colormap(igl::parula_cm, std::pow(normedVal, 8), r, g, b);
+			std::string colorKey = rgb2hex(r*255, g*255, b*255, true);
+			os << n << R"([style="filled" fillcolor=")" << colorKey << R"("];)";
+		}
+	}
+
+	for (size_t n = 0; n < size(t); ++n)
+	{
+		os << n << "->" << tree::parent(t, n) << ";";
+	}
+	os << "}" << std::endl;
+}
 
 class ParticleFilterTestFixture
 {
@@ -116,6 +163,34 @@ int main(int argc, char **argv)
 	ros::Time finalTime = fixture.motionData.rgb.rbegin()->first;
 	std::shared_ptr<Scene> newScene = computeSceneFromSensorHistorian(scenario, fixture.motionData, finalTime, scenario->worldFrame);
 
+	SegmentationTreeSampler treeSampler(newScene->segInfo);
+	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), 20, true);
+	std::vector<mps::tree::TreeCut> samples;
+
+	for (size_t i = 0; i<segmentationSamples.size(); i++)
+	{
+		auto& ss = segmentationSamples[i];
+		samples.push_back(ss.second.cut);
+		std::cerr << isCutComplete(treeSampler.vt, ss.second.cut) << std::endl;
+		std::ofstream dot;
+		dot.open(logDir + expDirName + "data" + std::to_string(i) + ".dot", std::ios::out);
+		printGraphviz(dot, treeSampler.vt, ss.second.cut);
+	}
+	mps::tree::TreeCut fundamentalNodes = getFundamentalNodes(treeSampler.vt, samples);
+	std::ofstream dot;
+	dot.open(logDir + expDirName + "fundamentalNodes.dot", std::ios::out);
+	printGraphviz(dot, treeSampler.vt, fundamentalNodes);
+	std::cerr << isCutComplete(treeSampler.vt, fundamentalNodes) << std::endl;
+
+	mps::tree::NodeID p = mps::tree::parent(treeSampler.vt, *fundamentalNodes.begin());
+	fundamentalNodes.insert(p);
+	std::cerr << isCutComplete(treeSampler.vt, fundamentalNodes) << std::endl;
+	fundamentalNodes.erase(p);
+	fundamentalNodes.erase(fundamentalNodes.begin());
+	std::cerr << isCutComplete(treeSampler.vt, fundamentalNodes) << std::endl;
+
+
+/*
 	/////////////////////////////////////////////
 	/// Visualize particles
 	/////////////////////////////////////////////
@@ -228,19 +303,18 @@ int main(int argc, char **argv)
 	/////////////////////////////////////////////
 	//// Refinement based on new optimal particle
 	/////////////////////////////////////////////
-//	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
-//	{
-//		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree);
-//		std_msgs::Header header;
-//		header.frame_id = scenario->mapServer->getWorldFrame();
-//		header.stamp = ros::Time::now();
-//		auto pfnewmarker = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
-//		visualPub.publish(pfnewmarker);
-//		std::cerr << "Refinement based on new optimal particle " << i << " shown!" << std::endl;
-//		sleep(2);
-//	}
-
-	//TODO: 	JaccardMatch3D(const OccupancyData& labels1, const OccupancyData& labels2);
+	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
+	{
+		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree);
+		std_msgs::Header header;
+		header.frame_id = scenario->mapServer->getWorldFrame();
+		header.stamp = ros::Time::now();
+		auto pfnewmarker = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
+		visualPub.publish(pfnewmarker);
+		std::cerr << "Refinement based on new optimal particle " << i << " shown!" << std::endl;
+		sleep(2);
+	}
+*/
 
 
 	return 0;

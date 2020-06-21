@@ -356,6 +356,61 @@ SparseValueTree extractSubtree(const ValueTree& T, const std::set<NodeID>& leave
 
 void compressTree(SparseValueTree& T);
 
+template <typename ValueTree>
+bool isCutComplete(const ValueTree& T, const mps::tree::TreeCut& cut)
+{
+	//// Find all ancestors + nodes in cut
+	std::set<mps::tree::NodeID> topTree;
+	std::set<mps::tree::NodeID> allAncestors;
+	for (const auto& n : cut)
+	{
+		std::set<mps::tree::NodeID> ans = mps::tree::ancestors<ValueTree>(T, n);
+		allAncestors.insert(ans.begin(), ans.end());
+		topTree.insert(n);
+	}
+	topTree.insert(allAncestors.begin(), allAncestors.end());
+	std::set<mps::tree::NodeID> intersect;
+	std::set_intersection(allAncestors.begin(), allAncestors.end(),cut.begin(),cut.end(),
+	                      std::inserter(intersect, intersect.begin()));
+	if (!intersect.empty()) { /*std::cerr << "Redundant nodes exist!" << std::endl;*/ return false; }
+	for (const auto& p : allAncestors)
+	{
+		std::vector<mps::tree::NodeID> cs = mps::tree::children(T, p);
+		for (auto& c : cs)
+		{
+			if (topTree.find(c) == topTree.end()) { /*std::cerr << "Cut not complete!" << std::endl;*/ return false;}
+		}
+	}
+
+	return true;
+}
+
+template <typename ValueTree>
+mps::tree::TreeCut getFundamentalNodes(const ValueTree& T, const std::vector<mps::tree::TreeCut>& samples)
+{
+	mps::tree::TreeCut res;
+	std::set<mps::tree::NodeID> allAncestors;
+	for (const auto& sample : samples)
+	{
+		for (const auto& n : sample)
+		{
+			if (res.insert(n).second)
+			{
+				std::set<mps::tree::NodeID> ans = mps::tree::ancestors<ValueTree>(T, n);
+				allAncestors.insert(ans.begin(), ans.end());
+			}
+		}
+	}
+	std::set<mps::tree::NodeID> intersect;
+	std::set_intersection(allAncestors.begin(), allAncestors.end(),res.begin(),res.end(),
+	                      std::inserter(intersect, intersect.begin()));
+	for (const auto& p : intersect)
+	{
+		res.erase(p);
+	}
+	return res;
+}
+
 }
 
 }
