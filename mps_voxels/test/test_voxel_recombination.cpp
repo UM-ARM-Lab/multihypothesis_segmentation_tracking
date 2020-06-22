@@ -37,6 +37,11 @@
 
 #include <gtest/gtest.h>
 
+#include <boost/graph/adjacency_list_io.hpp>
+#include <boost/graph/graph_traits.hpp>
+#include <boost/graph/connected_components.hpp>
+#include <boost/graph/graphviz.hpp>
+
 
 using namespace mps;
 
@@ -61,9 +66,72 @@ std::vector<mps::VoxelRegion::VertexLabels> generateParticles()
 	                  3, 3, 0,
 	                  3, 0, 0,
 	                  3, 0, 2});
+	result.push_back({1, 1, 0,
+	                  0, 0, 0,
+	                  0, 0, 2, // ---
+	                  1, 1, 0,
+	                  0, 0, 0,
+	                  0, 0, 2, // ---
+	                  3, 3, 3,
+	                  3, 0, 0,
+	                  0, 0, 2});
 
 	return result;
 }
+
+using ObjectInstance = std::pair<ParticleIndex, ObjectIndex>;
+using ConflictGraph = std::map<ObjectInstance, std::set<ObjectInstance>>;
+
+struct ConflictEdgeProperties
+{
+	int numOverlaps = 0;
+};
+
+using BConflictGraph = boost::adjacency_list<boost::setS, boost::vecS, boost::undirectedS, ObjectInstance, ConflictEdgeProperties>;
+
+ConflictGraph
+computeConflictGraph(const VoxelRegion& vox, const std::vector<const VoxelRegion::VertexLabels*>& particles)
+{
+	ConflictGraph cg;
+
+	#pragma omp parallel for
+	for (size_t v = 0; v < vox.num_vertices(); ++v)
+	{
+		std::set<ObjectInstance> objectsAtThisCell;
+		for (size_t p = 0; p < particles.size(); ++p)
+		{
+			int label = (*particles[p])[v];
+			if (label != VoxelRegion::FREE_SPACE)
+			{
+				objectsAtThisCell.emplace(ParticleIndex(p), ObjectIndex(label));
+			}
+		}
+
+		for (const auto& instance : objectsAtThisCell)
+		{
+			auto objs = objectsAtThisCell;
+			objs.erase(instance);
+			#pragma omp critical
+			{
+				cg[instance].insert(objs.begin(), objs.end());
+			}
+		}
+	}
+
+	return cg;
+}
+
+//typedef std::map<VideoSegmentationGraph<SEGMENT_TYPE::BODY>::vertex_descriptor, unsigned long> mapping_t;
+//typedef boost::shared_ptr<mapping_t> vertex_component_map;
+//
+//vertex_component_map mapping = boost::make_shared<mapping_t>();
+//size_t num_components = boost::connected_components(G2, boost::associative_property_map<mapping_t>(*mapping));
+//if (num_components > 1)
+//{
+////		throw std::logic_error("Graph is disconnected.");
+//}
+
+inline std::string graphName(const ObjectInstance& obj) { return "n" + std::to_string(obj.first.id) + "_" + std::to_string(obj.second.id); }
 
 
 TEST(recombination, clustering)
@@ -73,6 +141,19 @@ TEST(recombination, clustering)
 	std::vector<const VoxelRegion::VertexLabels*> toCombine;
 	auto P = generateParticles();
 	for (const auto& p : P) { toCombine.emplace_back(&p);}
+
+	auto cg = computeConflictGraph(vox, toCombine);
+	std::cerr << "digraph g {" << std::endl;
+
+	for (const auto& entry : cg)
+	{
+		for (const auto& conflict : entry.second)
+		{
+			std::cerr << graphName(entry.first) << "->" << graphName(conflict) << ";" << std::endl;
+		}
+	}
+	std::cerr << "}" << std::endl;
+
 	computeSegmentationGraph(vox, toCombine);
 
 	std::cerr << "# Vertices: " << vox.num_vertices() << std::endl;
