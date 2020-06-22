@@ -298,7 +298,7 @@ void ParticleFilter::refine(const std::shared_ptr<const MeasurementSensorData>& 
 
 void ParticleFilter::applyMeasurementModel(const std::shared_ptr<const MeasurementSensorData>& newScene)
 {
-	const size_t nSamples = 3;
+	const size_t nSamples = 6;
 	SegmentationTreeSampler treeSampler(newScene->segInfo);
 	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), nSamples, true);
 
@@ -334,15 +334,17 @@ void ParticleFilter::applyMeasurementModel(const std::shared_ptr<const Measureme
 			MPS_ASSERT(segParticle.size() == segSample.size());
 
 			mps::JaccardMatch J(segParticle, segSample);
-			double matchScore = J.symmetricCover();
+//			double matchScore = J.symmetricCover();
+			double matchScore = J.match.first;
 			if (matchScore > bestMatchScore)
 			{
 				bestMatchScore = matchScore;
 				segWeight = segmentationSamples[s].first;
 			}
 		}
-
-		particle.weight += segWeight;
+		std::cerr << "particle " << particle.particle.id << " best match score " << bestMatchScore << std::endl;
+		std::cerr << "particle " << particle.particle.id << " relative segmentation weight " << segWeight << std::endl;
+		particle.weight += segWeight; // = or += ?
 	}
 }
 

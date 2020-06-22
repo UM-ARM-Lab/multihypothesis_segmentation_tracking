@@ -22,6 +22,11 @@
 #include "mps_voxels/util/package_paths.h"
 #include "mps_voxels/Scene.h"
 #include "mps_voxels/octree_utils.h"
+#include "mps_voxels/SegmentationTreeSampler.h"
+#include "mps_voxels/ValueTree_impl.hpp"
+#include "mps_voxels/relabel_tree_image.hpp"
+#include "mps_voxels/Ultrametric.h"
+#include "mps_voxels/image_output.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 
@@ -31,6 +36,7 @@ const std::string testDirName = "package://mps_test_data/";
 const std::string expDirName = "2020-06-07T08:55:02.095309/";
 const std::string logDir = parsePackageURL(testDirName);
 
+
 class ParticleFilterTestFixture
 {
 public:
@@ -38,7 +44,6 @@ public:
 	std::unique_ptr<robot_model_loader::RobotModelLoader> mpLoader;
 	robot_model::RobotModelPtr pModel;
 	std::shared_ptr<Scenario> scenario;
-	std::shared_ptr<Scene> initialScene;
 	SensorHistoryBuffer motionData;
 
 	void SetUp()
@@ -71,9 +76,6 @@ public:
 			std::cerr << "Successfully loaded buffer." << std::endl;
 		}
 		std::cerr << "number of frames: " << motionData.rgb.size() << std::endl;
-
-		ros::Time initialTime = motionData.rgb.begin()->first;
-		initialScene = computeSceneFromSensorHistorian(scenario, motionData, initialTime, scenario->worldFrame);
 
 		/////////////////////////////////////////////
 		//// Load initial particles
@@ -116,7 +118,63 @@ int main(int argc, char **argv)
 	scenario->mapServer->m_octree->setBBXMin(tMin);
 	scenario->mapServer->m_octree->setBBXMax(tMax);
 
+	//// Compute new scene
+	ros::Time finalTime = fixture.motionData.rgb.rbegin()->first;
+	std::shared_ptr<Scene> newScene = computeSceneFromSensorHistorian(scenario, fixture.motionData, finalTime, scenario->worldFrame);
 
+	SegmentationTreeSampler treeSampler(newScene->segInfo);
+	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), 10, true);
+	std::vector<mps::tree::TreeCut> samples;
+
+	for (size_t i = 0; i<segmentationSamples.size(); i++)
+	{
+		auto& ss = segmentationSamples[i];
+		samples.push_back(ss.second.cut);
+	}
+	mps::tree::TreeCut fundamentalNodes = getFundamentalNodes(treeSampler.vt, samples);
+	if (!isCutComplete(treeSampler.vt, fundamentalNodes)) std::cerr << "Wrong fundamentalNodes!" << std::endl;
+
+	SegmentationCut fundamentalSeg = treeSampler.treeCut2segCut(fundamentalNodes);
+	cv::imwrite(logDir + expDirName + "fundamentalNodes.png", colorByLabel(fundamentalSeg.segmentation.objectness_segmentation->image));
+
+	Particle fundamentalParticle;
+
+	fundamentalParticle.state = std::make_shared<OccupancyData>(fixture.particleFilter->voxelRegion);
+
+	const auto segInfo = fundamentalSeg.segmentation;
+
+	bool execSegmentation = SceneProcessor::performSegmentation(*newScene, segInfo.objectness_segmentation->image,
+	                                                            *fundamentalParticle.state);
+	if (!execSegmentation)
+	{
+		std::cerr << "New Optimal Particle failed to segment." << std::endl;
+	}
+
+	//TODO: without shape completion
+	bool getSurface = SceneProcessor::buildObjSurface(*newScene, *fundamentalParticle.state);
+	if (!getSurface)
+	{
+		std::cerr << "fundamentalParticle failed to build surface." << std::endl;
+	}
+
+	fundamentalParticle.state->vertexState =
+		fixture.particleFilter->voxelRegion->objectsToSubRegionVoxelLabel(fundamentalParticle.state->objects,
+		                                                                  newScene->minExtent.head<3>());
+	fundamentalParticle.state->uniqueObjectLabels =
+		getUniqueObjectLabels(fundamentalParticle.state->vertexState);
+
+	for (int i = 0; i<10; i++)
+	{
+		std_msgs::Header header;
+		header.frame_id = scenario->mapServer->getWorldFrame();
+		header.stamp = ros::Time::now();
+		auto pfMarkers = mps::visualize(*fundamentalParticle.state, header, rng);
+		visualPub.publish(pfMarkers);
+		std::cerr << "fundamentalParticle shown!" << std::endl;
+		sleep(2);
+	}
+
+/*
 	/////////////////////////////////////////////
 	/// Visualize particles
 	/////////////////////////////////////////////
@@ -129,6 +187,14 @@ int main(int argc, char **argv)
 		sleep(2);
 	}
 
+	/////////////////////////////////////////////
+	//// Compute weights
+	/////////////////////////////////////////////
+	fixture.particleFilter->applyMeasurementModel(newScene);
+	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
+	{
+		std::cerr << "Particle " << i << " weight: " << fixture.particleFilter->particles[i].weight << std::endl;
+	}
 
 	//// Look up transformation
 	moveit::Pose worldTcamera;
@@ -173,9 +239,14 @@ int main(int argc, char **argv)
 		sleep(2);
 	}
 
-	//// Compute new scene
-	ros::Time finalTime = fixture.motionData.rgb.rbegin()->first;
-	std::shared_ptr<Scene> newScene = computeSceneFromSensorHistorian(scenario, fixture.motionData, finalTime, scenario->worldFrame);
+	/////////////////////////////////////////////
+	//// Compute weights
+	/////////////////////////////////////////////
+	fixture.particleFilter->applyMeasurementModel(newScene);
+	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
+	{
+		std::cerr << "Particle " << i << " after refinement weight: " << fixture.particleFilter->particles[i].weight << std::endl;
+	}
 
 	/////////////////////////////////////////////
 	//// Generate optimal particle for newScene
@@ -227,8 +298,7 @@ int main(int argc, char **argv)
 		std::cerr << "Refinement based on new optimal particle " << i << " shown!" << std::endl;
 		sleep(2);
 	}
-
-	//TODO: 	JaccardMatch3D(const OccupancyData& labels1, const OccupancyData& labels2);
+*/
 
 
 	return 0;

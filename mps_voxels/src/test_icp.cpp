@@ -21,6 +21,7 @@
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 
+#define USE_HISTRACKER true
 using namespace mps;
 
 const std::string testDirName = "package://mps_test_data/";
@@ -62,9 +63,11 @@ public:
 		sparseTracker->track_options.pixelRadius = 1000.0f;
 		sparseTracker->track_options.meterRadius = 1.0f;
 #endif
-//		denseTracker = std::make_unique<SiamTracker>();
+#if USE_HISTORYTRACKER
 		denseTracker = std::make_unique<HistoryTracker>(trackingFilename);
-
+#else
+		denseTracker = std::make_unique<SiamTracker>();
+#endif
 		double resolution = 0.010;
 		pnh.getParam("resolution", resolution);
 		particleFilter = std::make_unique<ParticleFilter>(scenario, resolution,

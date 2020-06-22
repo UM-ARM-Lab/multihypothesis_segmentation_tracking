@@ -212,6 +212,9 @@ public:
 	bool buildObjects(const Scene& s, OccupancyData& occupancy);
 
 	static
+	bool buildObjSurface(const Scene& s, OccupancyData& occupancy);
+
+	static
 	bool removeAccountedForOcclusion(
 		const Scenario* scenario,
 		octomap::point3d_collection& occludedPts,
