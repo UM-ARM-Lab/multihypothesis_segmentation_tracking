@@ -50,7 +50,7 @@ visualization_msgs::MarkerArray visualize(
 	return ma;
 }
 
-visualization_msgs::MarkerArray visualize(const OccupancyData& data, const std_msgs::Header& header, std::default_random_engine& re)
+visualization_msgs::MarkerArray visualize(const OccupancyData& data, const std_msgs::Header& header, std::mt19937& re)
 {
 	visualization_msgs::MarkerArray ma = visualize(*data.voxelRegion, data.vertexState, header, re);
 	ma.markers += visualize(*data.voxelRegion, data.edgeState, header, re).markers;

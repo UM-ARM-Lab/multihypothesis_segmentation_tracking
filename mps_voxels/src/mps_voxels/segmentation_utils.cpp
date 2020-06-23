@@ -259,7 +259,7 @@ std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels, const cv::
 		cv::Rect box = cv::boundingRect(labels == label) & roi;
 
 		// TODO: I wasn't 100% sure on the desired logic here -Andrew
-		if (2 * box.height * box.width > roi.height * roi.width) { continue; } // get rid of table segment
+//		if (2 * box.height * box.width > roi.height * roi.width) { continue; } // get rid of table segment
 		bbox.xmin = std::max(0, box.x - dilation);
 		bbox.xmax = std::min(labels.cols, box.x + box.width + dilation);
 		bbox.ymin = std::max(0, box.y - dilation);

@@ -84,7 +84,7 @@ computeSegmentationGraph(const VoxelRegion& vox, const std::vector<const VoxelRe
 	static ros::NodeHandle nh;
 	static ros::Publisher visualPub = nh.advertise<visualization_msgs::MarkerArray>("test", 1, true);
 	static std::random_device rd;
-	static std::default_random_engine re(rd());
+	static std::mt19937 re(rd());
 	#endif
 	// Crop to active region?
 	// Compute indivisible clusters
@@ -295,7 +295,7 @@ void VoxelConflictResolver::print(std::ostream& out) const
 }
 
 ComponentOrdering
-VoxelConflictResolver::sampleStructure(std::default_random_engine& re) const
+VoxelConflictResolver::sampleStructure(std::mt19937& re) const
 {
 	std::vector<std::map<ConflictGraph::vertex_descriptor, ConflictGraph::vertex_descriptor>> structures;
 	for (size_t i = 0; i < componentGraphs.size(); i++)
@@ -332,7 +332,7 @@ VoxelConflictResolver::sampleStructure(std::default_random_engine& re) const
 }
 
 VoxelRegion::VertexLabels
-VoxelConflictResolver::sampleGeometry(const std::vector<const VoxelRegion::VertexLabels*>& particles, const ComponentOrdering& structures, std::default_random_engine& re) const
+VoxelConflictResolver::sampleGeometry(const std::vector<const VoxelRegion::VertexLabels*>& particles, const ComponentOrdering& structures, std::mt19937& re) const
 {
 	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
 

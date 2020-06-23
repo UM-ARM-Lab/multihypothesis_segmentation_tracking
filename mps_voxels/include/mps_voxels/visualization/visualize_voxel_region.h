@@ -48,12 +48,12 @@ visualization_msgs::MarkerArray visualize(
 visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
                                           const VoxelRegion::VertexLabels& data,
                                           const std_msgs::Header& header,
-                                          std::default_random_engine& re);
+                                          std::mt19937& re);
 
 visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
                                           const VoxelRegion::EdgeState& data,
                                           const std_msgs::Header& header,
-                                          std::default_random_engine& re);
+                                          std::mt19937& re);
 
 }
 

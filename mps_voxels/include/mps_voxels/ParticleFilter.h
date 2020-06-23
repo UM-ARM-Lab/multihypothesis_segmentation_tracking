@@ -61,7 +61,7 @@ public:
 
 	void applyMeasurementModel(const std::shared_ptr<const MeasurementSensorData>& newScene);
 
-	void resample(std::default_random_engine& rng);
+	void resample(std::mt19937& rng);
 
 	int numNewSceneParticle;
 	bool introNewSceneParticle(const std::shared_ptr<const MeasurementSensorData>& newScene);

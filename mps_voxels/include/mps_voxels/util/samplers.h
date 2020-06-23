@@ -54,17 +54,15 @@ class SimplexSampler
 public:
 	SimplexSampler(const size_t n);
 
-	Eigen::VectorXd getPoint();
+	Eigen::VectorXd getPoint(std::mt19937& rng) const;
 
 	const size_t N;
-	std::random_device rd;
-	std::mt19937 rng;
-	std::uniform_real_distribution<double> generator;
 };
 
 class UniformPolygonRejectionSampler
 {
 public:
+	explicit
 	UniformPolygonRejectionSampler(const SupportPolygon& p);
 
 	Eigen::Vector2d getPoint();

@@ -453,7 +453,7 @@ ObjectActionModel::ObjectActionModel(std::shared_ptr<const Scenario> scenario_, 
 
 void ObjectActionModel::weightedSampleSIFT(int n)
 {
-	std::default_random_engine generator;
+	std::mt19937 generator;
 	std::vector<int> weightBar;
 
 	for (auto& rbt : siftRigidTFs)

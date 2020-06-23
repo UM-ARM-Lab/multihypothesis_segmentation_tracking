@@ -65,7 +65,7 @@ visualization_msgs::MarkerArray visualize(const Object& obj, const std_msgs::Hea
 	return ma;
 }
 
-visualization_msgs::MarkerArray visualize(const Object& obj, const std_msgs::Header& header, std::default_random_engine& re)
+visualization_msgs::MarkerArray visualize(const Object& obj, const std_msgs::Header& header, std::mt19937& re)
 {
 	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
 

@@ -91,7 +91,7 @@ namespace mps
 class Segmenter
 {
 public:
-	std::default_random_engine re;
+	std::mt19937 re;
 	std::unique_ptr<ros::Subscriber> cam_sub;
 	image_geometry::PinholeCameraModel cameraModel;
 	std::string worldFrame = "table_surface";

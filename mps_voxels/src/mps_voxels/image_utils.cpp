@@ -166,7 +166,7 @@ cv::Mat colorByLabel(const cv::Mat& input, const Colormap& colormap)
 	return output;
 }
 
-Colormap createColormap(const std::set<uint16_t>& labels, std::default_random_engine& re)
+Colormap createColormap(const std::set<uint16_t>& labels, std::mt19937& re)
 {
 	Colormap colormap;
 	std::uniform_int_distribution<> dis(0, 256);
@@ -176,12 +176,12 @@ Colormap createColormap(const std::set<uint16_t>& labels, std::default_random_en
 	}
 	return colormap;
 }
-Colormap createColormap(const cv::Mat& labels, std::default_random_engine& re)
+Colormap createColormap(const cv::Mat& labels, std::mt19937& re)
 {
 	return createColormap(unique(labels), re);
 }
 
-void extendColormap(Colormap& colormap, const std::set<uint16_t>& labels, std::default_random_engine& re)
+void extendColormap(Colormap& colormap, const std::set<uint16_t>& labels, std::mt19937& re)
 {
 	std::uniform_int_distribution<> dis(0, 256);
 	for (auto label : labels)
@@ -193,7 +193,7 @@ void extendColormap(Colormap& colormap, const std::set<uint16_t>& labels, std::d
 		}
 	}
 }
-void extendColormap(Colormap& colormap, const cv::Mat& labels, std::default_random_engine& re)
+void extendColormap(Colormap& colormap, const cv::Mat& labels, std::mt19937& re)
 {
 	extendColormap(colormap, unique(labels), re);
 }

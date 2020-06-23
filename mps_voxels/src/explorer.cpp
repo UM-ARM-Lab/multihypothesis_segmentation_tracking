@@ -180,7 +180,7 @@ public:
 
 	std_msgs::ColorRGBA mapColor;
 
-	std::default_random_engine rng;
+	std::mt19937 rng;
 
 	SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh);
 

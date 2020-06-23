@@ -51,7 +51,7 @@ void hsv2rgb(float h, float s, float v, float &r, float &g, float &b);
 
 std::vector<std_msgs::ColorRGBA> dispersedColormap(const int N);
 
-std_msgs::ColorRGBA randomColorMsg(std::default_random_engine& rng);
+std_msgs::ColorRGBA randomColorMsg(std::mt19937& rng);
 
 }
 

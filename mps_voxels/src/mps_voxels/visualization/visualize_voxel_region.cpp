@@ -85,7 +85,7 @@ visualization_msgs::MarkerArray visualize(
 visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
                                           const VoxelRegion::VertexLabels& labels,
                                           const std_msgs::Header& header,
-                                          std::default_random_engine& re)
+                                          std::mt19937& re)
 {
 	assert(region.num_vertices() == labels.size());
 
@@ -153,7 +153,7 @@ visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
 visualization_msgs::MarkerArray visualize(const VoxelRegion& region,
                                           const VoxelRegion::EdgeState& edges,
                                           const std_msgs::Header& header,
-                                          std::default_random_engine& re)
+                                          std::mt19937& re)
 {
 	VoxelRegion::VertexLabels vlabels = region.components(const_cast<VoxelRegion::EdgeState&>(edges)).second;
 

@@ -104,7 +104,7 @@ public:
 	std::string worldFrame;
 
 
-	std::default_random_engine& rng() const { return experiment->rng; }
+	std::mt19937& rng() const { return experiment->rng; }
 
 //	std::map<std::string, bool> visualize;
 	inline

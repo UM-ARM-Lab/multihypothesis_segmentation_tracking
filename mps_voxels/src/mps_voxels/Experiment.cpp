@@ -100,7 +100,7 @@ Experiment::Experiment(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 		nh.setParam(seedKey, seed);
 	}
 	ROS_INFO_STREAM("Random Seed: " << seed);
-	rng = std::default_random_engine(seed);
+	rng = std::mt19937(seed);
 
 	const std::string timeKey = ns + "/start_time";
 	nh.setParam(timeKey, timestamp());

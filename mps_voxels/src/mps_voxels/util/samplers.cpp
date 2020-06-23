@@ -41,18 +41,18 @@
 namespace mps
 {
 
-SimplexSampler::SimplexSampler(const size_t n) : N(n)
+SimplexSampler::SimplexSampler(const size_t n)
+	: N(n)
 {
-	rng = std::mt19937(rd());
-	generator = std::uniform_real_distribution<double>(0, 1);
 }
 
-Eigen::VectorXd SimplexSampler::getPoint()
+Eigen::VectorXd SimplexSampler::getPoint(std::mt19937& rng) const
 {
+	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
 	Eigen::VectorXd pt(N);
 	for (size_t i = 0; i < N; ++i)
 	{
-		pt[i] = -log(1.0-generator(rng)); // exponentially distributed samples, generator -> [0,1)
+		pt[i] = -log(1.0-uni(rng)); // exponentially distributed samples, generator -> [0,1)
 	}
 	pt /= pt.sum(); // normalize the sum
 	return pt;
@@ -93,7 +93,7 @@ Eigen::Vector2d UniformPolygonRejectionSampler::getPoint()
 	}
 
 	// Failed to sample inside polygon, use convex combination of points instead
-	return mR * mSimplexSampler.getPoint();
+	return mR * mSimplexSampler.getPoint(rng);
 }
 
 }

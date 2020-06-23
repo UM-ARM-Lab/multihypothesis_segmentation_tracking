@@ -40,7 +40,7 @@
 namespace mps
 {
 
-visualization_msgs::MarkerArray visualize(const std::map<std::string, std::shared_ptr<MotionModel>>& data, const std_msgs::Header& header, std::default_random_engine& re);
+visualization_msgs::MarkerArray visualize(const std::map<std::string, std::shared_ptr<MotionModel>>& data, const std_msgs::Header& header, std::mt19937& re);
 
 }
 

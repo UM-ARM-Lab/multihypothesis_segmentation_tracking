@@ -84,10 +84,10 @@ public:
 	void print(std::ostream& out) const;
 
 	ComponentOrdering
-	sampleStructure(std::default_random_engine& re) const;
+	sampleStructure(std::mt19937& re) const;
 
 	VoxelRegion::VertexLabels
-	sampleGeometry(const std::vector<const VoxelRegion::VertexLabels*>& particles, const ComponentOrdering& structures, std::default_random_engine& re) const;
+	sampleGeometry(const std::vector<const VoxelRegion::VertexLabels*>& particles, const ComponentOrdering& structures, std::mt19937& re) const;
 };
 
 

@@ -109,7 +109,7 @@ int main(int argc, char **argv)
 	fixture.SetUp();
 
 	ros::Publisher visualPub = nh.advertise<visualization_msgs::MarkerArray>("visualization", 1, true);
-	std::default_random_engine rng;
+	std::mt19937 rng;
 
 	/////////////////////////////////////////////
 	//// sample object motions

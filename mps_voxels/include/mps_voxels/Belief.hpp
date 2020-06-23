@@ -36,7 +36,7 @@
 namespace mps
 {
 
-using RNG = std::default_random_engine;
+using RNG = std::mt19937;
 
 enum class SAMPLE_TYPE
 {

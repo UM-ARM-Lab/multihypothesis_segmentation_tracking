@@ -37,7 +37,7 @@ namespace mps
 
 // Derived from https://gist.github.com/cbsmith/5538174
 
-template <typename RandomGenerator = std::default_random_engine>
+template <typename RandomGenerator = std::mt19937>
 struct uniform_random_selector
 {
 	explicit

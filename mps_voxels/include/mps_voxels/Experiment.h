@@ -66,7 +66,7 @@ public:
 //protected:
 
 	mutable
-	std::default_random_engine rng; // TODO: Should this be mutex-protected?
+	std::mt19937 rng; // TODO: Should this be mutex-protected?
 
 };
 

@@ -352,7 +352,7 @@ void ParticleFilter::applyMeasurementModel(const std::shared_ptr<const Measureme
 	}
 }
 
-void ParticleFilter::resample(std::default_random_engine& rng)
+void ParticleFilter::resample(std::mt19937& rng)
 {
 	// TODO: introduce newSensorParticle to particleFilter, resampling for only (numParticle - newSensorParticle) times
 	std::vector<double> weightBar;

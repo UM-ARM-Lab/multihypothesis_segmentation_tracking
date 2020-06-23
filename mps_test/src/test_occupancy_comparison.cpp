@@ -58,7 +58,7 @@ using VoxelColormap = std::map<mps::VoxelRegion::VertexLabels::value_type , std_
 using namespace mps;
 
 
-void extend(VoxelColormap& cmap, const mps::VoxelRegion::VertexLabels& labels, std::default_random_engine& rng)
+void extend(VoxelColormap& cmap, const mps::VoxelRegion::VertexLabels& labels, std::mt19937& rng)
 {
 	for (int label : labels)
 	{
@@ -78,7 +78,7 @@ struct Metrics
 	mps::JaccardMatch3D match;
 	VoxelColormap cmapA;
 
-	Metrics(const OccupancyData& hypothesis, const OccupancyData& truth, const VoxelColormap& cmapGT, std::default_random_engine& rng)
+	Metrics(const OccupancyData& hypothesis, const OccupancyData& truth, const VoxelColormap& cmapGT, std::mt19937& rng)
 		: match(hypothesis, truth)
 	{
 		for (const auto& m : match.match.second)
@@ -179,7 +179,7 @@ int main(int argc, char* argv[])
 
 	std::random_device rd;
 	int seed = rd(); //0;
-	std::default_random_engine rng = std::default_random_engine(seed);
+	std::mt19937 rng = std::mt19937(seed);
 
 	ros::Publisher particlePubGT = nh.advertise<visualization_msgs::MarkerArray>("visualization_gt", 1, true);
 	std::vector<std::shared_ptr<ros::Publisher>> particlePubs;

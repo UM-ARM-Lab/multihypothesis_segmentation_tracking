@@ -118,7 +118,7 @@ TEST(recombination, analytics)
 
 	auto P = generateParticlesA();
 	std::random_device rd;
-	std::default_random_engine re(rd());
+	std::mt19937 re(rd());
 
 	for (size_t numToUse = 2; numToUse <= P.size(); ++numToUse)
 	{
@@ -194,7 +194,7 @@ TEST(recombination, clustering)
 	resolver.print(std::cerr);
 
 	std::random_device rd;
-	std::default_random_engine re(rd());
+	std::mt19937 re(rd());
 
 	#if VISUALIZE
 	std::map<int, std_msgs::ColorRGBA> cmap;

@@ -59,11 +59,11 @@ cv::Mat colorByLabel(const cv::Mat& input);
 
 cv::Mat colorByLabel(const cv::Mat& input, const Colormap& colormap);
 
-Colormap createColormap(const std::set<uint16_t>& labels, std::default_random_engine& re);
-Colormap createColormap(const cv::Mat& labels, std::default_random_engine& re);
+Colormap createColormap(const std::set<uint16_t>& labels, std::mt19937& re);
+Colormap createColormap(const cv::Mat& labels, std::mt19937& re);
 
-void extendColormap(Colormap& colormap, const std::set<uint16_t>& labels, std::default_random_engine& re);
-void extendColormap(Colormap& colormap, const cv::Mat& labels, std::default_random_engine& re);
+void extendColormap(Colormap& colormap, const std::set<uint16_t>& labels, std::mt19937& re);
+void extendColormap(Colormap& colormap, const cv::Mat& labels, std::mt19937& re);
 
 template<typename Map>
 cv::Mat relabel(const cv::Mat& input, const Map& map)

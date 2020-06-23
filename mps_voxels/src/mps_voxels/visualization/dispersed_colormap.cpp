@@ -163,7 +163,7 @@ std::vector<std_msgs::ColorRGBA> dispersedColormap(const int N)
 	return result;
 }
 
-std_msgs::ColorRGBA randomColorMsg(std::default_random_engine& rng)
+std_msgs::ColorRGBA randomColorMsg(std::mt19937& rng)
 {
 	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
 

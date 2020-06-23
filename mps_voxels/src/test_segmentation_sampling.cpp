@@ -311,7 +311,7 @@ int main(int argc, char* argv[])
 //	const auto& pairing = jaccardMatch.match;
 
 //	std::random_device rd;
-	std::default_random_engine re(0);// (rd());
+	std::mt19937 re(0);// (rd());
 	Colormap colormap = createColormap(gt_labels, re);
 
 	SegmentationTreeSampler treeSampler(si);

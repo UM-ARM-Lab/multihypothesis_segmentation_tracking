@@ -143,7 +143,7 @@ std::vector<std::pair<double, TreeCut>> sampleCuts(const ValueTree& T)
 	uniform_random_selector<> randomSelector;
 	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
 	std::random_device rd;
-	std::default_random_engine re(rd());
+	std::mt19937 re(rd());
 
 	const double sigmaSquared = 10.0;
 	const int nTrials = 100;
