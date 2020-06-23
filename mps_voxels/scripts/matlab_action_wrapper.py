@@ -68,4 +68,11 @@ if __name__ == '__main__':
     requestName = rospy.get_param('~request')
     responseName = rospy.get_param('~response')
     server = ActionForwarder(rospy.get_name(), pkgName, actionName, requestName, responseName)
-    rospy.spin()
+
+    # Reset the action server if time is reset
+    r = rospy.Rate(2)
+    while not rospy.is_shutdown():
+        try:
+            r.sleep()
+        except rospy.exceptions.ROSTimeMovedBackwardsException:
+            server = ActionForwarder(rospy.get_name(), pkgName, actionName, requestName, responseName)
