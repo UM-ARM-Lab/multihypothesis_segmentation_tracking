@@ -193,6 +193,20 @@ ObjectSampler::ObjectSampler(const Scenario* scenario, const Scene* scene, const
 		std::cerr << std::endl;
 	}
 
+	{
+		std::uniform_int_distribution<> uni(0, env->objects.size()-1);
+		auto objIter = env->objects.begin();
+		std::advance(objIter, uni(scenario->rng()));
+		id = objIter->first;
+		succeeded = true;
+		cameraOrigin = octomap::point3d((float) scene->worldTcamera.translation().x(),
+		                                (float) scene->worldTcamera.translation().y(),
+		                                (float) scene->worldTcamera.translation().z());
+		samplePoint = cameraOrigin;
+		ray = samplePoint-cameraOrigin;
+		return;
+	}
+
 	std::uniform_real_distribution<> uni(0.0, std::nextafter(1.0, std::numeric_limits<double>::max()));
 
 	// If the target object grasp is obstructed somehow
