@@ -62,6 +62,7 @@
 #include "mps_voxels/ParticleFilter.h"
 #include <mps_voxels/JaccardMatch.h>
 #include "mps_voxels/visualization/visualize_occupancy.h"
+#include "mps_voxels/visualization/visualize_voxel_region.h"
 #include "mps_voxels/visualization/visualize_bounding_spheres.h"
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
@@ -589,7 +590,21 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			toCombine.emplace_back(&v.state->vertexState);
 		}
 
-		computeSegmentationGraph(*particleFilter->voxelRegion, toCombine);
+//		computeSegmentationGraph(*particleFilter->voxelRegion, toCombine);
+
+		VoxelConflictResolver resolver(particleFilter->voxelRegion, toCombine);
+
+//		for (int iter = 0; iter < 100; ++iter)
+		{
+			auto structure = resolver.sampleStructure(scenario->rng());
+			auto V = resolver.sampleGeometry(toCombine, structure, scenario->rng());
+
+			std_msgs::Header header;
+			header.frame_id = globalFrame;
+			header.stamp = ros::Time::now();
+			allMarkers["new_sample"] = mps::visualize(*particleFilter->voxelRegion, V, header, scenario->rng());
+			visualPub.publish(allMarkers.flatten());
+		}
 
 		particleFilter->applyMeasurementModel(scene);
 	}

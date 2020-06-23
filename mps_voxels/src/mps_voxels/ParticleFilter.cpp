@@ -232,6 +232,7 @@ Particle ParticleFilter::applyActionModel(
 
 	Particle outputParticle;
 	outputParticle.state = std::make_shared<OccupancyData>(inputParticle.state->voxelRegion, outputState);
+	outputParticle.particle = inputParticle.particle;
 
 	return outputParticle;
 }
@@ -242,6 +243,7 @@ void ParticleFilter::computeAndApplyActionModel(
 	std::unique_ptr<Tracker>& sparseTracker,
 	std::unique_ptr<DenseTracker>& denseTracker)
 {
+	ros::Time finalTime = buffer.rgb.rbegin()->first;
 	for (size_t p = 0; p < this->particles.size(); ++p)
 	{
 		std::string trackingFilename = "";
@@ -256,6 +258,8 @@ void ParticleFilter::computeAndApplyActionModel(
 		}
 		auto motion = computeActionModel(particles[p], buffer, sparseTracker, denseTracker);
 		auto newParticle = applyActionModel(particles[p], motion.second);
+		newParticle.particle.id = p;
+		newParticle.time = finalTime;
 		particles[p] = newParticle;
 	}
 	++generation;
