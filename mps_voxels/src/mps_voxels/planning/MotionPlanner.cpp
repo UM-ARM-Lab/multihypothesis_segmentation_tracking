@@ -30,6 +30,7 @@
 #include "mps_voxels/planning/MotionPlanner.h"
 #include "mps_voxels/octree_utils.h"
 #include "mps_voxels/LocalOctreeServer.h"
+#include "mps_voxels/util/samplers.h"
 #include "mps_voxels/util/assert.h"
 
 #include <moveit/planning_scene/planning_scene.h>
@@ -52,6 +53,14 @@ namespace mps
 {
 
 const std::string MotionPlanner::CLUTTER_NAME = "clutter";
+
+Eigen::Vector3d samplePointInMesh(const shapes::Mesh& m, std::mt19937& rng)
+{
+	SimplexSampler ss(m.vertex_count);
+	Eigen::Map<const Eigen::Matrix3Xd> vertices(m.vertices, 3, m.vertex_count);
+	Eigen::VectorXd combo = ss.getPoint(rng);
+	return vertices * combo;
+}
 
 State stateFactory(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects)
 {
@@ -198,12 +207,16 @@ ObjectSampler::ObjectSampler(const Scenario* scenario, const Scene* scene, const
 		auto objIter = env->objects.begin();
 		std::advance(objIter, uni(scenario->rng()));
 		id = objIter->first;
-		succeeded = true;
 		cameraOrigin = octomap::point3d((float) scene->worldTcamera.translation().x(),
 		                                (float) scene->worldTcamera.translation().y(),
 		                                (float) scene->worldTcamera.translation().z());
-		samplePoint = cameraOrigin;
+
+		auto cvx = samplePointInMesh(*objIter->second->approximation, scenario->rng()).cast<float>();
+		samplePoint = {cvx.x(), cvx.y(), cvx.z()};
 		ray = samplePoint-cameraOrigin;
+		// TODO: Set collision correctly here
+		collision = samplePoint;
+		succeeded = true;
 		return;
 	}
 
