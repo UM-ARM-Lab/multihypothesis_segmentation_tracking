@@ -217,7 +217,7 @@ int main(int argc, char **argv)
 		auto pfMarkers = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
 		visualPub.publish(pfMarkers);
 		std::cerr << "State particle " << i << " shown!" << std::endl;
-		sleep(2);
+		usleep(500000);
 	}
 
 	/////////////////////////////////////////////
@@ -242,7 +242,7 @@ int main(int argc, char **argv)
 		auto pfnewmarker = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
 		visualPub.publish(pfnewmarker);
 		std::cerr << "Free-space refined predicted state particle " << i << " shown!" << std::endl;
-		sleep(2);
+		usleep(500000);
 	}
 
 	/////////////////////////////////////////////
@@ -303,7 +303,7 @@ int main(int argc, char **argv)
 		auto pfMarkers = mps::visualize(*newSamples[i].state, header, rng);
 		visualPub.publish(pfMarkers);
 		std::cerr << "New particle " << i << " shown!" << std::endl;
-		sleep(3);
+		usleep(500000);
 	}
 
 	for (int newParticleID = 0; newParticleID<static_cast<int>(newSamples.size()); ++newParticleID)
