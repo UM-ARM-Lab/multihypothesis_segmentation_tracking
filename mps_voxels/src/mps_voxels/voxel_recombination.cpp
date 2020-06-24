@@ -193,6 +193,9 @@ VoxelConflictResolver::VoxelConflictResolver(std::shared_ptr<const VoxelRegion> 
                                              const std::vector<const VoxelRegion::VertexLabels*>& particles)
 	: vox(_vox)
 {
+	/////////////////////////////////////////////
+	//// Build Conflict Graph
+	/////////////////////////////////////////////
 	for (size_t v = 0; v < vox->num_vertices(); ++v)
 	{
 		std::vector<ObjectInstance> objectsAtThisCell;
@@ -222,6 +225,9 @@ VoxelConflictResolver::VoxelConflictResolver(std::shared_ptr<const VoxelRegion> 
 		}
 	}
 
+	/////////////////////////////////////////////
+	//// Extract Components
+	/////////////////////////////////////////////
 	components = std::make_shared<component_mapping_t>();
 	size_t num_components = boost::connected_components(G, boost::associative_property_map<component_mapping_t>(*components));
 
@@ -297,12 +303,15 @@ void VoxelConflictResolver::print(std::ostream& out) const
 ComponentOrdering
 VoxelConflictResolver::sampleStructure(std::mt19937& re) const
 {
+	/////////////////////////////////////////////
+	//// Generate a random spanning tree for each component
+	/////////////////////////////////////////////
 	std::vector<std::map<ConflictGraph::vertex_descriptor, ConflictGraph::vertex_descriptor>> structures;
 	for (size_t i = 0; i < componentGraphs.size(); i++)
 	{
 		const auto& cg = componentGraphs[i];
 
-		// Pick the root uniformly
+		/// Pick the root uniformly
 		std::uniform_int_distribution<> dis(0, componentToMembers[i].size() - 1);
 		const ConflictGraph::vertex_descriptor root = componentToMembers[i].at(dis(re));
 
@@ -365,6 +374,10 @@ VoxelConflictResolver::sampleGeometry(const std::vector<const VoxelRegion::Verte
 			const ConflictEdgeProperties& ep = G[ed];
 
 			double iou = static_cast<double>(ep.numOverlaps)/static_cast<double>(objectSizes.at(npu) + objectSizes.at(npv) - ep.numOverlaps);
+			double iou1 = static_cast<double>(ep.numOverlaps)/static_cast<double>(objectSizes.at(npu));
+			double iou2 = static_cast<double>(ep.numOverlaps)/static_cast<double>(objectSizes.at(npv));
+			if (iou1 > 0.3 || iou2 > 0.3) iou = 1.0;
+
 			bool doMerge = uni(re) < iou;
 			if (doMerge)
 			{

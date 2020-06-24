@@ -8,16 +8,20 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl_ros/point_cloud.h>
+#include <moveit/robot_model_loader/robot_model_loader.h>
 
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_occupancy_data.h"
 #include "mps_voxels/logging/log_sensor_history.h"
 #include "mps_voxels/logging/log_scene.h"
 #include "mps_voxels/logging/log_segmentation_info.h"
+
+#include "mps_voxels/visualization/visualize_occupancy.h"
+#include "mps_voxels/visualization/visualize_voxel_region.h"
+
 #include "mps_voxels/segmentation_utils.h"
 #include "mps_voxels/SensorHistorian.h"
 #include "mps_voxels/ParticleFilter.h"
-#include "mps_voxels/visualization/visualize_occupancy.h"
 #include "mps_voxels/LocalOctreeServer.h"
 #include "mps_voxels/util/package_paths.h"
 #include "mps_voxels/Scene.h"
@@ -27,8 +31,7 @@
 #include "mps_voxels/relabel_tree_image.hpp"
 #include "mps_voxels/Ultrametric.h"
 #include "mps_voxels/image_output.h"
-
-#include <moveit/robot_model_loader/robot_model_loader.h>
+#include "mps_voxels/voxel_recombination.h"
 
 using namespace mps;
 
@@ -122,6 +125,38 @@ int main(int argc, char **argv)
 	ros::Time finalTime = fixture.motionData.rgb.rbegin()->first;
 	std::shared_ptr<Scene> newScene = computeSceneFromSensorHistorian(scenario, fixture.motionData, finalTime, scenario->worldFrame);
 
+	/////////////////////////////////////////////
+	//// Compute new sceneOctree
+	/////////////////////////////////////////////
+	//// Look up transformation
+	moveit::Pose worldTcamera;
+	const auto& cameraModel = fixture.motionData.cameraModel;
+	const ros::Time queryTime = ros::Time(0); // buffer.rgb.begin()->first;
+	const ros::Duration timeout = ros::Duration(5.0);
+	std::string tfError;
+	bool canTransform = fixture.motionData.tfs->canTransform(scenario->worldFrame, cameraModel.tfFrame(), queryTime, &tfError);
+	if (!canTransform) // ros::Duration(5.0)
+	{
+		ROS_ERROR_STREAM("Failed to look up transform between '" << scenario->worldFrame << "' and '"
+		                                                         << cameraModel.tfFrame() << "' with error '"
+		                                                         << tfError << "'.");
+		throw std::runtime_error("Sadness.");
+	}
+	tf::StampedTransform cameraFrameInTableCoordinates;
+	const auto temp = fixture.motionData.tfs->lookupTransform(cameraModel.tfFrame(), scenario->worldFrame, queryTime);
+	tf::transformStampedMsgToTF(temp, cameraFrameInTableCoordinates);
+	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
+
+	//// get new sceneOctree
+	pcl::PointCloud<PointT>::Ptr finalPC = imagesToCloud(fixture.motionData.rgb.rbegin()->second->image,
+	                                                     fixture.motionData.depth.rbegin()->second->image, fixture.motionData.cameraModel);
+	scenario->mapServer->insertCloud(finalPC, worldTcamera);
+	octomap::OcTree* sceneOctree = scenario->mapServer->getOctree();
+
+/*
+	/////////////////////////////////////////////
+	//// Compute fundamental nodes
+	/////////////////////////////////////////////
 	SegmentationTreeSampler treeSampler(newScene->segInfo);
 	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), 10, true);
 	std::vector<mps::tree::TreeCut> samples;
@@ -150,7 +185,7 @@ int main(int argc, char **argv)
 		std::cerr << "New Optimal Particle failed to segment." << std::endl;
 	}
 
-	//TODO: without shape completion
+	//// without shape completion
 	bool getSurface = SceneProcessor::buildObjSurface(*newScene, *fundamentalParticle.state);
 	if (!getSurface)
 	{
@@ -173,11 +208,9 @@ int main(int argc, char **argv)
 		std::cerr << "fundamentalParticle shown!" << std::endl;
 		sleep(2);
 	}
+*/
 
-/*
-	/////////////////////////////////////////////
-	/// Visualize particles
-	/////////////////////////////////////////////
+	/// Visualize old particles X_t'
 	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
 	{
 		std_msgs::Header header; header.frame_id = scenario->mapServer->getWorldFrame(); header.stamp = ros::Time::now();
@@ -196,33 +229,6 @@ int main(int argc, char **argv)
 		std::cerr << "Particle " << i << " weight: " << fixture.particleFilter->particles[i].weight << std::endl;
 	}
 
-	//// Look up transformation
-	moveit::Pose worldTcamera;
-	const auto& cameraModel = fixture.motionData.cameraModel;
-	const ros::Time queryTime = ros::Time(0); // buffer.rgb.begin()->first;
-	const ros::Duration timeout = ros::Duration(5.0);
-	std::string tfError;
-	bool canTransform = fixture.motionData.tfs->canTransform(scenario->worldFrame, cameraModel.tfFrame(), queryTime, &tfError);
-	if (!canTransform) // ros::Duration(5.0)
-	{
-		ROS_ERROR_STREAM("Failed to look up transform between '" << scenario->worldFrame << "' and '"
-		                                                         << cameraModel.tfFrame() << "' with error '"
-		                                                         << tfError << "'.");
-		throw std::runtime_error("Sadness.");
-	}
-	tf::StampedTransform cameraFrameInTableCoordinates;
-	const auto temp = fixture.motionData.tfs->lookupTransform(cameraModel.tfFrame(), scenario->worldFrame, queryTime);
-	tf::transformStampedMsgToTF(temp, cameraFrameInTableCoordinates);
-	tf::transformTFToEigen(cameraFrameInTableCoordinates.inverse(), worldTcamera);
-
-
-	/////////////////////////////////////////////
-	//// Compute new sceneOctree
-	/////////////////////////////////////////////
-	pcl::PointCloud<PointT>::Ptr finalPC = imagesToCloud(fixture.motionData.rgb.rbegin()->second->image,
-	                                                     fixture.motionData.depth.rbegin()->second->image, fixture.motionData.cameraModel);
-	scenario->mapServer->insertCloud(finalPC, worldTcamera);
-	octomap::OcTree* sceneOctree = scenario->mapServer->getOctree();
 
 	/////////////////////////////////////////////
 	//// Free space refinement
@@ -240,7 +246,7 @@ int main(int argc, char **argv)
 	}
 
 	/////////////////////////////////////////////
-	//// Compute weights
+	//// Compute weights for old particles X_t' after refinement
 	/////////////////////////////////////////////
 	fixture.particleFilter->applyMeasurementModel(newScene);
 	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
@@ -248,6 +254,7 @@ int main(int argc, char **argv)
 		std::cerr << "Particle " << i << " after refinement weight: " << fixture.particleFilter->particles[i].weight << std::endl;
 	}
 
+/*
 	/////////////////////////////////////////////
 	//// Generate optimal particle for newScene
 	/////////////////////////////////////////////
@@ -283,23 +290,48 @@ int main(int argc, char **argv)
 		std::cerr << "New optimal state particle shown!" << std::endl;
 		sleep(5);
 	}
-
-	/////////////////////////////////////////////
-	//// Refinement based on new optimal particle
-	/////////////////////////////////////////////
-	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
-	{
-		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree);
-		std_msgs::Header header;
-		header.frame_id = scenario->mapServer->getWorldFrame();
-		header.stamp = ros::Time::now();
-		auto pfnewmarker = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
-		visualPub.publish(pfnewmarker);
-		std::cerr << "Refinement based on new optimal particle " << i << " shown!" << std::endl;
-		sleep(2);
-	}
 */
 
+	/////////////////////////////////////////////
+	//// Mixturing new and old particles
+	/////////////////////////////////////////////
+	auto newSamples = fixture.particleFilter->createParticlesFromSegmentation(newScene, fixture.particleFilter->numParticles);
+	/// Visualize new particles X_t''
+	for (int i = 0; i<static_cast<int>(newSamples.size()); ++i)
+	{
+		std_msgs::Header header; header.frame_id = scenario->mapServer->getWorldFrame(); header.stamp = ros::Time::now();
+		auto pfMarkers = mps::visualize(*newSamples[i].state, header, rng);
+		visualPub.publish(pfMarkers);
+		std::cerr << "New particle " << i << " shown!" << std::endl;
+		sleep(3);
+	}
+
+	for (int newParticleID = 0; newParticleID<static_cast<int>(newSamples.size()); ++newParticleID)
+	{
+		for (int oldParticleID = 0; oldParticleID<fixture.particleFilter->numParticles; ++oldParticleID)
+		{
+			std::vector<const VoxelRegion::VertexLabels*> toCombine;
+			toCombine.emplace_back(&newSamples[newParticleID].state->vertexState);
+			toCombine.emplace_back(&fixture.particleFilter->particles[oldParticleID].state->vertexState);
+
+			VoxelConflictResolver resolver(fixture.particleFilter->voxelRegion, toCombine);
+
+			std::cerr << "Mixing new particle " << newParticleID << " and old particle " << oldParticleID << std::endl;
+			for (int iter = 0; iter < 5; ++iter)
+			{
+				auto structure = resolver.sampleStructure(scenario->rng());
+				auto V = resolver.sampleGeometry(toCombine, structure, scenario->rng());
+
+				std_msgs::Header header;
+				header.frame_id = scenario->mapServer->getWorldFrame();
+				header.stamp = ros::Time::now();
+				auto pfnewmarker = mps::visualize(*fixture.particleFilter->voxelRegion, V, header, scenario->rng());
+				visualPub.publish(pfnewmarker);
+				std::cerr << "Mixed particle " << iter << " shown!" << std::endl;
+				sleep(3);
+			}
+		}
+	}
 
 	return 0;
 }
