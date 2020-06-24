@@ -785,7 +785,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 
 		for (unsigned int manip_idx : manip_indices)
 		{
-			auto& manipulator = scenario->manipulators[manip_idx];
+			const auto & manipulator = scenario->manipulators[manip_idx];
 
 			std::vector<std::vector<double>> sln;
 
