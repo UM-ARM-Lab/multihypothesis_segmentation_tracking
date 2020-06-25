@@ -45,7 +45,7 @@ const std::string testDirName = "package://mps_test_data/";
 const std::string expDirName = "2020-06-24T21:04:51.344795/";
 const std::string logDir = parsePackageURL(testDirName);
 const std::string resultDir = "result_particles/";
-const std::string trackingFilename = logDir + expDirName;
+const std::string trackingFilename = logDir + expDirName + "dense_track_" + std::to_string(0) + "_" + std::to_string(0) + ".bag";
 const int numIter = 4; /// # buffer bags
 
 class ParticleFilterTestFixture
@@ -85,7 +85,7 @@ public:
 #if USE_HISTORYTRACKER
 		denseTracker = std::make_unique<HistoryTracker>(trackingFilename);
 #else
-		denseTracker = std::make_unique<SiamTracker>(trackingFilename);
+		denseTracker = std::make_unique<SiamTracker>(logDir + expDirName);
 #endif
 
 		double resolution = 0.010;

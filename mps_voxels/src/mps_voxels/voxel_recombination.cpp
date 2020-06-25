@@ -354,7 +354,7 @@ VoxelConflictResolver::sampleGeometry(const std::vector<const VoxelRegion::Verte
 	for (size_t component = 0; component < structures.size(); ++component)
 	{
 		const auto& predecessors = structures[component];
-
+		int numNodes = predecessors.size() + 1;
 
 		for (const auto& pair : predecessors)
 		{
@@ -380,6 +380,10 @@ VoxelConflictResolver::sampleGeometry(const std::vector<const VoxelRegion::Verte
 
 			double pMerge = static_cast<double>(ep.numOverlaps) * static_cast<double>(objectSizes.at(npv))
 			                / (static_cast<double>(objectSizes.at(npu)) * static_cast<double>(objectSizes.at(npu)));
+			if (numNodes == 2)
+			{
+				pMerge = iou;
+			}
 			bool doMerge = uni(re) < pMerge;
 			if (doMerge)
 			{
