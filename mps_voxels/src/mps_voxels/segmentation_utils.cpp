@@ -33,6 +33,7 @@
 #include "mps_voxels/project_point.hpp"
 #include "mps_voxels/SensorHistorian.h"
 #include "mps_voxels/util/assert.h"
+#include "mps_voxels/VoxelRegion.h"
 
 #include <pcl/filters/voxel_grid.h>
 
@@ -255,6 +256,7 @@ std::map<uint16_t, mps_msgs::AABBox2d> getBBox(const cv::Mat& labels, const cv::
 
 	for (const auto label : uniqueLabels)
 	{
+		if (label == mps::VoxelRegion::FREE_SPACE) continue;
 		mps_msgs::AABBox2d bbox;
 		cv::Rect box = cv::boundingRect(labels == label) & roi;
 

@@ -344,6 +344,14 @@ target_link_libraries(${PROJECT_NAME}_test_refinement
   ${catkin_LIBRARIES}
 )
 
+add_executable(${PROJECT_NAME}_particle_filter_pipeline src/particle_filter_pipeline.cpp)
+set_target_properties(${PROJECT_NAME}_particle_filter_pipeline PROPERTIES OUTPUT_NAME particle_filter_pipeline PREFIX "")
+add_dependencies(${PROJECT_NAME}_particle_filter_pipeline ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_particle_filter_pipeline
+  ${PROJECT_NAME}
+  ${catkin_LIBRARIES}
+)
+
 # Notify any IDE that headers are part of project
 file(GLOB_RECURSE IncludeFiles "include/*")
 add_custom_target(${PROJECT_NAME}_headers SOURCES ${IncludeFiles})

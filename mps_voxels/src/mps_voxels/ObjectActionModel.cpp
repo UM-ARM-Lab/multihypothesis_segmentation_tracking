@@ -291,6 +291,7 @@ bool ObjectActionModel::clusterRigidBodyTransformation(const std::map<std::pair<
 			std::cerr << "jlinkage server not connected" << std::endl;
 		}
 
+		//// TODO: stuck waiting during the second iteration, probably time issue
 		auto success = jlinkageActionClient.sendGoalAndWait(goal);
 		if (!success.isDone())
 		{
@@ -399,7 +400,7 @@ ObjectActionModel::ObjectActionModel(std::shared_ptr<const Scenario> scenario_, 
 	/////////////////////////////////////////////
 	//// ICP check & store
 	/////////////////////////////////////////////
-	ObjectActionModel::TimePoseLookup timeToMotionLookup = icpManifoldSequentialSampler(steps, buffer, worldTcamera);
+//	ObjectActionModel::TimePoseLookup timeToMotionLookup = icpManifoldSequentialSampler(steps, buffer, worldTcamera);
 
 	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer.rgb.at(steps[0])->image, buffer.depth.at(steps[0])->image,
 	                                                                buffer.cameraModel, masks.at(steps[0]));
