@@ -588,4 +588,29 @@ VoxelRegion::coordToVertexDesc(const Eigen::Vector3d& query) const
 	return mps::coordToVertexDesc(this->resolution, this->regionMin, query);
 }
 
+std::vector<size_t> getNeighbourIndices(const VoxelRegion& region, VoxelRegion::vertex_descriptor& vd, int& range)
+{
+	std::vector<size_t> neighbours;
+	Eigen::Vector3d originalCoord = vertexDescpToCoord(region.resolution, region.regionMin, vd);
+
+	for (int x = -range; x <= range; ++x)
+	{
+		for (int y = -range; y <= range; ++y)
+		{
+			for (int z = -range; z <= range; ++z)
+			{
+				Eigen::Vector3d newCoord = originalCoord;
+				newCoord.x() += x*region.resolution;
+				newCoord.y() += y*region.resolution;
+				newCoord.z() += z*region.resolution;
+				if (!region.isInRegion(newCoord)) continue;
+				VoxelRegion::vertex_descriptor newVD = coordToVertexDesc(region.resolution, region.regionMin, newCoord);
+				auto index = region.index_of(newVD);
+				neighbours.push_back(index);
+			}
+		}
+	}
+	return neighbours;
+}
+
 }

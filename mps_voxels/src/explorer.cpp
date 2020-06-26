@@ -173,8 +173,8 @@ public:
 	std::unique_ptr<MotionPlanner> planner;
 	std::map<std::string, std::shared_ptr<MotionModel>> selfModels;
 
-	double planning_time = 60.0;
-	int planning_samples = 10;
+	double planning_time = 120.0;
+	int planning_samples = 50;
 	ros::ServiceClient externalVideoClient;
 	MarkerSet allMarkers;
 
@@ -208,8 +208,8 @@ public:
 	{
 		if (tracked)
 		{
-			tracked->particleFilter->computeAndApplyActionModel(
-				tracked->historian->buffer, tracked->sparseTracker, tracked->denseTracker);
+//			tracked->particleFilter->computeAndApplyActionModel(
+//				tracked->historian->buffer, tracked->sparseTracker, tracked->denseTracker);
 		}
 	}
 };
@@ -570,44 +570,51 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	/////////////////////////////////////////////
 	std::cerr << __FILE__ << ": " << __LINE__ << std::endl;
 
-
-	if (particleFilter->particles.empty())
+//	if (particleFilter->particles.empty())
 	{
+		static int generation = 0;
+		++generation;
+		if (generation > 5)
+		{
+			ros::shutdown();
+			return;
+		}
+		particleFilter->particles.clear();
 		particleFilter->initializeParticles(scene);
 	}
-	else
-	{
-//		particleFilter->computeAndApplyActionModel(historian->buffer, sparseTracker, denseTracker);
-		auto newSamples = particleFilter->createParticlesFromSegmentation(scene, particleFilter->numParticles);
-
-		std::vector<const VoxelRegion::VertexLabels*> toCombine;
-		for (const auto& v : particleFilter->particles)
-		{
-			toCombine.emplace_back(&v.state->vertexState);
-		}
-		for (const auto& v : newSamples)
-		{
-			toCombine.emplace_back(&v.state->vertexState);
-		}
-
-//		computeSegmentationGraph(*particleFilter->voxelRegion, toCombine);
-
-		VoxelConflictResolver resolver(particleFilter->voxelRegion, toCombine);
-
-//		for (int iter = 0; iter < 100; ++iter)
-		{
-			auto structure = resolver.sampleStructure(scenario->rng());
-			auto V = resolver.sampleGeometry(toCombine, structure, scenario->rng());
-
-			std_msgs::Header header;
-			header.frame_id = globalFrame;
-			header.stamp = ros::Time::now();
-			allMarkers["new_sample"] = mps::visualize(*particleFilter->voxelRegion, V, header, scenario->rng());
-			visualPub.publish(allMarkers.flatten());
-		}
-
-		particleFilter->applyMeasurementModel(scene);
-	}
+//	else
+//	{
+////		particleFilter->computeAndApplyActionModel(historian->buffer, sparseTracker, denseTracker);
+//		auto newSamples = particleFilter->createParticlesFromSegmentation(scene, particleFilter->numParticles);
+//
+//		std::vector<const VoxelRegion::VertexLabels*> toCombine;
+//		for (const auto& v : particleFilter->particles)
+//		{
+//			toCombine.emplace_back(&v.state->vertexState);
+//		}
+//		for (const auto& v : newSamples)
+//		{
+//			toCombine.emplace_back(&v.state->vertexState);
+//		}
+//
+////		computeSegmentationGraph(*particleFilter->voxelRegion, toCombine);
+//
+//		VoxelConflictResolver resolver(particleFilter->voxelRegion, toCombine);
+//
+////		for (int iter = 0; iter < 100; ++iter)
+//		{
+//			auto structure = resolver.sampleStructure(scenario->rng());
+//			auto V = resolver.sampleGeometry(toCombine, structure, scenario->rng());
+//
+//			std_msgs::Header header;
+//			header.frame_id = globalFrame;
+//			header.stamp = ros::Time::now();
+//			allMarkers["new_sample"] = mps::visualize(*particleFilter->voxelRegion, V, header, scenario->rng());
+//			visualPub.publish(allMarkers.flatten());
+//		}
+//
+//		particleFilter->applyMeasurementModel(scene);
+//	}
 
 	{
 		if (particleFilter->particles.empty())
@@ -933,12 +940,16 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 		}
 	}
 
+	std::cerr << "Planning:" << std::endl;
+	std::cerr << planning_time << std::endl;
+	std::cerr << planning_samples << std::endl;
+
 	ros::Time planningDeadline = ros::Time::now() + ros::Duration(planning_time);
 
 	if (!motion)
 	{
 //		#pragma omp parallel for private(SceneExplorer::scene) num_threads(omp_get_max_threads()/4)
-		for (int i = 0; i<planning_samples; ++i)
+		for (int i = 0; i < planning_samples; ++i)
 		{
 			if (ros::Time::now() > planningDeadline)
 			{
@@ -958,6 +969,10 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 					motionQueue.push({reward, {motionPush, pushInfo}});
 				}
 			}
+			else
+			{
+				ROS_WARN_STREAM("Push sample failed.");
+			}
 
 			if (ros::Time::now() > planningDeadline)
 			{
@@ -974,6 +989,10 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 				{
 					motionQueue.push({reward, {motionSlide, slideInfo}});
 				}
+			}
+			else
+			{
+				ROS_WARN_STREAM("Slide sample failed.");
 			}
 		}
 
@@ -1001,6 +1020,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	PROFILE_START("Execution");
 
 	PFUpdateGuard trackerUpdateGuard(this);
+	historian->reset();
 
 	auto compositeAction = std::dynamic_pointer_cast<CompositeAction>(motion->action);
 	// Allow some visualization time
@@ -1252,9 +1272,10 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	scenario->completionClient = completionClient;
 	scenario->segmentationClient = segmentationClient;
 
+	const int numParticles = 5;
 	particleFilter = std::make_unique<ParticleFilter>(scenario, scenario->mapServer->m_res,
 	                                                  scenario->minExtent.head<3>(),
-	                                                  scenario->maxExtent.head<3>(), 2);
+	                                                  scenario->maxExtent.head<3>(), numParticles);
 
 	Tracker::TrackingOptions opts;
 	opts.roi.minExtent = {scenario->minExtent.x(), scenario->minExtent.y(), scenario->minExtent.z()};

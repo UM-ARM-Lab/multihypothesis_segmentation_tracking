@@ -354,7 +354,7 @@ VoxelConflictResolver::sampleGeometry(const std::vector<const VoxelRegion::Verte
 	for (size_t component = 0; component < structures.size(); ++component)
 	{
 		const auto& predecessors = structures[component];
-
+		int numNodes = predecessors.size() + 1;
 
 		for (const auto& pair : predecessors)
 		{
@@ -374,11 +374,17 @@ VoxelConflictResolver::sampleGeometry(const std::vector<const VoxelRegion::Verte
 			const ConflictEdgeProperties& ep = G[ed];
 
 			double iou = static_cast<double>(ep.numOverlaps)/static_cast<double>(objectSizes.at(npu) + objectSizes.at(npv) - ep.numOverlaps);
-			double iou1 = static_cast<double>(ep.numOverlaps)/static_cast<double>(objectSizes.at(npu));
-			double iou2 = static_cast<double>(ep.numOverlaps)/static_cast<double>(objectSizes.at(npv));
-			if (iou1 > 0.3 || iou2 > 0.3) iou = 1.0;
+			double io1 = static_cast<double>(ep.numOverlaps)/static_cast<double>(objectSizes.at(npu));
+			double io2 = static_cast<double>(ep.numOverlaps)/static_cast<double>(objectSizes.at(npv));
+			if (io1 > 0.3 || io2 > 0.3) iou = 1.0;
 
-			bool doMerge = uni(re) < iou;
+			double pMerge = static_cast<double>(ep.numOverlaps) * static_cast<double>(objectSizes.at(npv))
+			                / (static_cast<double>(objectSizes.at(npu)) * static_cast<double>(objectSizes.at(npu)));
+			if (numNodes == 2)
+			{
+				pMerge = iou;
+			}
+			bool doMerge = uni(re) < pMerge;
 			if (doMerge)
 			{
 				dsf.merge(pair.second, pair.first);
