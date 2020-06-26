@@ -10,7 +10,7 @@ namespace mps
 {
 
 
-void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOctree)
+void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOctree, double table_height)
 {
 	for (int i = 0; i < (int)particle.state->voxelRegion->num_vertices(); ++i)
 	{
@@ -18,6 +18,8 @@ void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOct
 		{
 			VoxelRegion::vertex_descriptor vd = particle.state->voxelRegion->vertex_at(i);
 			Eigen::Vector3d coord = particle.state->voxelRegion->coordinate_of(vd);
+			if (coord.z() < table_height) particle.state->vertexState[i] = VoxelRegion::FREE_SPACE; /// eliminate voxels below table surface
+
 			octomap::OcTreeNode* node = sceneOctree->search(coord.x(), coord.y(), coord.z());
 
 			if (node) /// coord is inside sceneOctree; if it is not: then it's unseen

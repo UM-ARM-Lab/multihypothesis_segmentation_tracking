@@ -297,7 +297,7 @@ void ParticleFilter::refine(const std::shared_ptr<const MeasurementSensorData>& 
 		/////////////////////////////////////////////
 		//// Free space refinement
 		/////////////////////////////////////////////
-		refineParticleFreeSpace(particle, newScene->sceneOctree);
+		refineParticleFreeSpace(particle, newScene->sceneOctree, 0.03);
 	}
 }
 

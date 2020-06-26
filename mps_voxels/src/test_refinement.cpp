@@ -174,7 +174,7 @@ int main(int argc, char **argv)
 	/////////////////////////////////////////////
 	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
 	{
-		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree);
+		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree, 0.03);
 		std_msgs::Header header;
 		header.frame_id = scenario->mapServer->getWorldFrame();
 		header.stamp = ros::Time::now();
@@ -249,7 +249,6 @@ int main(int argc, char **argv)
 	/////////////////////////////////////////////
 	//// Free space refinement
 	/////////////////////////////////////////////
-	//// TODO: get rid of voxels below table surface
 	//// Look up transformation
 	moveit::Pose worldTcamera;
 	const auto& cameraModel = fixture.motionData.cameraModel;
@@ -288,16 +287,19 @@ int main(int argc, char **argv)
 
 	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
 	{
-		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree);
-/*
-		std_msgs::Header header;
+		std_msgs::Header header; header.frame_id = scenario->mapServer->getWorldFrame(); header.stamp = ros::Time::now();
+		auto pfMarkers = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
+		visualPub.publish(pfMarkers);
+		std::cerr << "old particle " << i << " shown!" << std::endl;
+		usleep(500000);
+
+		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree, 0.03);
 		header.frame_id = scenario->mapServer->getWorldFrame();
 		header.stamp = ros::Time::now();
 		auto pfnewmarker = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
 		visualPub.publish(pfnewmarker);
 		std::cerr << "Free-space refined predicted state particle " << i << " shown!" << std::endl;
 		usleep(500000);
-*/
 	}
 
 	/////////////////////////////////////////////
@@ -320,17 +322,17 @@ int main(int argc, char **argv)
 	//// TODO: if more particles, generate scene
 //		auto newSamples = fixture.particleFilter->createParticlesFromSegmentation(newScene, fixture.particleFilter->numParticles);
 
+/*
 	/// Visualize new particles X_t''
 	for (int i = 0; i<static_cast<int>(newSamples.size()); ++i)
 	{
-/*
 		std_msgs::Header header; header.frame_id = scenario->mapServer->getWorldFrame(); header.stamp = ros::Time::now();
 		auto pfMarkers = mps::visualize(*newSamples[i].state, header, rng);
 		visualPub.publish(pfMarkers);
 		std::cerr << "New particle " << i << " shown!" << std::endl;
 		usleep(500000);
-*/
 	}
+*/
 
 	for (int newParticleID = 0; newParticleID<static_cast<int>(newSamples.size()); ++newParticleID)
 	{
@@ -343,6 +345,7 @@ int main(int argc, char **argv)
 			VoxelConflictResolver resolver(fixture.particleFilter->voxelRegion, toCombine);
 
 			std::cerr << "Mixing new particle " << newParticleID << " and old particle " << oldParticleID << std::endl;
+			std::vector<Particle> mixParticles;
 			for (int iter = 0; iter < 5; ++iter)
 			{
 				auto structure = resolver.sampleStructure(scenario->rng());
@@ -368,7 +371,7 @@ int main(int argc, char **argv)
 				auto pfnewmarker = mps::visualize(*fixture.particleFilter->voxelRegion, V, header, cmap);
 				visualPub.publish(pfnewmarker);
 				std::cerr << "Mixed particle " << iter << " shown!" << std::endl;
-				sleep(3);
+				sleep(1);
 
 				bool isconverge = false;
 				int numFilter = 0;
@@ -379,9 +382,37 @@ int main(int argc, char **argv)
 					auto pfMarkers = mps::visualize(*inputParticle.state, header, cmap);
 					visualPub.publish(pfMarkers);
 					std::cerr << "Mixed particle filtered " << iter << " shown!" << std::endl;
-					usleep(200000);
+					usleep(100000);
 					numFilter++;
 				}
+				mixParticles.push_back(inputParticle);
+				usleep(2000000);
+			}
+
+			//// Remixing sampled merging result
+			std::vector<const VoxelRegion::VertexLabels*> toCombineAgain;
+			for (auto& p : mixParticles)
+			{
+				toCombineAgain.emplace_back(&p.state->vertexState);
+			}
+			VoxelConflictResolver resolver2(fixture.particleFilter->voxelRegion, toCombineAgain);
+			for (int iter = 0; iter < 5; ++iter)
+			{
+				auto structure = resolver2.sampleStructure(scenario->rng());
+				auto V = resolver2.sampleGeometry(toCombineAgain, structure, scenario->rng());
+
+				Particle inputParticle;
+				inputParticle.state = std::make_shared<OccupancyData>(newSamples[newParticleID].state->voxelRegion, V);
+				inputParticle.particle = newSamples[newParticleID].particle;
+				assert(!inputParticle.state->uniqueObjectLabels.empty());
+
+				std_msgs::Header header;
+				header.frame_id = scenario->mapServer->getWorldFrame();
+				header.stamp = ros::Time::now();
+				auto pfnewmarker = mps::visualize(*fixture.particleFilter->voxelRegion, V, header, rng);
+				visualPub.publish(pfnewmarker);
+				std::cerr << "Mixed particle " << iter << " shown!" << std::endl;
+				sleep(1);
 			}
 		}
 	}

@@ -216,7 +216,7 @@ int main(int argc, char **argv)
 
 		for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
 		{
-			refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree);
+			refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree, 0.03);
 			std_msgs::Header header;
 			header.frame_id = scenario->mapServer->getWorldFrame();
 			header.stamp = ros::Time::now();
