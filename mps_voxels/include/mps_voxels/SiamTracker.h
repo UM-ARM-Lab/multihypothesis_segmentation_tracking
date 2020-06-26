@@ -34,9 +34,11 @@ public:
 class SiamTracker : public DenseTracker
 {
 public:
-	SiamTracker();
+	SiamTracker(const std::string& path = "");
 
 	actionlib::SimpleActionClient<mps_msgs::TrackBBoxAction> actionClient;
+
+	std::string trackingFilename;
 
 	bool track(const std::vector<ros::Time>& steps, const SensorHistoryBuffer& buffer, uint16_t label, const cv::Mat& initMask, std::map<ros::Time, cv::Mat>& masks) override;
 

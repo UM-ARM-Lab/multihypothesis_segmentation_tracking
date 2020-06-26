@@ -176,11 +176,12 @@ ParticleFilter::computeActionModel(
 	std::string temp = "";
 	if (shouldLogSiamMask && !denseTracker->isHistoryTracker(temp))
 	{
-		const std::string trackingFilename =
+		std::string trackingFilename =
 			scenario->experiment->experiment_dir + "/"
 			+ "dense_track_"
 			+ std::to_string(generation) + "_"
 			+ std::to_string(inputParticle.particle.id) + ".bag";
+		if (!temp.empty()) trackingFilename = temp + "dense_track_" + std::to_string(generation) + "_" + std::to_string(inputParticle.particle.id) + ".bag";
 		DataLog logger(trackingFilename);
 		logger.log<SiamMaskData>("SiamMaskData", siammasks);
 		ROS_INFO_STREAM("Logged siammasks");

@@ -18,8 +18,8 @@
 namespace mps
 {
 
-SiamTracker::SiamTracker()
-	: DenseTracker(), actionClient("TrackBBox", true)
+SiamTracker::SiamTracker(const std::string& path)
+	: DenseTracker(), actionClient("TrackBBox", true), trackingFilename(path)
 {
 
 }
@@ -119,8 +119,9 @@ bool SiamTracker::track(const std::vector<ros::Time>& steps, const SensorHistory
 	return true;
 }
 
-bool SiamTracker::isHistoryTracker(std::string& /*fname*/)
+bool SiamTracker::isHistoryTracker(std::string& fname)
 {
+	fname = trackingFilename;
 	return false;
 }
 
