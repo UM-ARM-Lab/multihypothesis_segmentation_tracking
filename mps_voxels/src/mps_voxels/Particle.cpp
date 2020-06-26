@@ -10,15 +10,22 @@ namespace mps
 {
 
 
-void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOctree, double table_height)
+std::pair<int, int> refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOctree, double table_height)
 {
+	int numVoxelEliminated = 0;
+	int origTotalVoxels = 0;
 	for (int i = 0; i < (int)particle.state->voxelRegion->num_vertices(); ++i)
 	{
 		if (particle.state->vertexState[i] != VoxelRegion::FREE_SPACE)
 		{
+			++origTotalVoxels;
 			VoxelRegion::vertex_descriptor vd = particle.state->voxelRegion->vertex_at(i);
 			Eigen::Vector3d coord = particle.state->voxelRegion->coordinate_of(vd);
-			if (coord.z() < table_height) particle.state->vertexState[i] = VoxelRegion::FREE_SPACE; /// eliminate voxels below table surface
+			if (coord.z() < table_height)
+			{
+				particle.state->vertexState[i] = VoxelRegion::FREE_SPACE; /// eliminate voxels below table surface
+				++numVoxelEliminated;
+			}
 
 			octomap::OcTreeNode* node = sceneOctree->search(coord.x(), coord.y(), coord.z());
 
@@ -27,10 +34,12 @@ void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOct
 				if (node->getOccupancy() <= sceneOctree->getOccupancyThres())
 				{
 					particle.state->vertexState[i] = VoxelRegion::FREE_SPACE; /// set to empty
+					++numVoxelEliminated;
 				}
 			}
 		}
 	}
+	return std::make_pair(numVoxelEliminated, origTotalVoxels);
 }
 
 /*

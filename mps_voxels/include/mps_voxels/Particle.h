@@ -63,7 +63,7 @@ struct Particle
 	double weight = 0;
 };
 
-void refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOctree, double table_height);
+std::pair<int, int> refineParticleFreeSpace(Particle& particle, const octomap::OcTree* sceneOctree, double table_height);
 
 //void refineNewOptimalParticleBased(Particle& particle, const Particle& newOptimalParticle);
 
