@@ -690,9 +690,14 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	if (info) { info->objectSampleInfo = sampleInfo; }
 	if (!sampleInfo)
 	{
+		ROS_WARN_STREAM("Object sampling failed.");
 		return std::shared_ptr<Motion>();
 	}
 	const octomap::OcTree* tree = env->objects.at(sampleInfo.id)->occupancy.get();
+	if (getPoints(tree).empty())
+	{
+		ROS_ERROR_STREAM("Object occupancy tree is empty.");
+	}
 
 	Pose pushFrame;
 	Eigen::Vector3d gHat = -Eigen::Vector3d::UnitZ();
@@ -750,6 +755,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	                        pushGripperFrames.end());
 	if (pushGripperFrames.empty())
 	{
+		ROS_WARN_STREAM("No pushing frames contain points.");
 		return std::shared_ptr<Motion>();
 	}
 
@@ -902,6 +908,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 		}
 	}
 
+	ROS_WARN_STREAM("Other pushing failure.");
 	return std::shared_ptr<Motion>();
 }
 
@@ -927,9 +934,14 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 	if (info) { info->objectSampleInfo = sampleInfo; }
 	if (!sampleInfo)
 	{
+		ROS_WARN_STREAM("Object sampling failed.");
 		return std::shared_ptr<Motion>();
 	}
 	const octomap::OcTree* tree = env->objects.at(sampleInfo.id)->occupancy.get();
+	if (getPoints(tree).empty())
+	{
+		ROS_ERROR_STREAM("Object occupancy tree is empty.");
+	}
 
 	// Get potential grasps
 	auto graspPoses = getGraspPoses(tree);
@@ -1137,7 +1149,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 		}
 	}
 
-
+	ROS_WARN_STREAM("Other sliding failure.");
 	return std::shared_ptr<Motion>();
 }
 
@@ -1161,6 +1173,10 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 
 	// Get an object to slide
 	const octomap::OcTree* tree = env->objects.at(targetID)->occupancy.get();
+	if (getPoints(tree).empty())
+	{
+		ROS_ERROR_STREAM("Object occupancy tree is empty.");
+	}
 
 	// Get potential grasps
 	auto graspPoses = getGraspPoses(tree);
