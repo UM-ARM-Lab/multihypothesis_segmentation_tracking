@@ -690,9 +690,14 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	if (info) { info->objectSampleInfo = sampleInfo; }
 	if (!sampleInfo)
 	{
+		ROS_WARN_STREAM("Object sampling failed.");
 		return std::shared_ptr<Motion>();
 	}
 	const octomap::OcTree* tree = env->objects.at(sampleInfo.id)->occupancy.get();
+	if (getPoints(tree).empty())
+	{
+		ROS_ERROR_STREAM("Object occupancy tree is empty.");
+	}
 
 	Pose pushFrame;
 	Eigen::Vector3d gHat = -Eigen::Vector3d::UnitZ();
@@ -733,13 +738,16 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	// Display occluded point and push frame
 	if (scenario->shouldVisualize("push_sampling"))
 	{
+		std::vector<tf::StampedTransform> tfs;
+		ros::Time time = ros::Time::now();
 		tf::Transform t = tf::Transform::getIdentity();
 		tf::poseEigenToTF(pushFrame, t);
-		scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), scenario->worldFrame, "push_frame"));
+		tfs.emplace_back(tf::StampedTransform(t, time, scenario->worldFrame, "push_frame"));
 		tf::poseEigenToTF(pushGripperFrames[0], t);
-		scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), scenario->worldFrame, "push_gripper_frame_0"));
+		tfs.emplace_back(tf::StampedTransform(t, time, scenario->worldFrame, "push_gripper_frame_0"));
 		tf::poseEigenToTF(pushGripperFrames[1], t);
-		scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), scenario->worldFrame, "push_gripper_frame_1"));
+		tfs.emplace_back(tf::StampedTransform(t, time, scenario->worldFrame, "push_gripper_frame_1"));
+		scenario->broadcaster->sendTransform(tfs);
 	}
 
 	pushGripperFrames.erase(std::remove_if(pushGripperFrames.begin(), pushGripperFrames.end(),
@@ -747,6 +755,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	                        pushGripperFrames.end());
 	if (pushGripperFrames.empty())
 	{
+		ROS_WARN_STREAM("No pushing frames contain points.");
 		return std::shared_ptr<Motion>();
 	}
 
@@ -899,6 +908,7 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 		}
 	}
 
+	ROS_WARN_STREAM("Other pushing failure.");
 	return std::shared_ptr<Motion>();
 }
 
@@ -924,9 +934,14 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 	if (info) { info->objectSampleInfo = sampleInfo; }
 	if (!sampleInfo)
 	{
+		ROS_WARN_STREAM("Object sampling failed.");
 		return std::shared_ptr<Motion>();
 	}
 	const octomap::OcTree* tree = env->objects.at(sampleInfo.id)->occupancy.get();
+	if (getPoints(tree).empty())
+	{
+		ROS_ERROR_STREAM("Object occupancy tree is empty.");
+	}
 
 	// Get potential grasps
 	auto graspPoses = getGraspPoses(tree);
@@ -1134,7 +1149,7 @@ MotionPlanner::sampleSlide(const robot_state::RobotState& robotState, Introspect
 		}
 	}
 
-
+	ROS_WARN_STREAM("Other sliding failure.");
 	return std::shared_ptr<Motion>();
 }
 
@@ -1158,6 +1173,10 @@ std::shared_ptr<Motion> MotionPlanner::pick(const robot_state::RobotState& robot
 
 	// Get an object to slide
 	const octomap::OcTree* tree = env->objects.at(targetID)->occupancy.get();
+	if (getPoints(tree).empty())
+	{
+		ROS_ERROR_STREAM("Object occupancy tree is empty.");
+	}
 
 	// Get potential grasps
 	auto graspPoses = getGraspPoses(tree);
