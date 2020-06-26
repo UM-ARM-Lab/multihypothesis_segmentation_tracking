@@ -733,13 +733,16 @@ MotionPlanner::samplePush(const robot_state::RobotState& robotState, Introspecti
 	// Display occluded point and push frame
 	if (scenario->shouldVisualize("push_sampling"))
 	{
+		std::vector<tf::StampedTransform> tfs;
+		ros::Time time = ros::Time::now();
 		tf::Transform t = tf::Transform::getIdentity();
 		tf::poseEigenToTF(pushFrame, t);
-		scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), scenario->worldFrame, "push_frame"));
+		tfs.emplace_back(tf::StampedTransform(t, time, scenario->worldFrame, "push_frame"));
 		tf::poseEigenToTF(pushGripperFrames[0], t);
-		scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), scenario->worldFrame, "push_gripper_frame_0"));
+		tfs.emplace_back(tf::StampedTransform(t, time, scenario->worldFrame, "push_gripper_frame_0"));
 		tf::poseEigenToTF(pushGripperFrames[1], t);
-		scenario->broadcaster->sendTransform(tf::StampedTransform(t, ros::Time::now(), scenario->worldFrame, "push_gripper_frame_1"));
+		tfs.emplace_back(tf::StampedTransform(t, time, scenario->worldFrame, "push_gripper_frame_1"));
+		scenario->broadcaster->sendTransform(tfs);
 	}
 
 	pushGripperFrames.erase(std::remove_if(pushGripperFrames.begin(), pushGripperFrames.end(),
