@@ -47,6 +47,54 @@
         <gravity>1</gravity>
       </link>
     </model>
+    <model name='wall_plane'>
+      <pose frame=''>1.0 0 0 0 -1.0 0</pose>
+      <static>1</static>
+      <link name='link'>
+        <collision name='collision'>
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <surface>
+            <friction>
+              <ode>
+                <mu>100</mu>
+                <mu2>50</mu2>
+              </ode>
+              <torsional>
+                <ode/>
+              </torsional>
+            </friction>
+            <contact>
+              <ode/>
+            </contact>
+            <bounce/>
+          </surface>
+          <max_contacts>10</max_contacts>
+        </collision>
+        <visual name='visual'>
+          <cast_shadows>0</cast_shadows>
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <material>
+            <script>
+              <uri>file://media/materials/scripts/gazebo.material</uri>
+              <name>Gazebo/White</name>
+            </script>
+          </material>
+        </visual>
+        <self_collide>0</self_collide>
+        <kinematic>0</kinematic>
+        <gravity>1</gravity>
+      </link>
+    </model>
     <gravity>0 0 -9.8</gravity>
     <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
     <atmosphere type='adiabatic'/>
@@ -142,6 +190,7 @@
             <distortion_t1>0.0</distortion_t1>
             <distortion_t2>0.0</distortion_t2>
             <pointCloudCutoff>0.05</pointCloudCutoff>
+            <pointCloudCutoffMax>8</pointCloudCutoffMax>
             <robotNamespace>/</robotNamespace>
           </plugin>
           <always_on>1</always_on>
@@ -521,16 +570,6 @@
           <velocity>0 0 0 0 -0 0</velocity>
           <acceleration>-0.647848 -6.3513 6.94214 2.32421 1.48575 -0.045689</acceleration>
           <wrench>-0.252661 -2.47701 2.70743 0 -0 0</wrench>
-        </link>
-      </model>
-      <model name='cinder_block_2'>
-        <pose frame=''>0.756867 0.278892 0.926668 -0.598568 0.000168 0.203423</pose>
-        <scale>1 1 1</scale>
-        <link name='link'>
-          <pose frame=''>0.756867 0.278892 0.926668 -0.598568 0.000168 0.203423</pose>
-          <velocity>0 0 0 0 -0 0</velocity>
-          <acceleration>0 0 0 1e-06 1e-06 0</acceleration>
-          <wrench>2e-06 0 0 0 -0 0</wrench>
         </link>
       </model>
       <model name='coke_can'>
@@ -1120,169 +1159,6 @@
         <gravity>1</gravity>
       </link>
         <pose frame=''>0.77922 -0.029438 0.87 -1.5708 1.44617 3.04051</pose>
-    </model>
-    <model name='cinder_block_2'>
-      <link name='link'>
-        <inertial>
-          <pose frame=''>0 0 0.071438 0 -0 0</pose>
-          <mass>5</mass>
-          <inertia>
-            <ixx>0.06908</ixx>
-            <ixy>0</ixy>
-            <iyy>0.028705</iyy>
-            <ixz>0</ixz>
-            <iyz>0</iyz>
-            <izz>0.073708</izz>
-          </inertia>
-        </inertial>
-        <visual name='visual'>
-          <geometry>
-            <mesh>
-              <uri>model://cinder_block_2/meshes/cinder_block.dae</uri>
-              <scale>1 1 1</scale>
-            </mesh>
-          </geometry>
-        </visual>
-        <collision name='top'>
-          <pose frame=''>0 0 0.130175 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>0.19368 0.396875 0.0254</size>
-            </box>
-          </geometry>
-          <surface>
-            <contact>
-              <ode>
-                <max_vel>0.1</max_vel>
-                <min_depth>0.001</min_depth>
-              </ode>
-            </contact>
-            <friction>
-              <ode>
-                <mu>1</mu>
-                <mu2>1</mu2>
-              </ode>
-              <torsional>
-                <ode/>
-              </torsional>
-            </friction>
-            <bounce/>
-          </surface>
-          <max_contacts>10</max_contacts>
-        </collision>
-        <collision name='bottom'>
-          <pose frame=''>0 0 0.0127 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>0.19368 0.396875 0.0254</size>
-            </box>
-          </geometry>
-          <surface>
-            <contact>
-              <ode>
-                <max_vel>0.1</max_vel>
-                <min_depth>0.001</min_depth>
-              </ode>
-            </contact>
-            <friction>
-              <ode>
-                <mu>1</mu>
-                <mu2>1</mu2>
-              </ode>
-              <torsional>
-                <ode/>
-              </torsional>
-            </friction>
-            <bounce/>
-          </surface>
-          <max_contacts>10</max_contacts>
-        </collision>
-        <collision name='left'>
-          <pose frame=''>0 -0.185738 0.071438 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>0.19368 0.0254 0.092075</size>
-            </box>
-          </geometry>
-          <surface>
-            <contact>
-              <ode>
-                <max_vel>0.1</max_vel>
-                <min_depth>0.001</min_depth>
-              </ode>
-            </contact>
-            <friction>
-              <ode>
-                <mu>1</mu>
-                <mu2>1</mu2>
-              </ode>
-              <torsional>
-                <ode/>
-              </torsional>
-            </friction>
-            <bounce/>
-          </surface>
-          <max_contacts>10</max_contacts>
-        </collision>
-        <collision name='right'>
-          <pose frame=''>0 0.185738 0.071438 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>0.19368 0.0254 0.092075</size>
-            </box>
-          </geometry>
-          <surface>
-            <contact>
-              <ode>
-                <max_vel>0.1</max_vel>
-                <min_depth>0.001</min_depth>
-              </ode>
-            </contact>
-            <friction>
-              <ode>
-                <mu>1</mu>
-                <mu2>1</mu2>
-              </ode>
-              <torsional>
-                <ode/>
-              </torsional>
-            </friction>
-            <bounce/>
-          </surface>
-          <max_contacts>10</max_contacts>
-        </collision>
-        <collision name='middle'>
-          <pose frame=''>0 0 0.071438 0 -0 0</pose>
-          <geometry>
-            <box>
-              <size>0.19368 0.0254 0.092075</size>
-            </box>
-          </geometry>
-          <surface>
-            <contact>
-              <ode>
-                <max_vel>0.1</max_vel>
-                <min_depth>0.001</min_depth>
-              </ode>
-            </contact>
-            <friction>
-              <ode>
-                <mu>1</mu>
-                <mu2>1</mu2>
-              </ode>
-              <torsional>
-                <ode/>
-              </torsional>
-            </friction>
-            <bounce/>
-          </surface>
-          <max_contacts>10</max_contacts>
-        </collision>
-        <self_collide>0</self_collide>
-        <kinematic>0</kinematic>
-        <gravity>1</gravity>
-      </link>
-        <pose frame=''>0.756867 0.278892 0.926668 -0.598568 0.000168 0.203423</pose>
     </model>
     <model name='coke_can_1'>
       <link name='link'>
