@@ -217,6 +217,7 @@ mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, s
                                                          const Eigen::Vector3d& roiMinExtent,
                                                          const Eigen::Vector3d& roiMaxExtent);
 
+std::vector<size_t> getNeighbourIndices(const VoxelRegion& region, VoxelRegion::vertex_descriptor& vd, int& range);
 }
 
 #endif //SRC_VOXELREGION_H
