@@ -139,8 +139,15 @@ int main(int argc, char* argv[])
 	ros::init(argc, argv, "occupancy_evaluation");
 	ros::NodeHandle nh, pnh("~");
 
+	std::string dir;
+	bool gotDir = pnh.getParam("experiment_directory", dir);
+	if (!gotDir)
+	{
+		ROS_FATAL_STREAM("No experiment directory provided to evaluate.");
+		return -1;
+	}
 
-	const std::string workingDir = "/home/kunhuang/mps_ws/src/mps_pipeline/mps_test_data/2020-06-07T08:55:02.095309/";
+	const std::string workingDir = dir;
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-12T18:50:08.037350/"; // cubes?
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-12T18:08:10.469214/"; // books
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-10T23:35:24.412039/";
@@ -277,7 +284,7 @@ int main(int argc, char* argv[])
 		header.stamp = ros::Time::now();
 		particlePubGT.publish(mps::visualize(b, header, cmapGT));
 
-//			cv::imshow("Ground Truth", colorByLabel(segGT, cmapGT));
+//		cv::imshow("Ground Truth", colorByLabel(segGT, cmapGT));
 
 		for (size_t stage = 0; stage < ExperimentDir::checkpoints.size(); ++stage)
 		{
@@ -308,6 +315,8 @@ int main(int argc, char* argv[])
 
 				mps::Metrics metrics(a, b, cmapGT, rng);
 
+				JaccardMatch J2(segParticle, segGT);
+
 				std::cerr << generation << ": " << p << std::endl;
 				std::cerr << "\t" << metrics.match.match.first << "\t" << metrics.match.symmetricCover()
 				          << std::endl;
@@ -319,8 +328,8 @@ int main(int argc, char* argv[])
 						<< p << ","
 						<< metrics.match.match.first << ","
 						<< metrics.match.symmetricCover() << ","
-						<< ","
-						<< std::endl;
+						<< J2.match.first << ","
+						<< J2.symmetricCover() << std::endl;
 					out << "Generation,Stage,Particle,A3,S3,A2,S2" << std::endl;
 				}
 
@@ -368,6 +377,7 @@ int main(int argc, char* argv[])
 				// Compute and Display 2D overlap
 				// Compute and Display 3D overlap
 				// Plot scores
+//				}
 			}
 		}
 	}
