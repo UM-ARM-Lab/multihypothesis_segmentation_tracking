@@ -135,10 +135,10 @@ else()
   target_compile_definitions(${PROJECT_NAME}_gazebo_segmentation_gt PRIVATE VOXELIZER=0)
 endif()
 
-add_executable(${PROJECT_NAME}_test_occupancy_comparison src/test_occupancy_comparison.cpp)
-set_target_properties(${PROJECT_NAME}_test_occupancy_comparison PROPERTIES OUTPUT_NAME test_occupancy_comparison PREFIX "")
-add_dependencies(${PROJECT_NAME}_test_occupancy_comparison ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_test_occupancy_comparison
+add_executable(${PROJECT_NAME}_occupancy_evaluation src/occupancy_evaluation.cpp)
+set_target_properties(${PROJECT_NAME}_occupancy_evaluation PROPERTIES OUTPUT_NAME occupancy_evaluation PREFIX "")
+add_dependencies(${PROJECT_NAME}_occupancy_evaluation ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_occupancy_evaluation
   ${PROJECT_NAME}
 )
 

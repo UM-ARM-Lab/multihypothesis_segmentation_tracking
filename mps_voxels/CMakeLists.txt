@@ -206,6 +206,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/util/geometry.cpp
   src/${PROJECT_NAME}/util/samplers.cpp
   src/${PROJECT_NAME}/util/VoronoiTessellator.cpp
+  src/${PROJECT_NAME}/ExperimentDir.cpp
   src/${PROJECT_NAME}/ObjectLogger.cpp
   src/${PROJECT_NAME}/logging/DataLog.cpp
   src/${PROJECT_NAME}/logging/log_cv_mat.cpp

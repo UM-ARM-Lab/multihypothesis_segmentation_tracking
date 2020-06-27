@@ -33,6 +33,7 @@
 #include <mps_voxels/OccupancyData.h>
 #include <mps_voxels/SensorHistorian.h>
 #include <mps_voxels/image_utils.h>
+#include <mps_voxels/ExperimentDir.h>
 #include <mps_voxels/logging/DataLog.h>
 #include <mps_voxels/logging/log_occupancy_data.h>
 #include <mps_voxels/logging/log_sensor_history.h>
@@ -135,7 +136,7 @@ Eigen::Isometry3d getPose(const SensorHistoryBuffer& buffer, const std::string& 
 
 int main(int argc, char* argv[])
 {
-	ros::init(argc, argv, "test_occupancy_comparison");
+	ros::init(argc, argv, "occupancy_evaluation");
 	ros::NodeHandle nh, pnh("~");
 
 
@@ -143,13 +144,19 @@ int main(int argc, char* argv[])
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-12T18:08:10.469214/"; // books
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-10T23:35:24.412039/";
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-08T21:57:37.545002/";
-	const std::string globalFrame = "table_surface"; // TODO: Load from rosparams
 	const std::regex my_filter( "particle_(.+)_(.+)\\.bag" );
 
+	const std::string evalFilename = workingDir + "eval.csv";
+	{
+		std::fstream out(evalFilename, std::ios::out);
+		out << "Generation,Stage,Particle,A3,S3,A2,S2" << std::endl;
+	}
+
+	const std::string primaryStageDir = workingDir + ExperimentDir::checkpoints[ExperimentDir::bestGuessIndex];
 	int numGenerations = 0;
 	int numParticles = 0;
 	boost::filesystem::directory_iterator end_itr; // Default ctor yields past-the-end
-	for( boost::filesystem::directory_iterator i( workingDir ); i != end_itr; ++i )
+	for (boost::filesystem::directory_iterator i(primaryStageDir); i != end_itr; ++i )
 	{
 		// Skip if not a file
 		if( !boost::filesystem::is_regular_file( i->status() ) ) continue;
@@ -157,16 +164,22 @@ int main(int argc, char* argv[])
 		std::smatch what;
 
 		// Skip if no match:
-		if( !std::regex_match( i->path().filename().string(), what, my_filter ) ) continue;
+		if(!std::regex_match(i->path().filename().string(), what, my_filter)) continue;
 
 		numGenerations = std::max(numGenerations, std::stoi(what[1])+1);
 		numParticles = std::max(numParticles, std::stoi(what[2])+1);
 	}
 
+	// Load experiment parameters
+	if (!boost::filesystem::exists(workingDir + "rosparam.yaml"))
+	{
+		ROS_FATAL_STREAM("Working directory '" << workingDir << "' does not contain a parameter file.");
+		return -1;
+	}
 	YAML::Node rosparams = YAML::LoadFile(workingDir + "rosparam.yaml");
 
 	std::shared_ptr<mps::VoxelRegion> region = std::make_shared<mps::VoxelRegion>(mps::VoxelRegionBuilder::build(rosparams["scene_explorer"]["roi"]));
-
+	const std::string globalFrame = region->frame_id;
 
 	std::random_device rd;
 	int seed = rd(); //0;
@@ -194,6 +207,7 @@ int main(int argc, char* argv[])
 		}
 	}
 
+	// Pass meshes to renderer
 	std::map<std::string, std::shared_ptr<GazeboModel>> shapeModels = mps::getWorldFileModels(gazeboWorldFilename, modsToIgnore);
 	if (shapeModels.empty())
 	{
@@ -224,59 +238,68 @@ int main(int argc, char* argv[])
 //	b.voxelRegion = region;
 //	if (b.vertexState.size() != b.voxelRegion->num_vertices()) { throw std::logic_error("Fake news (b)!"); }
 
-	cv::namedWindow("Ground Truth", CV_WINDOW_NORMAL);
-	cv::namedWindow("Mask", CV_WINDOW_NORMAL);
+//	cv::namedWindow("Ground Truth", CV_WINDOW_NORMAL);
+//	cv::namedWindow("Mask", CV_WINDOW_NORMAL);
 
-	while(ros::ok())
+	for (int generation = 0; generation < numGenerations; ++generation)
 	{
-		for (int generation = 0; generation < numGenerations; ++generation)
+		const bool isFinalGeneration = (generation >= numGenerations-1);
+		//-------------------------------------------------------------------------
+		// Ground Truth - State
+		//-------------------------------------------------------------------------
+		const std::string bufferFilename =
+			workingDir + "buffer_"
+			+ std::to_string(isFinalGeneration ? generation-1 : generation) + ".bag";
+		mps::DataLog sensorLog(bufferFilename, {"buffer"}, rosbag::BagMode::Read);
+		mps::SensorHistoryBuffer motionData = sensorLog.load<mps::SensorHistoryBuffer>("buffer");
+
+		// Publish images here
+		// Compute poses from buffer
+		const ros::Time queryTime = (isFinalGeneration) ? ros::Time(0)
+		                                                : motionData.rgb.begin()->second->header.stamp + ros::Duration(1.0);
+		std::vector<Eigen::Isometry3d> statePoses;
+		for (const auto& pair : shapeModels)
 		{
-			const bool isFinalGeneration = (generation >= numGenerations-1);
-			//-------------------------------------------------------------------------
-			// Ground Truth - State
-			//-------------------------------------------------------------------------
-			const std::string bufferFilename =
-				workingDir + "buffer_"
-				+ std::to_string(isFinalGeneration ? generation-1 : generation) + ".bag";
-			mps::DataLog sensorLog(bufferFilename, {"buffer"}, rosbag::BagMode::Read);
-			mps::SensorHistoryBuffer motionData = sensorLog.load<mps::SensorHistoryBuffer>("buffer");
+			const std::string objectFrame = "mocap_" + pair.first;
+			statePoses.push_back(getPose(motionData, globalFrame, objectFrame, queryTime));
+		}
+		Eigen::Isometry3d worldTcamera = getPose(motionData, globalFrame, motionData.cameraModel.tfFrame(), queryTime);
 
-			// Publish images here
-			// Compute poses from buffer
-			const ros::Time queryTime = (isFinalGeneration) ? ros::Time(0)
-			                                                : motionData.rgb.begin()->second->header.stamp + ros::Duration(1.0);
-			std::vector<Eigen::Isometry3d> statePoses;
-			for (const auto& pair : shapeModels)
-			{
-				const std::string objectFrame = "mocap_" + pair.first;
-				statePoses.push_back(getPose(motionData, globalFrame, objectFrame, queryTime));
-			}
-			Eigen::Isometry3d worldTcamera = getPose(motionData, globalFrame, motionData.cameraModel.tfFrame(), queryTime);
+		mps::VoxelRegion::VertexLabels labels = voxelizer->voxelize(*region, statePoses);
+		mps::OccupancyData b(region, labels);
 
-			mps::VoxelRegion::VertexLabels labels = voxelizer->voxelize(*region, statePoses);
-			mps::OccupancyData b(region, labels);
+		const cv::Rect objectsROIGT = occupancyToROI(b, motionData.cameraModel, worldTcamera);
+		cv::Mat segGT = rayCastOccupancy(b, motionData.cameraModel, worldTcamera, objectsROIGT);
 
-			const cv::Rect objectsROIGT = occupancyToROI(b, motionData.cameraModel, worldTcamera);
-			cv::Mat segGT = rayCastOccupancy(b, motionData.cameraModel, worldTcamera, objectsROIGT);
+		std_msgs::Header header;
+		header.frame_id = globalFrame;
+		header.stamp = ros::Time::now();
+		particlePubGT.publish(mps::visualize(b, header, cmapGT));
 
-			std_msgs::Header header;
-			header.frame_id = globalFrame;
-			header.stamp = ros::Time::now();
-			particlePubGT.publish(mps::visualize(b, header, cmapGT));
+		cv::imshow("Ground Truth", colorByLabel(segGT, cmapGT));
 
-			cv::imshow("Ground Truth", colorByLabel(segGT, cmapGT));
-
+		for (size_t stage = 0; stage < ExperimentDir::checkpoints.size(); ++stage)
+		{
+			if (stage == 1) { continue; }
 			for (int p = 0; p < numParticles; ++p)
 			{
 				const std::string particleFilename =
-					workingDir + "particle_"
+					workingDir + ExperimentDir::checkpoints[stage] + "/particle_"
 					+ std::to_string(generation) + "_"
 					+ std::to_string(p) + ".bag";
+				if (!boost::filesystem::exists(particleFilename))
+				{
+					ROS_ERROR_STREAM("Could not find '" << particleFilename << "'");
+					continue;
+				}
 
 				mps::DataLog particleLog(particleFilename, {"particle"}, rosbag::BagMode::Read);
 				mps::OccupancyData a = particleLog.load<mps::OccupancyData>("particle");
 
-				if (a.vertexState.size() != a.voxelRegion->num_vertices()) { throw std::logic_error("Fake news (a)!"); }
+				if (a.vertexState.size() != a.voxelRegion->num_vertices())
+				{
+					throw std::logic_error("Fake news (a)!");
+				}
 
 				// Image region of objects currently
 				const cv::Rect objectsROI = occupancyToROI(a, motionData.cameraModel, worldTcamera);
@@ -285,51 +308,65 @@ int main(int argc, char* argv[])
 				mps::Metrics metrics(a, b, cmapGT, rng);
 
 				std::cerr << generation << ": " << p << std::endl;
-				std::cerr << "\t" << metrics.match.match.first << "\t" << metrics.match.symmetricCover() << std::endl;
+				std::cerr << "\t" << metrics.match.match.first << "\t" << metrics.match.symmetricCover()
+				          << std::endl;
+
+				{
+					std::fstream out(evalFilename, std::ios::app);
+					out << generation << ","
+						<< stage << ","
+						<< p << ","
+						<< metrics.match.match.first << ","
+						<< metrics.match.symmetricCover() << ","
+						<< ","
+						<< std::endl;
+					out << "Generation,Stage,Particle,A3,S3,A2,S2" << std::endl;
+				}
+
 
 				header.stamp = ros::Time::now();
 				particlePubs[p]->publish(mps::visualize(a, header, metrics.cmapA));
 				particlePubGT.publish(mps::visualize(b, header, cmapGT));
 
-				if (!isFinalGeneration)
-				{
-					const std::string trackingFilename =
-						workingDir + "dense_track_"
-						+ std::to_string(generation) + "_"
-						+ std::to_string(p) + ".bag";
+//				if (!isFinalGeneration)
+//				{
+//					const std::string trackingFilename =
+//						workingDir + "dense_track_"
+//						+ std::to_string(generation) + "_"
+//						+ std::to_string(p) + ".bag";
+//
+//					mps::DataLog trackingLog(trackingFilename, {}, rosbag::BagMode::Read);
+//
+//					// For each (perceived) object
+//					for (const auto& obj : a.objects)
+//					{
+//						cv::Mat display1(segGT.size(), CV_8UC3, cv::Scalar(0, 0, 0));
+//						auto bestGTMatch = metrics.match.match.second.left.find(obj.first.id);
+//						if (bestGTMatch != metrics.match.match.second.left.end())
+//						{
+//							display1.setTo(cv::Scalar(0, 255, 0), segGT == bestGTMatch->second);
+//						}
+//						else
+//						{
+//							std::cerr << "No match found for " << obj.first.id << std::endl;
+//						}
+//
+////						cv::Mat display1(segParticle.size(), CV_8UC3, cv::Scalar(0, 0, 0));
+////						display1.setTo(cv::Scalar(0, 255, 0), segParticle == obj.first.id);
+//
+//						trackingLog.activeChannels.insert(std::to_string(obj.first.id));
+//						auto trackMask = trackingLog.load<cv::Mat>("/" + std::to_string(obj.first.id));
+//						cv::Mat display2(segParticle.size(), CV_8UC3, cv::Scalar(0, 0, 0));
+//						display2.setTo(cv::Scalar(0, 0, 255), trackMask);
+//
+//						cv::imshow("Mask", display1 + display2);
+////						cv::waitKey(0);
+//					}
 
-					mps::DataLog trackingLog(trackingFilename, {}, rosbag::BagMode::Read);
-
-					// For each (perceived) object
-					for (const auto& obj : a.objects)
-					{
-						cv::Mat display1(segGT.size(), CV_8UC3, cv::Scalar(0, 0, 0));
-						auto bestGTMatch = metrics.match.match.second.left.find(obj.first.id);
-						if (bestGTMatch != metrics.match.match.second.left.end())
-						{
-							display1.setTo(cv::Scalar(0, 255, 0), segGT == bestGTMatch->second);
-						}
-						else
-						{
-							std::cerr << "No match found for " << obj.first.id << std::endl;
-						}
-
-//						cv::Mat display1(segParticle.size(), CV_8UC3, cv::Scalar(0, 0, 0));
-//						display1.setTo(cv::Scalar(0, 255, 0), segParticle == obj.first.id);
-
-						trackingLog.activeChannels.insert(std::to_string(obj.first.id));
-						auto trackMask = trackingLog.load<cv::Mat>("/" + std::to_string(obj.first.id));
-						cv::Mat display2(segParticle.size(), CV_8UC3, cv::Scalar(0, 0, 0));
-						display2.setTo(cv::Scalar(0, 0, 255), trackMask);
-
-						cv::imshow("Mask", display1 + display2);
-//						cv::waitKey(0);
-					}
-
-					// For each time
-					// Compute and Display 2D overlap
-					// Compute and Display 3D overlap
-					// Plot scores
+				// For each time
+				// Compute and Display 2D overlap
+				// Compute and Display 3D overlap
+				// Plot scores
 				}
 			}
 		}
