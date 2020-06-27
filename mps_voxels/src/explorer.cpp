@@ -89,6 +89,8 @@
 #include <mps_msgs/TrackBBoxAction.h>
 #include <mps_msgs/AABBox2d.h>
 #include <actionlib/client/simple_action_client.h>
+#include <std_msgs/Float64.h>
+#include <std_msgs/Time.h>
 
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
@@ -475,6 +477,12 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
                              const sensor_msgs::ImageConstPtr& depth_msg,
                              const sensor_msgs::CameraInfoConstPtr& cam_msg)
 {
+	static bool once = true;
+	if (once)
+	{
+		once = false;
+		system("bash -c 'source /home/pricear/mps_ws/devel/setup.bash ; rosparam dump $(rosparam get /experiment/directory)/rosparam.yaml'");
+	}
 	std::cerr << "Got message." << std::endl;
 	if (!ros::ok()) { return; }
 	if (!listener->waitForTransform(mapServer->getWorldFrame(), cam_msg->header.frame_id, ros::Time(0), ros::Duration(5.0)))
@@ -644,6 +652,12 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 			DataLog logger(scenario->experiment->experiment_dir + "/particle_" + std::to_string(iter) + "_" + std::to_string(i) + ".bag");
 			logger.activeChannels.insert("particle");
 			logger.log<OccupancyData>("particle", *particleFilter->particles[i].state);
+			std_msgs::Float64 weightMsg; weightMsg.data = particleFilter->particles[i].weight;
+			logger.activeChannels.insert("weight");
+			logger.log<std_msgs::Float64>("weight", weightMsg);
+			std_msgs::Time timeMsg; timeMsg.data = particleFilter->particles[i].time;
+			logger.activeChannels.insert("time");
+			logger.log<std_msgs::Time>("time", timeMsg);
 			ROS_INFO_STREAM("Logged particle " << i);
 		}
 		++iter;
@@ -1272,7 +1286,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	scenario->completionClient = completionClient;
 	scenario->segmentationClient = segmentationClient;
 
-	const int numParticles = 5;
+	const int numParticles = 25;
 	particleFilter = std::make_unique<ParticleFilter>(scenario, scenario->mapServer->m_res,
 	                                                  scenario->minExtent.head<3>(),
 	                                                  scenario->maxExtent.head<3>(), numParticles);

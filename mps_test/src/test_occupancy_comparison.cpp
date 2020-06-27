@@ -91,15 +91,6 @@ struct Metrics
 //		extend(cmapB, truth.vertexState, rng);
 	}
 };
-/*
-class SegmentationEvaluator
-{
-public:
-	std::vector<std::shared_ptr<GazeboModel>> models;
-
-	Metrics evaluate(const OccupancyData& occupancy, const std::vector<GazeboModelState>& states);
-};
-*/
 
 
 cv::Mat colorByLabel(const cv::Mat& input, const VoxelColormap& colormap)

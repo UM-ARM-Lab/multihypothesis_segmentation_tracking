@@ -77,7 +77,7 @@ public:
 	{
 		static_assert(ros::message_traits::IsMessage<Msg>::value, "Default log only defined for ROS message types.");
 		std::lock_guard<std::mutex> lock(mtx);
-		if (activeChannels.find(channel) == activeChannels.end()) { return; }
+//		if (activeChannels.find(channel) == activeChannels.end()) { return; }
 		bag->write(channel, getTime(), msg);
 	}
 
