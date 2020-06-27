@@ -33,7 +33,7 @@ std::shared_ptr<ObjectActionModel> estimateMotion(std::shared_ptr<const Scenario
 {
 	try
 	{
-		return std::make_shared<ObjectActionModel>(scenario_, buffer, firstFrameSeg, label, bbox, sparseTracker, denseTracker, n);
+		return std::make_shared<ObjectActionModel>(std::move(scenario_), buffer, firstFrameSeg, label, bbox, sparseTracker, denseTracker, n);
 	}
 	catch (const std::runtime_error&)
 	{
@@ -402,8 +402,8 @@ ObjectActionModel::ObjectActionModel(std::shared_ptr<const Scenario> scenario_, 
 	/////////////////////////////////////////////
 //	ObjectActionModel::TimePoseLookup timeToMotionLookup = icpManifoldSequentialSampler(steps, buffer, worldTcamera);
 
-	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer.rgb.at(steps[0])->image, buffer.depth.at(steps[0])->image,
-	                                                                buffer.cameraModel, masks.at(steps[0]));
+	pcl::PointCloud<PointT>::Ptr initCloudSegment = make_PC_segment(buffer.rgb.at(steps.front())->image, buffer.depth.at(steps.front())->image,
+	                                                                buffer.cameraModel, masks.at(steps.front()));
 	assert(!initCloudSegment->empty());
 	pcl::PointCloud<PointT>::Ptr lastCloudSegment = make_PC_segment(buffer.rgb.at(steps.back())->image,
 	                                                                buffer.depth.at(steps.back())->image,

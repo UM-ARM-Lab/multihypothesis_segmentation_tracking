@@ -8,7 +8,6 @@
 #include "mps_voxels/Tracker.h"
 #include "mps_voxels/SiamTracker.h"
 #include "mps_voxels/SensorHistorian.h"
-#include "mps_voxels/util/assert.h"
 #include "mps_voxels/PointT.h"
 #include "mps_voxels/ROI.h"
 #include "mps_voxels/Scene.h"
@@ -28,19 +27,6 @@ struct RigidTF
 {
 	moveit::Pose tf;
 	int numInliers = -1;
-};
-//struct RigidTF
-//{
-//	Eigen::Vector3d linear;
-//	Eigen::Vector3d angular;
-//	int numInliers = -1;
-//};
-
-struct DecomposedRigidTF
-{
-	Eigen::Vector3d linear;
-	Eigen::Vector3d e;
-	double theta;
 };
 
 class Scenario;
