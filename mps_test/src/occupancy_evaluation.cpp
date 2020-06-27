@@ -140,7 +140,8 @@ int main(int argc, char* argv[])
 	ros::NodeHandle nh, pnh("~");
 
 
-	const std::string workingDir = "/tmp/scene_explorer/2020-06-12T18:50:08.037350/"; // cubes?
+	const std::string workingDir = "/home/kunhuang/mps_ws/src/mps_pipeline/mps_test_data/2020-06-07T08:55:02.095309/";
+//	const std::string workingDir = "/tmp/scene_explorer/2020-06-12T18:50:08.037350/"; // cubes?
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-12T18:08:10.469214/"; // books
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-10T23:35:24.412039/";
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-08T21:57:37.545002/";
@@ -276,7 +277,7 @@ int main(int argc, char* argv[])
 		header.stamp = ros::Time::now();
 		particlePubGT.publish(mps::visualize(b, header, cmapGT));
 
-		cv::imshow("Ground Truth", colorByLabel(segGT, cmapGT));
+//			cv::imshow("Ground Truth", colorByLabel(segGT, cmapGT));
 
 		for (size_t stage = 0; stage < ExperimentDir::checkpoints.size(); ++stage)
 		{
@@ -367,7 +368,6 @@ int main(int argc, char* argv[])
 				// Compute and Display 2D overlap
 				// Compute and Display 3D overlap
 				// Plot scores
-				}
 			}
 		}
 	}
