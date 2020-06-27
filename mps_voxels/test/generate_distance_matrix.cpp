@@ -18,8 +18,8 @@
 
 int main(int argc, char* argv[])
 {
-//	ros::init(argc, argv, "generate_distance_matrix");
-//	ros::NodeHandle nh, pnh("~");
+	ros::init(argc, argv, "generate_distance_matrix");
+	ros::NodeHandle nh, pnh("~");
 
 	const std::string testDirName = "package://mps_test_data/";
 	const std::string expDirName = "2020-06-24T21:04:51.344795/";
@@ -64,6 +64,14 @@ int main(int argc, char* argv[])
 		mps::VoxelRegionBuilder::build(rosparams["scene_explorer"]["roi"]));
 	const std::string globalFrame = region->frame_id;
 
+	std::random_device rd;
+	int seed = rd();
+	std::mt19937 rng = std::mt19937(seed);
+
+	std_msgs::Header header;
+	header.frame_id = globalFrame;
+	header.stamp = ros::Time::now();
+
 	Eigen::MatrixXd D(names.size(), names.size());
 	for (size_t i = 0; i < names.size(); ++i)
 	{
@@ -73,6 +81,15 @@ int main(int argc, char* argv[])
 
 		if (a.vertexState.size() != a.voxelRegion->num_vertices()) { throw std::logic_error("Fake news (a)!"); }
 
+		auto viz = mps::visualize(a, header, rng);
+		{
+			mps::DataLog vizLog(mixDir + "viz" + names[i]);
+			vizLog.log<visualization_msgs::MarkerArray>("visual", viz);
+//			std::fstream out(mixDir + names[i] + ".yaml", std::ios::out);
+//			out << viz << std::endl;
+//			std::cerr << viz << std::endl;
+		}
+
 		for (size_t j = i+1; j < names.size(); ++j)
 		{
 			mps::DataLog particleLogB(mixDir + names[j], {"particle"}, rosbag::BagMode::Read);
@@ -80,7 +97,7 @@ int main(int argc, char* argv[])
 
 			int numObjects = std::max(a.objects.size(), b.objects.size());
 			mps::JaccardMatch3D J(a, b);
-			D(i, j) = 1.0 - (J.match.first/(double)numObjects);
+			D(i, j) = 1.0 - (J.symmetricCover());
 		}
 	}
 
