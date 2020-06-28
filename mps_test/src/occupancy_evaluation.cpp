@@ -330,7 +330,6 @@ int main(int argc, char* argv[])
 						<< metrics.match.symmetricCover() << ","
 						<< J2.match.first << ","
 						<< J2.symmetricCover() << std::endl;
-					out << "Generation,Stage,Particle,A3,S3,A2,S2" << std::endl;
 				}
 
 
