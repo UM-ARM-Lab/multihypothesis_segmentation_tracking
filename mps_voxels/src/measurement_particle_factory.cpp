@@ -25,6 +25,9 @@
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 
+#include <std_msgs/Float64.h>
+#include <std_msgs/Time.h>
+
 using namespace mps;
 
 const std::string testDirName = "package://mps_test_data/";
@@ -101,14 +104,19 @@ int main(int argc, char **argv)
 		fixture.particleFilter->particles.clear();
 		fixture.particleFilter->initializeParticles(initialScene);
 
-		for (int j = 0; j<fixture.particleFilter->numParticles; ++j)
+		for (int j = 0; j < fixture.particleFilter->numParticles; ++j)
 		{
 			DataLog logger(logDir + expDirName + productDir + "particle_" + std::to_string(i) + "_" + std::to_string(j) + ".bag");
+			const auto& P = fixture.particleFilter->particles[j];
 			logger.activeChannels.insert("particle");
-			logger.log<OccupancyData>("particle", *fixture.particleFilter->particles[i].state);
+			logger.log<OccupancyData>("particle", *P.state);
 			logger.activeChannels.insert("weight");
-//			logger.log<> weight;
-			ROS_INFO_STREAM("Logged X_t' " << i);
+			std_msgs::Float64 weightMsg; weightMsg.data = P.weight;
+			logger.log<std_msgs::Float64>("weight", weightMsg);
+			std_msgs::Time timeMsg; timeMsg.data = P.time;
+			logger.activeChannels.insert("time");
+			logger.log<std_msgs::Time>("time", timeMsg);
+			ROS_INFO_STREAM("Logged X_t' " << j);
 		}
 	}
 
