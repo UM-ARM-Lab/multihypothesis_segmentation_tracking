@@ -94,6 +94,18 @@ JaccardMatch::JaccardMatch(const cv::Mat& labels1, const cv::Mat& labels2)
 		}
 	}
 
+	// If an element in J doesn't intersect anything, it won't have a size computed and cached
+	for (const auto& j : boxes2)
+	{
+		const auto iter = jSizes.find(j.first);
+		if (iter == jSizes.end())
+		{
+			cv::Mat mask2 = (labels2 == j.first);
+			int count2 = cv::countNonZero(mask2);
+			jSizes.insert({j.first, count2});
+		}
+	}
+
 	// Compute the optimal assignment of patches
 	Hungarian H(-IOU);
 	const auto& A = H.getAssignment();
@@ -191,7 +203,7 @@ JaccardMatch3D::JaccardMatch3D(const OccupancyData& labels1, const OccupancyData
 
 	for (const auto& i : boxes1)
 	{
-		auto mask1 = sparse_matches(labels1.vertexState, i.first);
+		const auto mask1 = sparse_matches(labels1.vertexState, i.first);
 		int count1 = mask1.size();
 		iSizes.insert({i.first, count1});
 		for (const auto& j : boxes2)
@@ -201,7 +213,7 @@ JaccardMatch3D::JaccardMatch3D(const OccupancyData& labels1, const OccupancyData
 			// Prune actual comparisons by starting with bounding boxes
 			if (i.second.intersects(j.second))
 			{
-				auto mask2 = sparse_matches(labels2.vertexState, j.first);
+				const auto mask2 = sparse_matches(labels2.vertexState, j.first);
 
 				int count2;
 				const auto iter = jSizes.find(j.first);
@@ -226,6 +238,18 @@ JaccardMatch3D::JaccardMatch3D(const OccupancyData& labels1, const OccupancyData
 			}
 			IOU(lblIndex1.left.at(i.first), lblIndex2.left.at(j.first)) = iou;
 			intersection(lblIndex1.left.at(i.first), lblIndex2.left.at(j.first)) = intersectionCount;
+		}
+	}
+
+	// If an element in J doesn't intersect anything, it won't have a size computed and cached
+	for (const auto& j : boxes2)
+	{
+		const auto iter = jSizes.find(j.first);
+		if (iter == jSizes.end())
+		{
+			const auto mask2 = sparse_matches(labels2.vertexState, j.first);
+			int count2 = mask2.size();
+			jSizes.insert({j.first, count2});
 		}
 	}
 
