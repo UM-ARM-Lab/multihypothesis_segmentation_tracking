@@ -142,6 +142,13 @@ target_link_libraries(${PROJECT_NAME}_occupancy_evaluation
   ${PROJECT_NAME}
 )
 
+add_executable(${PROJECT_NAME}_segmentation_evaluation src/segmentation_evaluation.cpp)
+set_target_properties(${PROJECT_NAME}_segmentation_evaluation PROPERTIES OUTPUT_NAME segmentation_evaluation PREFIX "")
+add_dependencies(${PROJECT_NAME}_segmentation_evaluation ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_segmentation_evaluation
+  ${PROJECT_NAME}
+)
+
 #############
 ## Install ##
 #############
