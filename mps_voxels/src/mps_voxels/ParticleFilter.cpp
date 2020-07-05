@@ -195,10 +195,10 @@ ParticleFilter::computeActionModel(
 		if (labelToMotionLookup.find(label) == labelToMotionLookup.end())
 		{
 //			std::cerr << "ERROR!!! No motion generated for object label '" << label << "'." << std::endl;
-//			RigidTF ident;
-//			ident.tf = mps::Pose::Identity();
-//			labelToMotionLookup.emplace(label.id, ident);
-			MPS_ASSERT(labelToMotionLookup.find(label) != labelToMotionLookup.end());
+			RigidTF ident;
+			ident.tf = mps::Pose::Identity();
+			labelToMotionLookup.emplace(label.id, ident);
+//			MPS_ASSERT(labelToMotionLookup.find(label) != labelToMotionLookup.end());
 		}
 	}
 

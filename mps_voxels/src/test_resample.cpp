@@ -39,11 +39,12 @@ using namespace mps;
 using VoxelColormap = std::map<mps::VoxelRegion::VertexLabels::value_type , std_msgs::ColorRGBA>;
 
 const std::string testDirName = "package://mps_test_data/";
-const std::string expDirName = "2020-06-24/";
+const std::string expDirName = "2020-06-31/";
 const std::string logDir = parsePackageURL(testDirName);
-const int generation = 1;
+const int generation = 4;
 const ExperimentDir checkpointDir;
 const int numParticles = 5;
+const bool isComputingWeight = true;
 
 class ParticleFilterTestFixture
 {
@@ -78,7 +79,7 @@ public:
 		//// Load buffer
 		/////////////////////////////////////////////
 		{
-			DataLog loader(logDir + expDirName + "buffer_" + std::to_string(0) + ".bag", {}, rosbag::bagmode::Read);
+			DataLog loader(logDir + expDirName + "buffer_" + std::to_string(generation-1) + ".bag", {}, rosbag::bagmode::Read);
 			loader.activeChannels.insert("buffer");
 			motionData = loader.load<SensorHistoryBuffer>("buffer");
 			std::cerr << "Successfully loaded buffer." << std::endl;
@@ -159,7 +160,7 @@ std::vector<Particle> resampleLogWeights(const std::vector<Particle>& particles,
 
 int main(int argc, char **argv)
 {
-	ros::init(argc, argv, "test_resample");
+	ros::init(argc, argv, "test_resample", ros::init_options::AnonymousName);
 	ros::NodeHandle nh, pnh("~");
 
 	ParticleFilterTestFixture fixture;
@@ -168,22 +169,26 @@ int main(int argc, char **argv)
 	ros::Publisher visualPub = nh.advertise<visualization_msgs::MarkerArray>("visualization", 1, true);
 	std::mt19937 rng;
 
-	/////////////////////////////////////////////
-	//// Initialize mapServer
-	/////////////////////////////////////////////
-	std::shared_ptr<Scenario> scenario = fixture.scenario;
-	scenario->mapServer = std::make_shared<LocalOctreeServer>(0.01, "table_surface");
-	octomap::point3d tMin(scenario->minExtent.x(), scenario->minExtent.y(), scenario->minExtent.z());
-	octomap::point3d tMax(scenario->maxExtent.x(), scenario->maxExtent.y(), scenario->maxExtent.z());
-	scenario->mapServer->m_octree->setBBXMin(tMin);
-	scenario->mapServer->m_octree->setBBXMax(tMax);
+	std::shared_ptr<Scene> newScene;
+	if (isComputingWeight)
+	{
+		/////////////////////////////////////////////
+		//// Initialize mapServer
+		/////////////////////////////////////////////
+		std::shared_ptr<Scenario> scenario = fixture.scenario;
+		scenario->mapServer = std::make_shared<LocalOctreeServer>(0.01, "table_surface");
+		octomap::point3d tMin(scenario->minExtent.x(), scenario->minExtent.y(), scenario->minExtent.z());
+		octomap::point3d tMax(scenario->maxExtent.x(), scenario->maxExtent.y(), scenario->maxExtent.z());
+		scenario->mapServer->m_octree->setBBXMin(tMin);
+		scenario->mapServer->m_octree->setBBXMax(tMax);
 
-	//// Compute new scene
-	ros::Time finalTime = fixture.motionData.rgb.rbegin()->first;
-	std::shared_ptr<Scene> newScene = computeSceneFromSensorHistorian(scenario, fixture.motionData, finalTime, scenario->worldFrame);
+		//// Compute new scene
+		ros::Time finalTime = fixture.motionData.rgb.rbegin()->first;
+		newScene = computeSceneFromSensorHistorian(scenario, fixture.motionData, finalTime, scenario->worldFrame);
+	}
 
 
-	std::vector<double> oldMeasurementParticleQual;
+	std::vector<double> oldParticleQual;
 	for (int i=0; i<numParticles; ++i)
 	{
 		Particle p;
@@ -191,17 +196,32 @@ int main(int argc, char **argv)
 		Eigen::Vector3d rmax(1, 1, 1);
 		std::shared_ptr<VoxelRegion> v = std::make_shared<VoxelRegion>(0.01, rmin, rmax);
 		p.state = std::make_shared<Particle::ParticleData>(v);
-		DataLog loader(logDir + expDirName + checkpointDir.checkpoints[0] + "/particle_" +
-		               std::to_string(generation-1)+ "_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
-		loader.activeChannels.insert("particle");
-		*p.state = loader.load<OccupancyData>("particle");
-		p.particle.id = i;
-		std_msgs::Float64 weightMsg;
-		loader.activeChannels.insert("weight");
-		weightMsg = loader.load<std_msgs::Float64>("weight");
+		if (generation == 1)
+		{
+			DataLog loader(logDir + expDirName + checkpointDir.checkpoints[0] + "/particle_" +
+			               std::to_string(generation-1)+ "_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
+			loader.activeChannels.insert("particle");
+			*p.state = loader.load<OccupancyData>("particle");
+			std_msgs::Float64 weightMsg;
+			loader.activeChannels.insert("weight");
+			weightMsg = loader.load<std_msgs::Float64>("weight");
 
-		oldMeasurementParticleQual.push_back(weightMsg.data);
-		std::cerr << "Successfully loaded old measurement particle_" << generation-1 << "_" << i <<" with quality " << p.weight << std::endl;
+			oldParticleQual.push_back(weightMsg.data);
+		}
+		else
+		{
+			DataLog loader(logDir + expDirName + checkpointDir.checkpoints[2] + "/particle_" +
+			               std::to_string(generation-1)+ "_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
+			loader.activeChannels.insert("particle");
+			*p.state = loader.load<OccupancyData>("particle");
+			std_msgs::Float64 weightMsg;
+			loader.activeChannels.insert("weight");
+			weightMsg = loader.load<std_msgs::Float64>("weight");
+
+			oldParticleQual.push_back(weightMsg.data);
+		}
+		p.particle.id = i;
+		std::cerr << "Successfully loaded old particle_" << generation-1 << "_" << i <<" with quality " << p.weight << std::endl;
 	}
 
 	std::vector<double> newMeasurementParticleQual;
@@ -222,10 +242,10 @@ int main(int argc, char **argv)
 		weightMsg = loader.load<std_msgs::Float64>("weight");
 
 		newMeasurementParticleQual.push_back(weightMsg.data);
-		std::cerr << "Successfully loaded measurement particle_" << generation << "_" << i <<" with quality " << p.weight << std::endl;
+		std::cerr << "Successfully loaded new measurement particle_" << generation << "_" << i <<" with quality " << p.weight << std::endl;
 	}
 
-	std::vector<double> historyParticleQual;
+	std::vector<double> refinedParticleQual;
 	for (int i=0; i<numParticles; ++i)
 	{
 		Particle p;
@@ -242,7 +262,7 @@ int main(int argc, char **argv)
 		loader.activeChannels.insert("weight");
 		weightMsg = loader.load<std_msgs::Float64>("weight");
 
-		historyParticleQual.push_back(weightMsg.data);
+		refinedParticleQual.push_back(weightMsg.data);
 		std::cerr << "Successfully loaded history particle_" << generation << "_" << i <<" with quality " << p.weight << std::endl;
 	}
 
@@ -267,40 +287,45 @@ int main(int argc, char **argv)
 					loader.activeChannels.insert("particle");
 					*p.state = loader.load<OccupancyData>("particle");
 //				    ROS_INFO_STREAM("Loaded mixed particle " << newID << " " << oldID);
-					std_msgs::Float64 weightMsg;
-					loader.activeChannels.insert("weight");
-					weightMsg = loader.load<std_msgs::Float64>("weight");
-					p.weight = weightMsg.data;
+					if (!isComputingWeight)
+					{
+						std_msgs::Float64 weightMsg;
+						loader.activeChannels.insert("weight");
+						weightMsg = loader.load<std_msgs::Float64>("weight");
+						p.weight = weightMsg.data;
+					}
 				}
 
-/*
 				std_msgs::Header header; header.frame_id = "table_surface"; header.stamp = ros::Time::now();
 				auto pfMarkers = mps::visualize(*p.state, header, rng);
 				visualPub.publish(pfMarkers);
 				std::cerr << "mixed particle " << newID << " " << oldID << std::endl;
 //				usleep(500000);
 
-				std::cerr << oldMeasurementParticleQual[oldID] << "    " << historyParticleQual[oldID] << "    " << newMeasurementParticleQual[newID] << std::endl;
+				std::cerr << oldParticleQual[oldID] << "    " << refinedParticleQual[oldID] << "    " << newMeasurementParticleQual[newID] << std::endl;
 
-				p.weight = oldMeasurementParticleQual[oldID] + newMeasurementParticleQual[newID] + 3*log(historyParticleQual[oldID]);
+				p.weight = oldParticleQual[oldID] + newMeasurementParticleQual[newID] + 3*log(refinedParticleQual[oldID]);
 				std::cerr << p.weight << std::endl;
 
-				std::pair<double, double> measurementMatchness = applyMeasurementModel(p, newScene, rng);
+				if (isComputingWeight)
 				{
+//					std::pair<double, double> measurementMatchness = applyMeasurementModel(p, newScene, rng);
+
 					DataLog logger(logDir + expDirName + checkpointDir.checkpoints[1] + "/particle_" + std::to_string(generation) +
 					               "_" + std::to_string(newID) + "_" + std::to_string(oldID) + "_" + std::to_string(iter) + ".bag",
 					               {}, rosbag::bagmode::Append);
 					std_msgs::Float64 weightMsg; weightMsg.data = p.weight;
 					logger.activeChannels.insert("weight");
 					logger.log<std_msgs::Float64>("weight", weightMsg);
+/*
 					std_msgs::Float64 matchnessMsg; matchnessMsg.data = measurementMatchness.first;
 					logger.activeChannels.insert("relevantSeg");
 					logger.log<std_msgs::Float64>("relevantSeg", matchnessMsg);
 					matchnessMsg.data = measurementMatchness.second;
 					logger.activeChannels.insert("matchness");
 					logger.log<std_msgs::Float64>("matchness", matchnessMsg);
-				}
 */
+				}
 				mixtureParticles.push_back(p);
 			}
 		}

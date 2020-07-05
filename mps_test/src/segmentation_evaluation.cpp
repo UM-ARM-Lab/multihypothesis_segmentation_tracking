@@ -31,7 +31,7 @@ using VoxelColormap = std::map<mps::VoxelRegion::VertexLabels::value_type , std_
 
 using namespace mps;
 
-const std::string workingDir = "/home/kunhuang/mps_ws/src/mps_pipeline/mps_test_data/2020-06-29/";
+const std::string workingDir = "/home/kunhuang/mps_ws/src/mps_pipeline/mps_test_data/2020-06-30/";
 
 namespace cv
 {
@@ -48,6 +48,97 @@ bool operator<(const cv::Vec3b &lhs, const cv::Vec3b &rhs)
 
 namespace mps
 {
+cv::Mat postprocessingucm(const cv::Mat& ucm, const cv::Mat& segP)
+{
+	assert(segP.rows == ucm.rows);
+	assert(segP.cols == ucm.cols);
+
+	cv::Mat results = cv::Mat::zeros(ucm.rows, ucm.cols, CV_16U);
+
+	JaccardMatch J2(ucm, segP);
+	for (const auto& pair2 : J2.lblIndex2.left)
+	{
+		// pair is (label, index)
+		cv::Mat mask2 = segP == pair2.first;
+		for (const auto& pair1 : J2.lblIndex1.left)
+		{
+			// pair is (label, index)
+			cv::Mat mask1 = ucm == pair1.first;
+
+			int intersect = J2.intersection(pair1.second, pair2.second);
+
+			bool ucmSegmentinOurSegment = false;
+			if ((double)intersect/(double)J2.iSizes.at(pair1.first) > 0.5)
+			{
+				results.setTo(pair2.first, mask1);
+				ucmSegmentinOurSegment = true;
+				continue;
+			}
+			if (ucmSegmentinOurSegment) continue;
+		}
+	}
+
+	return results;
+}
+cv::Mat postprocessing(const cv::Mat& segSC, const cv::Mat& segP)
+{
+	assert(segP.rows == segSC.rows);
+	assert(segP.cols == segSC.cols);
+
+	cv::Mat results = segSC.clone();
+
+	std::set<uint16_t> uniquelabels;
+	for (int v = 0; v < segSC.rows; ++v)
+	{
+		for (int u = 0; u < segSC.cols; ++u)
+		{
+			auto val = segSC.at<uint16_t>(v,u);
+			uniquelabels.insert(val);
+		}
+	}
+
+
+//	auto uniquel = getUniqueObjectLabels(results);
+
+	JaccardMatch J2(segSC, segP);
+//	Eigen::VectorXd interMaxFori = J2.intersection.rowwise().maxCoeff();
+	for (const auto& pair1 : J2.lblIndex1.left)
+	{
+		// pair is (label, index)
+		cv::Mat mask1 = segSC == pair1.first;
+		for (const auto& pair2 : J2.lblIndex2.left)
+		{
+			// pair is (label, index)
+			cv::Mat mask2 = segP == pair2.first;
+
+			int intersect = J2.intersection(pair1.second, pair2.second);
+
+			bool scSegmentinOurSegment = false;
+			if ((double)intersect/(double)J2.iSizes.at(pair1.first) > 0.65)
+			{
+				results.setTo(pair2.first, mask1);
+				scSegmentinOurSegment = true;
+				continue;
+			}
+			if (scSegmentinOurSegment) continue;
+
+			if ((double)intersect/(double)J2.jSizes.at(pair2.first) > 0.7)
+			{
+//				auto newlabel = uniquel.rbegin()->id+1;
+//				uniquel.insert(ObjectIndex(newlabel));
+				auto newlabel = *uniquelabels.rbegin()+1;
+				uniquelabels.insert(newlabel);
+
+				results.setTo(newlabel, mask1 & mask2);
+//				results.setTo(pair2.first, mask1 & mask2);
+			}
+		}
+	}
+
+	return results;
+}
+
+
 cv::Mat colorSeg2LabelIm(const image_geometry::PinholeCameraModel& cameraModel, cv::Mat& segGT, const cv::Rect& roi)
 {
 	std::map<cv::Vec3b, int> counter, colorMapInv;
@@ -212,7 +303,7 @@ int main(int argc, char* argv[])
 
 	std::random_device rd;
 	int seed = rd(); //0;
-	std::mt19937 rng = std::mt19937(seed);
+//	std::mt19937 rng = std::mt19937(seed);
 
 	ros::Publisher particlePubGT = nh.advertise<visualization_msgs::MarkerArray>("visualization_gt", 1, true);
 	std::vector<std::shared_ptr<ros::Publisher>> particlePubs;
@@ -252,7 +343,10 @@ int main(int argc, char* argv[])
 			segData = loader.load<SegmentationInfo>("segInfo");
 			std::cerr << "Successfully loaded segInfo." << std::endl;
 		}
-		const cv::Rect objectsROIGT = segData.roi;
+		cv::imwrite(workingDir+"ucm_"+ std::to_string(generation) + ".png", colorByLabel(segData.labels));
+		cv::imwrite(workingDir+"scenecut_"+ std::to_string(generation) + ".png", colorByLabel(segData.objectness_segmentation->image));
+
+//		const cv::Rect objectsROIGT = segData.roi;
 
 		//// load segGT from "seg0.png"
 //		cv::Mat segGT = rayCastOccupancy(b, motionData.cameraModel, worldTcamera, objectsROIGT);
@@ -298,7 +392,7 @@ int main(int argc, char* argv[])
 //		cv::imshow("Ground Truth", colorByLabel(segGT, cmapGT));
 
 //		const std::vector<size_t> stage_order{0,3,4,2};
-		const std::vector<size_t> stage_order{0, ExperimentDir::bestGuessIndex};
+		const std::vector<size_t> stage_order{0,ExperimentDir::bestGuessIndex};
 		for (const size_t stage : stage_order)
 		{
 			for (int p = 0; p < numParticles; ++p)
@@ -332,20 +426,45 @@ int main(int argc, char* argv[])
 				cv::imwrite(workingDir+"labels"+ std::to_string(generation) + ".png", colorByLabel(labelsinROI));
 				cv::imwrite(workingDir+"particle"+ std::to_string(generation) + "_" + std::to_string(stage) + "_" + std::to_string(p) + ".png", colorByLabel(segParticleROI));
 
-//				JaccardMatch J2(segParticle, labels);
-				JaccardMatch J2(segParticleROI, labelsinROI);
-
-				std::cerr << generation << ": " << p << std::endl;
-
+//				cv::Mat segPprocessed = postprocessing(segData.labels, segParticleROI);
+				if(stage == ExperimentDir::bestGuessIndex)
 				{
-					std::fstream out(evalFilename, std::ios::app);
-					out << generation << ","
-					    << stage << ","
-					    << p << ","
-					    << J2.match.first << ","
-					    << J2.symmetricCover() << ","
-					    << J2.cover() << std::endl;
+					cv::Mat segPprocessed = postprocessing(segData.objectness_segmentation->image, segParticleROI);
+//					cv::Mat segPprocessed = postprocessingucm(segData.labels, segParticleROI);
+
+					cv::imwrite(workingDir + "processed/" + "p"+ std::to_string(generation) + "_" + std::to_string(stage) + "_" + std::to_string(p) + ".png", colorByLabel(segPprocessed));
+					JaccardMatch J2(labelsinROI, segPprocessed);
+
+					std::cerr << generation << ": " << p << std::endl;
+
+					{
+						std::fstream out(evalFilename, std::ios::app);
+						out << generation << ","
+						    << stage << ","
+						    << p << ","
+						    << J2.match.first << ","
+						    << J2.symmetricCover() << ","
+						    << J2.cover() << std::endl;
+					}
 				}
+				else
+				{
+					//				JaccardMatch J2(segParticle, labels);
+					JaccardMatch J2(labelsinROI, segParticleROI);
+
+					std::cerr << generation << ": " << p << std::endl;
+
+					{
+						std::fstream out(evalFilename, std::ios::app);
+						out << generation << ","
+						    << stage << ","
+						    << p << ","
+						    << J2.match.first << ","
+						    << J2.symmetricCover() << ","
+						    << J2.cover() << std::endl;
+					}
+				}
+
 
 
 //				header.stamp = ros::Time::now();

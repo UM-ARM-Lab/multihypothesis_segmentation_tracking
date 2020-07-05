@@ -69,17 +69,13 @@ Particle filteringParticle(const Particle& inputParticle, bool& isconverge)
 			{
 				neighbourLabels[inputParticle.state->vertexState[n]]++;
 			}
-			int maxOccur = 0;
-			int maxRepeatingLabel = -1;
+			int maxOccur = neighbourLabels[inputParticle.state->vertexState[i]] + 3; //// + 3?
+			int maxRepeatingLabel = inputParticle.state->vertexState[i];
 			for (auto& pair : neighbourLabels)
 			{
-				if (pair.first != VoxelRegion::FREE_SPACE && pair.second > maxOccur)
+				if (pair.first != VoxelRegion::FREE_SPACE && pair.second >= maxOccur)
 				{
 					maxOccur = pair.second; // great without this line, but sometimes the expanding direction is wrong
-					maxRepeatingLabel = pair.first;
-				}
-				else if (pair.first != VoxelRegion::FREE_SPACE && pair.second == maxOccur && pair.first != inputParticle.state->vertexState[i])
-				{
 					maxRepeatingLabel = pair.first;
 				}
 			}
