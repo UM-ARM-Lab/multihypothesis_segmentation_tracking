@@ -21,16 +21,17 @@
 
 #include <moveit/robot_model_loader/robot_model_loader.h>
 
-#define USE_HISTRACKER true
+#define USE_HISTORYTRACKER true
+
 using namespace mps;
 
 const std::string testDirName = "package://mps_test_data/";
-const std::string expDirName = "2020-06-07T08:55:02.095309/";
+const std::string expDirName = "2020-06-24T05:17:35.690711/";
 const std::string logDir = parsePackageURL(testDirName);
 const std::string trackingFilename = logDir + expDirName + "dense_track_" + std::to_string(0) + "_" + std::to_string(0) + ".bag";
 const bool shouldLog = false;
 
-class icpTestFixture
+class IcpTestFixture
 {
 public:
 	std::unique_ptr<ParticleFilter> particleFilter;
@@ -105,7 +106,7 @@ int main(int argc, char **argv)
 	ros::init(argc, argv, "test_icp");
 	ros::NodeHandle nh, pnh("~");
 
-	icpTestFixture fixture;
+	IcpTestFixture fixture;
 	fixture.SetUp();
 
 	ros::Publisher visualPub = nh.advertise<visualization_msgs::MarkerArray>("visualization", 1, true);
@@ -149,7 +150,7 @@ int main(int argc, char **argv)
 
 	for (auto& pair : labelToBBoxLookup)
 	{
-		if (pair.first != 19 && pair.first != 23 && pair.first != 24) continue;
+//		if (pair.first != 19 && pair.first != 23 && pair.first != 24) continue;
 		std::cout << "-------------------------------------------------------------------------------------" << std::endl;
 		std::cout << "Current label is " << pair.first << std::endl;
 		std::shared_ptr<const ObjectActionModel> oam = estimateMotion(fixture.scenario, fixture.motionData,

@@ -34,6 +34,7 @@
 #include "mps_voxels/JaccardMatch.h"
 #include "mps_voxels/LocalOctreeServer.h"
 #include "mps_voxels/octree_utils.h"
+#include "mps_msgs/SegmentGraph.h"
 
 using namespace mps;
 using VoxelColormap = std::map<mps::VoxelRegion::VertexLabels::value_type , std_msgs::ColorRGBA>;
@@ -156,6 +157,34 @@ std::vector<Particle> resampleLogWeights(const std::vector<Particle>& particles,
 		resampledParticles.push_back(particles[index]);
 	}
 	return resampledParticles;
+}
+
+std::pair<size_t, std::vector<int>> clusterDistances(ros::NodeHandle& nh, const Eigen::MatrixXd& D)
+{
+	assert(D.rows() == D.cols());
+	static ros::ServiceClient segmentClient = nh.serviceClient<mps_msgs::SegmentGraph>("/segment_graph");
+	if (!segmentClient.waitForExistence(ros::Duration(3)))
+	{
+		ROS_ERROR("Segmentation server not connected.");
+		return {};
+	}
+
+	mps_msgs::SegmentGraphRequest req;
+
+	for (int i = 0; i < D.rows(); ++i)
+	{
+		for (int j = 0; j < D.cols(); ++j)
+		{
+			req.adjacency.row_index.push_back(i);
+			req.adjacency.col_index.push_back(j);
+			req.adjacency.value.push_back(D(i, j));
+		}
+	}
+	req.algorithm = "hdbscan";
+	mps_msgs::SegmentGraphResponse resp;
+	segmentClient.call(req, resp);
+
+	return {resp.num_labels, resp.labels};
 }
 
 int main(int argc, char **argv)
@@ -331,6 +360,22 @@ int main(int argc, char **argv)
 		}
 	}
 
+	// Cluster the mixture samples
+	Eigen::MatrixXd D(mixtureParticles.size(), mixtureParticles.size());
+	for (size_t i = 0; i < mixtureParticles.size(); ++i)
+	{
+		for (size_t j = i+1; j < mixtureParticles.size(); ++j)
+		{
+			mps::JaccardMatch3D J(*mixtureParticles[i].state, *mixtureParticles[j].state);
+			D(i, j) = 1.0 - (J.symmetricCover());
+			D(j, i) = D(i, j);
+		}
+	}
+	auto clusters = clusterDistances(nh, D);
+	std::cerr << "Clusters: " << clusters.first << std::endl;
+	std::map<int, int> histogram;
+	for (const auto l : clusters.second) { histogram[l]++; std::cerr << l << std::endl; }
+
 	std::vector<Particle> resampledParticles = resampleLogWeights(mixtureParticles, numParticles, rng);
 	for (size_t p = 0; p < resampledParticles.size(); ++p)
 	{
@@ -341,7 +386,7 @@ int main(int argc, char **argv)
 		usleep(500000);
 
 		{
-			DataLog logger(logDir + expDirName + checkpointDir.checkpoints[2] + "/particle_" + std::to_string(generation) + "_" +
+			DataLog logger(logDir + expDirName + ExperimentDir::checkpoints[2] + "/particle_" + std::to_string(generation) + "_" +
 			               std::to_string(p) + ".bag");
 			logger.activeChannels.insert("particle");
 			logger.log<OccupancyData>("particle", *resampledParticles[p].state);

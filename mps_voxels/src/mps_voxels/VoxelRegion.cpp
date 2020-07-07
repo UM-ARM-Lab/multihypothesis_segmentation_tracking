@@ -209,6 +209,17 @@ VoxelRegion::vertices_size_type VoxelRegion::index_of(VoxelRegion::vertex_descri
 	vertices_size_type vertex_index = 0;
 	vertices_size_type index_multiplier = 1;
 
+	#ifndef NDEBUG
+	for (std::size_t dimension_index = 0;
+	     dimension_index < Dimensions;
+	     ++dimension_index) {
+		if (vertex[dimension_index] >= m_dimension_lengths[dimension_index])
+		{
+			throw std::runtime_error("Coordinate overflow error.");
+		}
+	}
+	#endif
+
 	for (std::size_t dimension_index = 0;
 	     dimension_index < Dimensions;
 	     ++dimension_index) {
@@ -572,6 +583,18 @@ VoxelRegion::objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::uniqu
 				target[0] = query[0] + objMin[0] + subRegionMinVD[0];
 				target[1] = query[1] + objMin[1] + subRegionMinVD[1];
 				target[2] = query[2] + objMin[2] + subRegionMinVD[2];
+
+				bool outOfBounds = false;
+				for (std::size_t dimension_index = 0;
+				     dimension_index < Dimensions;
+				     ++dimension_index) {
+					if (target[dimension_index] >= m_dimension_lengths[dimension_index])
+					{
+						outOfBounds = true;
+					}
+				}
+				if (outOfBounds) { continue; }
+
 				mps::VoxelRegion::vertices_size_type index = index_of(target);
 				if (index >= num_vertices()) ROS_ERROR_STREAM("objects are outside voxel region!!!");
 				else
