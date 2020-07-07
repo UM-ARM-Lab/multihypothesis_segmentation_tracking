@@ -32,7 +32,9 @@ void DataLog::log<VoxelRegion>(const std::string& channel, const VoxelRegion& ms
 	activeChannels.insert(channel + "/regionMax");
 	log(channel + "/regionMax", rMax);
 
-	log<const std::string&>(channel + "/frame_id", msg.frame_id);
+	std_msgs::String stringMsg;
+	stringMsg.data = msg.frame_id;
+	log<std_msgs::String>(channel + "/frame_id", stringMsg);
 }
 
 template <>

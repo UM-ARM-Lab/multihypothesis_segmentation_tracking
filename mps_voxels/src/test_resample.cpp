@@ -34,6 +34,7 @@
 #include "mps_voxels/JaccardMatch.h"
 #include "mps_voxels/LocalOctreeServer.h"
 #include "mps_voxels/octree_utils.h"
+#include "mps_msgs/SegmentGraph.h"
 
 using namespace mps;
 using VoxelColormap = std::map<mps::VoxelRegion::VertexLabels::value_type , std_msgs::ColorRGBA>;
@@ -157,6 +158,34 @@ std::vector<Particle> resampleLogWeights(const std::vector<Particle>& particles,
 	return resampledParticles;
 }
 
+std::pair<size_t, std::vector<int>> clusterDistances(ros::NodeHandle& nh, const Eigen::MatrixXd& D)
+{
+	assert(D.rows() == D.cols());
+	static ros::ServiceClient segmentClient = nh.serviceClient<mps_msgs::SegmentGraph>("/segment_graph");
+	if (!segmentClient.waitForExistence(ros::Duration(3)))
+	{
+		ROS_ERROR("Segmentation server not connected.");
+		return {};
+	}
+
+	mps_msgs::SegmentGraphRequest req;
+
+	for (int i = 0; i < D.rows(); ++i)
+	{
+		for (int j = 0; j < D.cols(); ++j)
+		{
+			req.adjacency.row_index.push_back(i);
+			req.adjacency.col_index.push_back(j);
+			req.adjacency.value.push_back(D(i, j));
+		}
+	}
+	req.algorithm = "hdbscan";
+	mps_msgs::SegmentGraphResponse resp;
+	segmentClient.call(req, resp);
+
+	return {resp.num_labels, resp.labels};
+}
+
 int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "test_resample");
@@ -180,71 +209,71 @@ int main(int argc, char **argv)
 
 	//// Compute new scene
 	ros::Time finalTime = fixture.motionData.rgb.rbegin()->first;
-	std::shared_ptr<Scene> newScene = computeSceneFromSensorHistorian(scenario, fixture.motionData, finalTime, scenario->worldFrame);
+//	std::shared_ptr<Scene> newScene = computeSceneFromSensorHistorian(scenario, fixture.motionData, finalTime, scenario->worldFrame);
 
 
-	std::vector<double> oldMeasurementParticleQual;
-	for (int i=0; i<numParticles; ++i)
-	{
-		Particle p;
-		Eigen::Vector3d rmin(-1, -1, -1);
-		Eigen::Vector3d rmax(1, 1, 1);
-		std::shared_ptr<VoxelRegion> v = std::make_shared<VoxelRegion>(0.01, rmin, rmax);
-		p.state = std::make_shared<Particle::ParticleData>(v);
-		DataLog loader(logDir + expDirName + checkpointDir.checkpoints[0] + "/particle_" +
-		               std::to_string(generation-1)+ "_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
-		loader.activeChannels.insert("particle");
-		*p.state = loader.load<OccupancyData>("particle");
-		p.particle.id = i;
-		std_msgs::Float64 weightMsg;
-		loader.activeChannels.insert("weight");
-		weightMsg = loader.load<std_msgs::Float64>("weight");
+//	std::vector<double> oldMeasurementParticleQual;
+//	for (int i=0; i<numParticles; ++i)
+//	{
+//		Particle p;
+//		Eigen::Vector3d rmin(-1, -1, -1);
+//		Eigen::Vector3d rmax(1, 1, 1);
+//		std::shared_ptr<VoxelRegion> v = std::make_shared<VoxelRegion>(0.01, rmin, rmax);
+//		p.state = std::make_shared<Particle::ParticleData>(v);
+//		DataLog loader(logDir + expDirName + checkpointDir.checkpoints[0] + "/particle_" +
+//		               std::to_string(generation-1)+ "_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
+//		loader.activeChannels.insert("particle");
+//		*p.state = loader.load<OccupancyData>("particle");
+//		p.particle.id = i;
+//		std_msgs::Float64 weightMsg;
+//		loader.activeChannels.insert("weight");
+//		weightMsg = loader.load<std_msgs::Float64>("weight");
+//
+//		oldMeasurementParticleQual.push_back(weightMsg.data);
+//		std::cerr << "Successfully loaded old measurement particle_" << generation-1 << "_" << i <<" with quality " << p.weight << std::endl;
+//	}
 
-		oldMeasurementParticleQual.push_back(weightMsg.data);
-		std::cerr << "Successfully loaded old measurement particle_" << generation-1 << "_" << i <<" with quality " << p.weight << std::endl;
-	}
+//	std::vector<double> newMeasurementParticleQual;
+//	for (int i=0; i<numParticles; ++i)
+//	{
+//		Particle p;
+//		Eigen::Vector3d rmin(-1, -1, -1);
+//		Eigen::Vector3d rmax(1, 1, 1);
+//		std::shared_ptr<VoxelRegion> v = std::make_shared<VoxelRegion>(0.01, rmin, rmax);
+//		p.state = std::make_shared<Particle::ParticleData>(v);
+//		DataLog loader(logDir + expDirName + checkpointDir.checkpoints[0] + "/particle_" +
+//		               std::to_string(generation)+ "_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
+//		loader.activeChannels.insert("particle");
+//		*p.state = loader.load<OccupancyData>("particle");
+//		p.particle.id = i;
+//		std_msgs::Float64 weightMsg;
+//		loader.activeChannels.insert("weight");
+//		weightMsg = loader.load<std_msgs::Float64>("weight");
+//
+//		newMeasurementParticleQual.push_back(weightMsg.data);
+//		std::cerr << "Successfully loaded measurement particle_" << generation << "_" << i <<" with quality " << p.weight << std::endl;
+//	}
 
-	std::vector<double> newMeasurementParticleQual;
-	for (int i=0; i<numParticles; ++i)
-	{
-		Particle p;
-		Eigen::Vector3d rmin(-1, -1, -1);
-		Eigen::Vector3d rmax(1, 1, 1);
-		std::shared_ptr<VoxelRegion> v = std::make_shared<VoxelRegion>(0.01, rmin, rmax);
-		p.state = std::make_shared<Particle::ParticleData>(v);
-		DataLog loader(logDir + expDirName + checkpointDir.checkpoints[0] + "/particle_" +
-		               std::to_string(generation)+ "_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
-		loader.activeChannels.insert("particle");
-		*p.state = loader.load<OccupancyData>("particle");
-		p.particle.id = i;
-		std_msgs::Float64 weightMsg;
-		loader.activeChannels.insert("weight");
-		weightMsg = loader.load<std_msgs::Float64>("weight");
-
-		newMeasurementParticleQual.push_back(weightMsg.data);
-		std::cerr << "Successfully loaded measurement particle_" << generation << "_" << i <<" with quality " << p.weight << std::endl;
-	}
-
-	std::vector<double> historyParticleQual;
-	for (int i=0; i<numParticles; ++i)
-	{
-		Particle p;
-		Eigen::Vector3d rmin(-1, -1, -1);
-		Eigen::Vector3d rmax(1, 1, 1);
-		std::shared_ptr<VoxelRegion> v = std::make_shared<VoxelRegion>(0.01, rmin, rmax);
-		p.state = std::make_shared<Particle::ParticleData>(v);
-		DataLog loader(logDir + expDirName + checkpointDir.checkpoints[4] + "/particle_" +
-		               std::to_string(generation)+ "_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
-		loader.activeChannels.insert("particle");
-		*p.state = loader.load<OccupancyData>("particle");
-		p.particle.id = i;
-		std_msgs::Float64 weightMsg;
-		loader.activeChannels.insert("weight");
-		weightMsg = loader.load<std_msgs::Float64>("weight");
-
-		historyParticleQual.push_back(weightMsg.data);
-		std::cerr << "Successfully loaded history particle_" << generation << "_" << i <<" with quality " << p.weight << std::endl;
-	}
+//	std::vector<double> historyParticleQual;
+//	for (int i=0; i<numParticles; ++i)
+//	{
+//		Particle p;
+//		Eigen::Vector3d rmin(-1, -1, -1);
+//		Eigen::Vector3d rmax(1, 1, 1);
+//		std::shared_ptr<VoxelRegion> v = std::make_shared<VoxelRegion>(0.01, rmin, rmax);
+//		p.state = std::make_shared<Particle::ParticleData>(v);
+//		DataLog loader(logDir + expDirName + checkpointDir.checkpoints[4] + "/particle_" +
+//		               std::to_string(generation)+ "_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
+//		loader.activeChannels.insert("particle");
+//		*p.state = loader.load<OccupancyData>("particle");
+//		p.particle.id = i;
+//		std_msgs::Float64 weightMsg;
+//		loader.activeChannels.insert("weight");
+//		weightMsg = loader.load<std_msgs::Float64>("weight");
+//
+//		historyParticleQual.push_back(weightMsg.data);
+//		std::cerr << "Successfully loaded history particle_" << generation << "_" << i <<" with quality " << p.weight << std::endl;
+//	}
 
 	Eigen::Vector3d rmin(-1, -1, -1);
 	Eigen::Vector3d rmax(1, 1, 1);
@@ -306,6 +335,22 @@ int main(int argc, char **argv)
 		}
 	}
 
+	// Cluster the mixture samples
+	Eigen::MatrixXd D(mixtureParticles.size(), mixtureParticles.size());
+	for (size_t i = 0; i < mixtureParticles.size(); ++i)
+	{
+		for (size_t j = i+1; j < mixtureParticles.size(); ++j)
+		{
+			mps::JaccardMatch3D J(*mixtureParticles[i].state, *mixtureParticles[j].state);
+			D(i, j) = 1.0 - (J.symmetricCover());
+			D(j, i) = D(i, j);
+		}
+	}
+	auto clusters = clusterDistances(nh, D);
+	std::cerr << "Clusters: " << clusters.first << std::endl;
+	std::map<int, int> histogram;
+	for (const auto l : clusters.second) { histogram[l]++; std::cerr << l << std::endl; }
+
 	std::vector<Particle> resampledParticles = resampleLogWeights(mixtureParticles, numParticles, rng);
 	for (size_t p = 0; p < resampledParticles.size(); ++p)
 	{
@@ -316,7 +361,7 @@ int main(int argc, char **argv)
 		usleep(500000);
 
 		{
-			DataLog logger(logDir + expDirName + checkpointDir.checkpoints[2] + "/particle_" + std::to_string(generation) + "_" +
+			DataLog logger(logDir + expDirName + ExperimentDir::checkpoints[2] + "/particle_" + std::to_string(generation) + "_" +
 			               std::to_string(p) + ".bag");
 			logger.activeChannels.insert("particle");
 			logger.log<OccupancyData>("particle", *resampledParticles[p].state);

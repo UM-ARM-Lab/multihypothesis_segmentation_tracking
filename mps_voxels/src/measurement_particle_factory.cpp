@@ -9,6 +9,7 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl_ros/point_cloud.h>
 
+#include "mps_voxels/ExperimentDir.h"
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_occupancy_data.h"
 #include "mps_voxels/logging/log_sensor_history.h"
@@ -30,12 +31,13 @@
 
 using namespace mps;
 
+//const std::string testDirName = "/tmp/scene_explorer/";
 const std::string testDirName = "package://mps_test_data/";
-const std::string expDirName = "2020-06-07T08:55:02.095309/";
+//const std::string expDirName = "2020-06-24/";
+const std::string expDirName = "2020-06-30T22:04:11.926984/";
 const std::string logDir = parsePackageURL(testDirName);
-const std::string productDir = "productParticles/";
 const int numIter = 4; /// # buffer bags
-const int numParticles = 25;
+const int numParticles = 10;
 
 class ParticleFilterTestFixture
 {
@@ -90,7 +92,7 @@ int main(int argc, char **argv)
 	/////////////////////////////////////////////
 	//// Load Buffer
 	/////////////////////////////////////////////
-	for (int i = 0; i<numIter; ++i)
+	for (int i = 0; i < numIter; ++i)
 	{
 		DataLog loader(logDir + expDirName + "buffer_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
 		loader.activeChannels.insert("buffer");
@@ -106,7 +108,7 @@ int main(int argc, char **argv)
 
 		for (int j = 0; j < fixture.particleFilter->numParticles; ++j)
 		{
-			DataLog logger(logDir + expDirName + productDir + "particle_" + std::to_string(i) + "_" + std::to_string(j) + ".bag");
+			DataLog logger(logDir + expDirName + ExperimentDir::checkpoints[0] + "/particle_" + std::to_string(i) + "_" + std::to_string(j) + ".bag");
 			const auto& P = fixture.particleFilter->particles[j];
 			logger.activeChannels.insert("particle");
 			logger.log<OccupancyData>("particle", *P.state);
@@ -118,6 +120,33 @@ int main(int argc, char **argv)
 			logger.log<std_msgs::Time>("time", timeMsg);
 			ROS_INFO_STREAM("Logged X_t' " << j);
 		}
+	}
+
+	DataLog loader(logDir + expDirName + "buffer_" + std::to_string(numIter-1) + ".bag", {}, rosbag::bagmode::Read);
+	loader.activeChannels.insert("buffer");
+	SensorHistoryBuffer motionData = loader.load<SensorHistoryBuffer>("buffer");
+	std::cerr << "Successfully loaded buffer " << numIter-1 << std::endl;
+	std::cerr << "number of frames: " << motionData.rgb.size() << std::endl;
+
+	ros::Time initialTime = motionData.rgb.rbegin()->first;
+	std::shared_ptr<Scene> initialScene = computeSceneFromSensorHistorian(scenario, motionData, initialTime, scenario->worldFrame);
+
+	fixture.particleFilter->particles.clear();
+	fixture.particleFilter->initializeParticles(initialScene);
+
+	for (int j = 0; j < fixture.particleFilter->numParticles; ++j)
+	{
+		DataLog logger(logDir + expDirName + ExperimentDir::checkpoints[0] + "/particle_" + std::to_string(numIter) + "_" + std::to_string(j) + ".bag");
+		const auto& P = fixture.particleFilter->particles[j];
+		logger.activeChannels.insert("particle");
+		logger.log<OccupancyData>("particle", *P.state);
+		logger.activeChannels.insert("weight");
+		std_msgs::Float64 weightMsg; weightMsg.data = P.weight;
+		logger.log<std_msgs::Float64>("weight", weightMsg);
+		std_msgs::Time timeMsg; timeMsg.data = P.time;
+		logger.activeChannels.insert("time");
+		logger.log<std_msgs::Time>("time", timeMsg);
+		ROS_INFO_STREAM("Logged X_t' " << j);
 	}
 
 

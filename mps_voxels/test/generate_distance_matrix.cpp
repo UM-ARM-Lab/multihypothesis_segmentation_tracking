@@ -95,7 +95,6 @@ int main(int argc, char* argv[])
 			mps::DataLog particleLogB(mixDir + names[j], {"particle"}, rosbag::BagMode::Read);
 			mps::OccupancyData b = particleLogB.load<mps::OccupancyData>("particle");
 
-			int numObjects = std::max(a.objects.size(), b.objects.size());
 			mps::JaccardMatch3D J(a, b);
 			D(i, j) = 1.0 - (J.symmetricCover());
 		}
