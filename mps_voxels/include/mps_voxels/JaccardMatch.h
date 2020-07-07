@@ -62,6 +62,7 @@ public:
 	std::map<LabelT, int> jSizes;
 
 	double symmetricCover() const;
+	double cover() const;
 };
 
 }

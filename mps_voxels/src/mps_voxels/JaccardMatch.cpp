@@ -141,6 +141,21 @@ double JaccardMatch::symmetricCover() const
 	return score / (2.0 * fullSize);
 }
 
+double JaccardMatch::cover() const
+{
+	double score = 0.0;
+	Eigen::VectorXd iMax = IOU.rowwise().maxCoeff();
+	for (const auto& pair : lblIndex1.left)
+	{
+		// pair is (label, index)
+		score += iSizes.at(pair.first) * iMax[pair.second];
+	}
+
+	double fullSize = 0;
+	for (const auto& i : iSizes) { fullSize += i.second; }
+	return score / fullSize;
+}
+
 JaccardMatch3D::LabelBounds
 getBBoxes(const OccupancyData& labels)
 {
