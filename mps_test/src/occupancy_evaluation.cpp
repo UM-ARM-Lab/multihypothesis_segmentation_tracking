@@ -147,7 +147,7 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
-	const std::string workingDir = dir;
+	const std::string workingDir = "/home/kunhuang/mps_ws/src/mps_pipeline/mps_test_data/2020-06-24/";
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-12T18:50:08.037350/"; // cubes?
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-12T18:08:10.469214/"; // books
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-10T23:35:24.412039/";
@@ -286,9 +286,11 @@ int main(int argc, char* argv[])
 
 //		cv::imshow("Ground Truth", colorByLabel(segGT, cmapGT));
 
-		for (size_t stage = 0; stage < ExperimentDir::checkpoints.size(); ++stage)
+		const std::vector<size_t> stage_order{0,3,4,2};
+		for (const size_t stage : stage_order)
+//		for (size_t stage = 0; stage < ExperimentDir::checkpoints.size(); ++stage)
 		{
-			if (stage == 1) { continue; }
+//			if (stage == 1) { continue; }
 			for (int p = 0; p < numParticles; ++p)
 			{
 				const std::string particleFilename =

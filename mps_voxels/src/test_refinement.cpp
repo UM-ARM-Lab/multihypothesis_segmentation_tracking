@@ -9,7 +9,9 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl_ros/point_cloud.h>
 #include <moveit/robot_model_loader/robot_model_loader.h>
+#include <std_msgs/Float64.h>
 
+#include "mps_voxels/ExperimentDir.h"
 #include "mps_voxels/logging/DataLog.h"
 #include "mps_voxels/logging/log_occupancy_data.h"
 #include "mps_voxels/logging/log_sensor_history.h"
@@ -38,10 +40,12 @@ using namespace mps;
 using VoxelColormap = std::map<mps::VoxelRegion::VertexLabels::value_type , std_msgs::ColorRGBA>;
 
 const std::string testDirName = "package://mps_test_data/";
-const std::string expDirName = "2020-06-24T21:04:51.344795/";
+const std::string expDirName = "2020-06-31/";
 const std::string logDir = parsePackageURL(testDirName);
-const std::string resultDir = "result_particles/";
-
+const int numParticles = 5;
+const int generation = 4;
+const ExperimentDir checkpointDir;
+const double table_height = 0.03; //0.03 for simulation
 
 class ParticleFilterTestFixture
 {
@@ -70,13 +74,13 @@ public:
 		pnh.getParam("resolution", resolution);
 		particleFilter = std::make_unique<ParticleFilter>(scenario, resolution,
 		                                                  scenario->minExtent.head<3>(),
-		                                                  scenario->maxExtent.head<3>(), 5);
+		                                                  scenario->maxExtent.head<3>(), numParticles);
 
 		/////////////////////////////////////////////
-		//// Load initial scene data
+		//// Load buffer
 		/////////////////////////////////////////////
 		{
-			DataLog loader(logDir + expDirName + "buffer_" + std::to_string(0) + ".bag", {}, rosbag::bagmode::Read);
+			DataLog loader(logDir + expDirName + "buffer_" + std::to_string(generation-1) + ".bag", {}, rosbag::bagmode::Read);
 			loader.activeChannels.insert("buffer");
 			motionData = loader.load<SensorHistoryBuffer>("buffer");
 			std::cerr << "Successfully loaded buffer." << std::endl;
@@ -86,12 +90,11 @@ public:
 		/////////////////////////////////////////////
 		//// Load initial particles
 		/////////////////////////////////////////////
-		int generation = 1;
 		for (int i=0; i<particleFilter->numParticles; ++i)
 		{
 			Particle p;
 			p.state = std::make_shared<Particle::ParticleData>(particleFilter->voxelRegion);
-			DataLog loader(logDir + expDirName + resultDir + "particlePrime_" + std::to_string(generation) + "_" + std::to_string(i) + ".bag",
+			DataLog loader(logDir + expDirName + checkpointDir.checkpoints[3] + "/particle_" + std::to_string(generation) + "_" + std::to_string(i) + ".bag",
 			               {}, rosbag::bagmode::Read);
 			loader.activeChannels.insert("particle");
 			*p.state = loader.load<OccupancyData>("particle");
@@ -124,6 +127,29 @@ int main(int argc, char **argv)
 	octomap::point3d tMax(scenario->maxExtent.x(), scenario->maxExtent.y(), scenario->maxExtent.z());
 	scenario->mapServer->m_octree->setBBXMin(tMin);
 	scenario->mapServer->m_octree->setBBXMax(tMax);
+
+/*
+	for (int i=0; i<fixture.particleFilter->numParticles; ++i)
+	{
+		Particle p;
+		p.state = std::make_shared<Particle::ParticleData>(fixture.particleFilter->voxelRegion);
+		DataLog loader(logDir + expDirName + "particle_" + std::to_string(0) + "_" + std::to_string(i) + ".bag",
+		               {}, rosbag::bagmode::Read);
+		loader.activeChannels.insert("particle");
+		*p.state = loader.load<OccupancyData>("particle");
+		p.particle.id = i;
+		std::cerr << "Successfully loaded." << std::endl;
+
+		std_msgs::Header header;
+		header.frame_id = scenario->mapServer->getWorldFrame();
+		header.stamp = ros::Time::now();
+		auto pfnewmarker = mps::visualize(*p.state, header, rng);
+		visualPub.publish(pfnewmarker);
+		std::cerr << "Initial state particle " << i << " shown!" << std::endl;
+		usleep(500000);
+	}
+*/
+
 
 /*
 	//// Compute new scene
@@ -174,7 +200,7 @@ int main(int argc, char **argv)
 	/////////////////////////////////////////////
 	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
 	{
-		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree, 0.03);
+		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree, table_height);
 		std_msgs::Header header;
 		header.frame_id = scenario->mapServer->getWorldFrame();
 		header.stamp = ros::Time::now();
@@ -195,17 +221,15 @@ int main(int argc, char **argv)
 */
 
 	/// Visualize old particles X_t'
+/*
 	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
 	{
-/*
 		std_msgs::Header header; header.frame_id = scenario->mapServer->getWorldFrame(); header.stamp = ros::Time::now();
 		auto pfMarkers = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
 		visualPub.publish(pfMarkers);
 		std::cerr << "old particle " << i << " shown!" << std::endl;
 		usleep(500000);
-*/
 
-/*
 		const VoxelRegion& region = *fixture.particleFilter->particles[i].state->voxelRegion;
 		assert(fixture.particleFilter->particles[i].state->vertexState.size() == region.num_vertices());
 		VoxelRegion::VertexLabels outputState(region.num_vertices(), VoxelRegion::FREE_SPACE);
@@ -243,8 +267,8 @@ int main(int argc, char **argv)
 		usleep(500000);
 
 		fixture.particleFilter->particles[i] = outputParticle;
-*/
 	}
+*/
 
 	/////////////////////////////////////////////
 	//// Free space refinement
@@ -285,21 +309,67 @@ int main(int argc, char **argv)
 	}
 */
 
+	std::vector<double> historyParticleQuality;
 	for (int i = 0; i<fixture.particleFilter->numParticles; ++i)
 	{
+		VoxelColormap cmap;
+		auto colors = dispersedColormap(fixture.particleFilter->particles[i].state->uniqueObjectLabels.size());
+		int colorID = 0;
+		for (const auto& label : fixture.particleFilter->particles[i].state->uniqueObjectLabels)
+		{
+			cmap.emplace(label.id, colors[colorID]);
+			++colorID;
+		}
+
+/*
+		Particle p;
+		p.state = std::make_shared<Particle::ParticleData>(fixture.particleFilter->voxelRegion);
+		DataLog loader(logDir + expDirName + "particle_" + std::to_string(0) + "_" + std::to_string(i) + ".bag",
+		               {}, rosbag::bagmode::Read);
+		loader.activeChannels.insert("particle");
+		*p.state = loader.load<OccupancyData>("particle");
+		p.particle.id = i;
+		std::cerr << "Successfully loaded." << std::endl;
+*/
+
+/*
+		{
+			std_msgs::Header header;
+			header.frame_id = scenario->mapServer->getWorldFrame();
+			header.stamp = ros::Time::now();
+			auto pfnewmarker = mps::visualize(*p.state, header, cmap);
+			visualPub.publish(pfnewmarker);
+			std::cerr << "Initial state particle " << i << " shown!" << std::endl;
+			usleep(500000);
+		}
+*/
+
 		std_msgs::Header header; header.frame_id = scenario->mapServer->getWorldFrame(); header.stamp = ros::Time::now();
-		auto pfMarkers = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
+		auto pfMarkers = mps::visualize(*fixture.particleFilter->particles[i].state, header, cmap);
 		visualPub.publish(pfMarkers);
 		std::cerr << "old particle " << i << " shown!" << std::endl;
-		usleep(500000);
+//		usleep(500000);
 
-		refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree, 0.03);
+		std::pair<int, int> refineResults = refineParticleFreeSpace(fixture.particleFilter->particles[i], sceneOctree, table_height);
+		double quality = static_cast<double>(refineResults.first) / static_cast<double>(refineResults.second);
+		historyParticleQuality.push_back(quality);
+		std::cerr << "Particle quality " << 1 - quality << std::endl;
+
 		header.frame_id = scenario->mapServer->getWorldFrame();
 		header.stamp = ros::Time::now();
-		auto pfnewmarker = mps::visualize(*fixture.particleFilter->particles[i].state, header, rng);
+		auto pfnewmarker = mps::visualize(*fixture.particleFilter->particles[i].state, header, cmap);
 		visualPub.publish(pfnewmarker);
 		std::cerr << "Free-space refined predicted state particle " << i << " shown!" << std::endl;
-		usleep(500000);
+//		usleep(500000);
+		{
+			DataLog logger(logDir + expDirName + checkpointDir.checkpoints[4] + "/particle_" + std::to_string(generation) + "_" + std::to_string(i) + ".bag");
+			logger.activeChannels.insert("particle");
+			logger.log<OccupancyData>("particle", *fixture.particleFilter->particles[i].state);
+			std_msgs::Float64 weightMsg; weightMsg.data = 1 - quality;
+			logger.activeChannels.insert("weight");
+			logger.log<std_msgs::Float64>("weight", weightMsg);
+			ROS_INFO_STREAM("Logged X_t' refined " << i);
+		}
 	}
 
 	/////////////////////////////////////////////
@@ -311,18 +381,18 @@ int main(int argc, char **argv)
 	{
 		Particle p;
 		p.state = std::make_shared<Particle::ParticleData>(fixture.particleFilter->voxelRegion);
-		DataLog loader(logDir + expDirName + "particle_" + std::to_string(1)+ "_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
+		DataLog loader(logDir + expDirName + checkpointDir.checkpoints[0] + "/particle_" +
+		               std::to_string(generation)+ "_" + std::to_string(i) + ".bag", {}, rosbag::bagmode::Read);
 		loader.activeChannels.insert("particle");
 		*p.state = loader.load<OccupancyData>("particle");
 		p.particle.id = i;
 		newSamples.push_back(p);
 		newSamples[i].state->uniqueObjectLabels = getUniqueObjectLabels(newSamples[i].state->vertexState);
-		std::cerr << "Successfully loaded measurement particle " << 1 << " " << i << std::endl;
+		std::cerr << "Successfully loaded measurement particle_" << generation << "_" << i <<" with quality " << p.weight << std::endl;
 	}
 	//// TODO: if more particles, generate scene
 //		auto newSamples = fixture.particleFilter->createParticlesFromSegmentation(newScene, fixture.particleFilter->numParticles);
 
-/*
 	/// Visualize new particles X_t''
 	for (int i = 0; i<static_cast<int>(newSamples.size()); ++i)
 	{
@@ -330,9 +400,8 @@ int main(int argc, char **argv)
 		auto pfMarkers = mps::visualize(*newSamples[i].state, header, rng);
 		visualPub.publish(pfMarkers);
 		std::cerr << "New particle " << i << " shown!" << std::endl;
-		usleep(500000);
+//		usleep(500000);
 	}
-*/
 
 	for (int newParticleID = 0; newParticleID<static_cast<int>(newSamples.size()); ++newParticleID)
 	{
@@ -340,16 +409,18 @@ int main(int argc, char **argv)
 		{
 			std::vector<const VoxelRegion::VertexLabels*> toCombine;
 			toCombine.emplace_back(&newSamples[newParticleID].state->vertexState);
+//			toCombine.emplace_back(&newSamples[newParticleID+1].state->vertexState);
 			toCombine.emplace_back(&fixture.particleFilter->particles[oldParticleID].state->vertexState);
 
 			VoxelConflictResolver resolver(fixture.particleFilter->voxelRegion, toCombine);
+			std::cerr << toCombine[0]->size() << " " << toCombine[1]->size() << std::endl;
 
 			std::cerr << "Mixing new particle " << newParticleID << " and old particle " << oldParticleID << std::endl;
 			std::vector<Particle> mixParticles;
-			for (int iter = 0; iter < 5; ++iter)
+			for (int nsample = 0; nsample < 5; ++nsample)
 			{
-				auto structure = resolver.sampleStructure(scenario->rng());
-				auto V = resolver.sampleGeometry(toCombine, structure, scenario->rng());
+				auto structure = resolver.sampleStructure(rng);
+				auto V = resolver.sampleGeometry(toCombine, structure, rng);
 
 				Particle inputParticle;
 				inputParticle.state = std::make_shared<OccupancyData>(newSamples[newParticleID].state->voxelRegion, V);
@@ -370,8 +441,8 @@ int main(int argc, char **argv)
 				header.stamp = ros::Time::now();
 				auto pfnewmarker = mps::visualize(*fixture.particleFilter->voxelRegion, V, header, cmap);
 				visualPub.publish(pfnewmarker);
-				std::cerr << "Mixed particle " << iter << " shown!" << std::endl;
-				sleep(1);
+				std::cerr << "Mixed particle " << nsample << " shown!" << std::endl;
+//				sleep(1);
 
 				bool isconverge = false;
 				int numFilter = 0;
@@ -381,15 +452,24 @@ int main(int argc, char **argv)
 					inputParticle = filteringParticle(inputParticle, isconverge);
 					auto pfMarkers = mps::visualize(*inputParticle.state, header, cmap);
 					visualPub.publish(pfMarkers);
-					std::cerr << "Mixed particle filtered " << iter << " shown!" << std::endl;
-					usleep(100000);
+					std::cerr << "Mixed particle filtered " << nsample << " shown!" << std::endl;
+//					usleep(50000);
 					numFilter++;
 				}
 				mixParticles.push_back(inputParticle);
-				usleep(2000000);
+				{
+					DataLog logger(logDir + expDirName + checkpointDir.checkpoints[1] + "/particle_" + std::to_string(generation) + "_" +
+					               std::to_string(newParticleID) + "_" + std::to_string(oldParticleID) + "_" + std::to_string(nsample) + ".bag");
+					logger.activeChannels.insert("particle");
+					logger.log<OccupancyData>("particle", *inputParticle.state);
+					ROS_INFO_STREAM("Logged mixed particle " << newParticleID << " " << oldParticleID);
+				}
+
+//				usleep(2000000);
 			}
 
 			//// Remixing sampled merging result
+/*
 			std::vector<const VoxelRegion::VertexLabels*> toCombineAgain;
 			for (auto& p : mixParticles)
 			{
@@ -414,6 +494,7 @@ int main(int argc, char **argv)
 				std::cerr << "Mixed particle " << iter << " shown!" << std::endl;
 				sleep(1);
 			}
+*/
 		}
 	}
 

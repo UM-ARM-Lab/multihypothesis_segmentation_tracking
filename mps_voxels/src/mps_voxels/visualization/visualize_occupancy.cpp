@@ -42,10 +42,10 @@ visualization_msgs::MarkerArray visualize(
 {
 	visualization_msgs::MarkerArray ma = visualize(*data.voxelRegion, data.vertexState, header, colormap);
 //	ma.markers += visualize(*data.voxelRegion, data.edgeState, header, re).markers;
-	for (const auto& pair : data.objects)
-	{
-		ma.markers += visualize(*pair.second, header, colormap.at(pair.first.id)).markers;
-	}
+//	for (const auto& pair : data.objects)
+//	{
+//		ma.markers += visualize(*pair.second, header, colormap.at(pair.first.id)).markers;
+//	}
 
 	return ma;
 }
@@ -54,10 +54,10 @@ visualization_msgs::MarkerArray visualize(const OccupancyData& data, const std_m
 {
 	visualization_msgs::MarkerArray ma = visualize(*data.voxelRegion, data.vertexState, header, re);
 	ma.markers += visualize(*data.voxelRegion, data.edgeState, header, re).markers;
-	for (const auto& pair : data.objects)
-	{
-		ma.markers += visualize(*pair.second, header, re).markers;
-	}
+//	for (const auto& pair : data.objects)
+//	{
+//		ma.markers += visualize(*pair.second, header, re).markers;
+//	}
 
 	return ma;
 }

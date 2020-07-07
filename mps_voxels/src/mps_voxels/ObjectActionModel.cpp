@@ -412,12 +412,25 @@ ObjectActionModel::ObjectActionModel(std::shared_ptr<const Scenario> scenario_, 
 	assert(!lastCloudSegment->empty());
 //	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002,
 //	                             buffer.cameraModel.tfFrame(), true, icpRigidTF.tf.matrix().cast<float>())) // TODO: decide the value of threshold
-	if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002,
-	                             buffer.cameraModel.tfFrame()))
+	if (lastCloudSegment->size() == 0)
+	{
+		std::cerr << "Final mask of SiamMask is empty!" << std::endl;
+		RigidTF ident;
+		ident.tf = mps::Pose::Identity();
+		icpRigidTF = ident;
+	}
+	else if (!isSiamMaskValidICPbased(initCloudSegment, lastCloudSegment, worldTcamera, 0.002,
+	                                  buffer.cameraModel.tfFrame()))
 	{
 		//// Generate reasonable disturbance in ParticleFilter together with failed situations
-		std::cerr << "Although ICP tells us SiamMask isn't reasonable, we still use it for now." << std::endl;
+//		std::cerr << "Although ICP tells us SiamMask isn't reasonable, we still use it for now." << std::endl;
+		std::cerr << "ICP tells us SiamMask is wrong, assume not moving." << std::endl;
+		RigidTF ident;
+		ident.tf = mps::Pose::Identity();
+		icpRigidTF = ident;
 	}
+
+
 
 	//// SIFT
 	sparseTracker->track(timeStartEnd, buffer, masks);
@@ -512,7 +525,7 @@ bool ObjectActionModel::isSiamMaskValidICPbased(const pcl::PointCloud<PointT>::P
 		Final.header.frame_id = frame_id;
 		pcl_conversions::toPCL(ros::Time::now(), Final.header.stamp);
 		pcPub3.publish(Final);
-		sleep(3);
+//		sleep(3);
 	}
 
 	if (score > scoreThreshold)
