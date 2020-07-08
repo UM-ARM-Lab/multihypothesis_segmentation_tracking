@@ -85,7 +85,7 @@ public:
 		std::string joint_topic;
 
 		explicit
-		SubscriptionOptions(const std::string& prefix = "/kinect2_victor_head/hd")
+		SubscriptionOptions(const std::string& prefix /*= "/kinect2_victor_head/hd"*/)
 			:nh(), pnh("~"),
 //			  it(nh),
               hints("compressed", ros::TransportHints(), pnh),
@@ -119,8 +119,8 @@ public:
 	SensorHistoryBuffer buffer;
 
 	explicit
-	SensorHistorian(const size_t _buffer = 500,
-	                SubscriptionOptions _options = SubscriptionOptions());
+	SensorHistorian(const size_t _buffer/* = 500*/,
+	                SubscriptionOptions _options/* = SubscriptionOptions()*/);
 
 	~SensorHistorian();
 

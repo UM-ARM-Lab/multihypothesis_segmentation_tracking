@@ -45,7 +45,7 @@ using namespace mps;
 
 bool generateSensorHistory(SensorHistoryBuffer& buff)
 {
-	SensorHistorian::SubscriptionOptions opts;
+	SensorHistorian::SubscriptionOptions opts("/kinect2_victor_head/hd");
 	opts.hints = image_transport::TransportHints();
 	auto historian = std::make_unique<SensorHistorian>(500, opts);
 	historian->startCapture();

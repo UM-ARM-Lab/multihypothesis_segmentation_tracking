@@ -140,21 +140,18 @@ std::shared_ptr<Scenario> scenarioFactory(ros::NodeHandle& nh, ros::NodeHandle& 
 	setIfMissing(pnh, "roi/max/y",  0.6);
 	setIfMissing(pnh, "roi/max/z",  0.5);
 
-	//// 06-30:
-/*
-	setIfMissing(pnh, "roi/min/x", -0.3);
-	setIfMissing(pnh, "roi/min/y", -0.3);
-	setIfMissing(pnh, "roi/min/z", -0.050);
-	setIfMissing(pnh, "roi/max/x",  0.3);
-	setIfMissing(pnh, "roi/max/y",  0.3);
-	setIfMissing(pnh, "roi/max/z",  0.35);
-*/
+//	setIfMissing(pnh, "roi/min/x", -0.3);
+//	setIfMissing(pnh, "roi/min/y", -0.3);
+//	setIfMissing(pnh, "roi/min/z", -0.050);
+//	setIfMissing(pnh, "roi/max/x",  0.3);
+//	setIfMissing(pnh, "roi/max/y",  0.3);
+//	setIfMissing(pnh, "roi/max/z",  0.35);
 
 	setIfMissing(pnh, "sensor_model/max_range", 8.0);
-	setIfMissing(pnh, "planning_samples", 25);
-	setIfMissing(pnh, "planning_time", 60.0);
+	setIfMissing(pnh, "planning/samples", 25);
+	setIfMissing(pnh, "planning/time", 60.0);
 	setIfMissing(pnh, "use_memory", true);
-	setIfMissing(pnh, "use_completion", "optional");
+	setIfMissing(pnh, "use_completion", "required");
 	setIfMissing(pnh, "visualize", std::vector<std::string>{"particles", "icp", "occlusions", "object_sampling"});
 
 	bool gotParam = false;

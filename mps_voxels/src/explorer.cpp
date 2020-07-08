@@ -65,6 +65,8 @@
 #include "mps_voxels/visualization/visualize_voxel_region.h"
 #include "mps_voxels/visualization/visualize_bounding_spheres.h"
 
+#include "mps_voxels/hacks.h"
+
 #include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_model/robot_model.h>
 #include <moveit/robot_state/robot_state.h>
@@ -365,7 +367,7 @@ bool SceneExplorer::executeMotion(const std::shared_ptr<Motion>& motion, const r
 			auto subTraj = std::dynamic_pointer_cast<JointTrajectoryAction>(actions->actions[idx]);
 			if (subTraj)
 			{
-				totalTime += subTraj->cmd.points.back().time_from_start-subTraj->cmd.points.front().time_from_start;
+				totalTime += subTraj->cmd.points.back().time_from_start - subTraj->cmd.points.front().time_from_start;
 			}
 		}
 	}
@@ -481,7 +483,7 @@ void SceneExplorer::cloud_cb(const sensor_msgs::ImageConstPtr& rgb_msg,
 	if (once)
 	{
 		once = false;
-		system("bash -c 'source /home/pricear/mps_ws/devel/setup.bash ; rosparam dump $(rosparam get /experiment/directory)/rosparam.yaml'");
+		logParameterServer();
 	}
 	std::cerr << "Got message." << std::endl;
 	if (!ros::ok()) { return; }
@@ -1215,7 +1217,11 @@ moveit_msgs::DisplayTrajectory SceneExplorer::visualize(const std::shared_ptr<Mo
 
 SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 {
-	system("bash -c 'source /home/pricear/mps_ws/devel/setup.bash ; rosnode kill shape_completion_node'");
+	ensureGPUMemory();
+
+	std::string topic_prefix = "/kinect2_victor_head/hd";
+//	std::string topic_prefix = "/kinect2/hd";
+	SensorHistorian::SubscriptionOptions options(topic_prefix);
 
     sensor_queue = std::make_unique<ros::CallbackQueue>();
 	sensor_spinner = std::make_unique<ros::AsyncSpinner>(1, sensor_queue.get());
@@ -1304,7 +1310,7 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	sparseTracker->track_options.meterRadius = 1.0f;
 #endif
 	denseTracker = std::make_unique<SiamTracker>();
-	historian = std::make_unique<SensorHistorian>();
+	historian = std::make_unique<SensorHistorian>(500, options);
 	historian->stopCapture();
 
 	// Wait for joints, then set the current state as the return state
@@ -1398,14 +1404,10 @@ SceneExplorer::SceneExplorer(ros::NodeHandle& nh, ros::NodeHandle& pnh)
 	mapColor.g = 1.0;
 	mapColor.b = 0.0;
 
-	std::string topic_prefix = "/kinect2_victor_head/hd";
-
 	NAMED_WINDOW("target_mask", cv::WINDOW_GUI_NORMAL);
 	NAMED_WINDOW("rgb", cv::WINDOW_GUI_NORMAL);
 	NAMED_WINDOW("segmentation", cv::WINDOW_GUI_NORMAL);
 	NAMED_WINDOW("orig_segmentation", cv::WINDOW_GUI_NORMAL);
-
-	SensorHistorian::SubscriptionOptions options(topic_prefix);
 
 	image_transport::ImageTransport it(nh);
 

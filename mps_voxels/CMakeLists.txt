@@ -227,6 +227,7 @@ add_library(${PROJECT_NAME}
   src/${PROJECT_NAME}/visualization/visualize_occupancy.cpp
   src/${PROJECT_NAME}/visualization/visualize_bounding_spheres.cpp
   src/${PROJECT_NAME}/Experiment.cpp
+  src/${PROJECT_NAME}/hacks.cpp
 )
 target_link_libraries(${PROJECT_NAME}
   PUBLIC

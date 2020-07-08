@@ -9,6 +9,8 @@
 #include "mps_voxels/JaccardMatch.h"
 #include "mps_voxels/OccupancyData.h"
 
+#include "mps_voxels/hacks.h"
+
 #include <tf_conversions/tf_eigen.h>
 
 #include "mps_voxels/logging/DataLog.h"
@@ -49,7 +51,6 @@ ParticleFilter::createParticlesFromSegmentation(const std::shared_ptr<const Meas
 	// Currently this is only local, but may need to move up to the class level
 	std::map<ParticleIndex, std::shared_ptr<SegmentationInfo>> particleToInitialSegmentation;
 
-	// TODO: This should probably be wrapped into its own thing
 	for (int p = 0; p < n; ++p)
 	{
 		// Generate a particle corresponding to this segmentation
@@ -97,8 +98,7 @@ ParticleFilter::computeActionModel(
 	std::unique_ptr<Tracker>& sparseTracker,
 	std::unique_ptr<DenseTracker>& denseTracker) const
 {
-	// TODO: TOTAL HACK!!!
-	system("bash -c 'source /home/pricear/mps_ws/devel/setup.bash ; rosnode kill shape_completion_node'");
+	ensureGPUMemory();
 
 	// Return type
 	MotionModel labelToMotionLookup;
@@ -378,55 +378,6 @@ void ParticleFilter::resample(std::mt19937& rng)
 	{
 		particles[i] = resampledParticles[i];
 	}
-}
-
-bool ParticleFilter::introNewSceneParticle(const std::shared_ptr<const MeasurementSensorData>& newScene)
-{
-/*
-	SegmentationTreeSampler treeSampler(newScene->segInfo);
-	std::vector<std::pair<double, SegmentationCut>> segmentationSamples = treeSampler.sample(scenario->rng(), numNewSceneParticle, true);
-
-	std::map<ParticleIndex, std::shared_ptr<SegmentationInfo>> particleToInitialSegmentation;
-
-	for (int p = 0; p < newSceneParticle; ++p)
-	{
-		// Generate a particle corresponding to this segmentation
-		Particle particle;
-		particle.particle.id = p;
-
-		const auto& sample = segmentationSamples[p];
-
-		particle.state = std::make_shared<OccupancyData>(voxelRegion);
-		particle.weight = sample.first;
-
-		const auto segInfo = std::make_shared<SegmentationInfo>(sample.second.segmentation);
-		particleToInitialSegmentation.emplace(p, segInfo);
-		// Visualization:
-		IMSHOW("segmentation", colorByLabel(segInfo->objectness_segmentation->image));
-
-		bool execSegmentation = SceneProcessor::performSegmentation(*newScene, segInfo->objectness_segmentation->image, *particle.state);
-		if (!execSegmentation)
-		{
-			std::cerr << "Particle " << particle.particle << " failed to segment." << std::endl;
-			return false;
-		}
-
-		bool getCompletion = SceneProcessor::buildObjects(*newScene, *particle.state);
-		if (!getCompletion)
-		{
-			return false;
-		}
-
-		particle.state->vertexState = voxelRegion->objectsToSubRegionVoxelLabel(particle.state->objects, newScene->minExtent.head<3>());
-		particle.state->uniqueObjectLabels = getUniqueObjectLabels(particle.state->vertexState);
-
-		auto uniqueImageLabels = unique(segInfo->objectness_segmentation->image);
-
-		particles.push_back(particle);
-	}
-*/
-
-	return true;
 }
 
 }
