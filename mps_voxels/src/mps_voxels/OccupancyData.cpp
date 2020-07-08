@@ -111,7 +111,7 @@ OccupancyData::OccupancyData(std::shared_ptr<VoxelRegion> _region,
 		subtree->setProbMiss(0.05);
 		subtree->setProbHit(0.95);
 		setBBox(voxelRegion->regionMin, voxelRegion->regionMax, subtree.get());
-		auto res = objects.emplace(id, std::make_unique<Object>(id, subtree));
+		auto res = objects.emplace(id, std::make_shared<Object>(id, subtree));
 		res.first->second->minExtent = Eigen::Vector3d::Constant(std::numeric_limits<double>::max());
 		res.first->second->maxExtent = Eigen::Vector3d::Constant(std::numeric_limits<double>::lowest());
 	}

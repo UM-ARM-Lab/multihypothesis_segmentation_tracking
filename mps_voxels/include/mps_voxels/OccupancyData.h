@@ -83,7 +83,7 @@ struct OccupancyData
 	boost::bimap<uint16_t, ObjectIndex> labelToIndexLookup; ///< Carries body segmentation to object index in this scene
 
 	// Objects in this scene
-	std::map<ObjectIndex, std::unique_ptr<Object>> objects;
+	std::map<ObjectIndex, std::shared_ptr<Object>> objects;
 
 	ObjectIndex coordToObject(const Eigen::Vector3d& pt) const;
 	std::map<ObjectIndex, int> occludedBySegmentCount;

@@ -3,6 +3,7 @@
 //
 
 #include "mps_voxels/logging/log_voxel_region.h"
+#include "mps_msgs/VoxelRegion.h"
 #include <std_msgs/Float64.h>
 #include <geometry_msgs/Vector3.h>
 #include <ros/console.h>
@@ -10,44 +11,48 @@
 namespace mps
 {
 
-template <>
-void DataLog::log<VoxelRegion>(const std::string& channel, const VoxelRegion& msg)
+mps_msgs::VoxelRegion
+ros_message_conversion<VoxelRegion>::toMessage(const VoxelRegion& region, const std::nullptr_t)
 {
-	std_msgs::Float64 res;
-	res.data = msg.resolution;
-	activeChannels.insert(channel + "/resolution");
-	log(channel + "/resolution", res);
+	mps_msgs::VoxelRegion msg;
+	msg.resolution = region.resolution;
+	msg.min.x = region.regionMin.x();
+	msg.min.y = region.regionMin.y();
+	msg.min.z = region.regionMin.z();
+	msg.max.x = region.regionMax.x();
+	msg.max.y = region.regionMax.y();
+	msg.max.z = region.regionMax.z();
+	msg.frame_id = region.frame_id;
+	return msg;
+}
 
-	geometry_msgs::Vector3 rMin;
-	rMin.x = msg.regionMin.x();
-	rMin.y = msg.regionMin.y();
-	rMin.z = msg.regionMin.z();
-	activeChannels.insert(channel + "/regionMin");
-	log(channel + "/regionMin", rMin);
-
-	geometry_msgs::Vector3 rMax;
-	rMax.x = msg.regionMax.x();
-	rMax.y = msg.regionMax.y();
-	rMax.z = msg.regionMax.z();
-	activeChannels.insert(channel + "/regionMax");
-	log(channel + "/regionMax", rMax);
-
-	std_msgs::String stringMsg;
-	stringMsg.data = msg.frame_id;
-	log<std_msgs::String>(channel + "/frame_id", stringMsg);
+VoxelRegion
+ros_message_conversion<VoxelRegion>::fromMessage(const mps_msgs::VoxelRegion& msg)
+{
+	return VoxelRegion(msg.resolution,
+	                   {msg.min.x, msg.min.y, msg.min.z},
+	                   {msg.max.x, msg.max.y, msg.max.z},
+	                   msg.frame_id);
 }
 
 template <>
-VoxelRegion DataLog::load<VoxelRegion>(const std::string& channel)
+void DataLog::log<VoxelRegion>(const std::string& channel, const VoxelRegion& region)
 {
-	auto res = load<std_msgs::Float64>(channel + "/resolution");
-	auto rMin = load<geometry_msgs::Vector3>(channel + "/regionMin" );
-	auto rMax = load<geometry_msgs::Vector3>(channel + "/regionMax" );
+	activeChannels.insert(channel);
+
+	log(channel, toMessage(region));
+}
+
+VoxelRegion loadLegacyRegion(DataLog& log, const std::string& channel)
+{
+	auto res = log.load<std_msgs::Float64>(channel + "/resolution");
+	auto rMin = log.load<geometry_msgs::Vector3>(channel + "/regionMin" );
+	auto rMax = log.load<geometry_msgs::Vector3>(channel + "/regionMax" );
 
 	std::string frame_id = "";
 	try
 	{
-		frame_id = load<std::string>(channel + "/frame_id");
+		frame_id = log.load<std::string>(channel + "/frame_id");
 	}
 	catch (const std::exception& ex)
 	{
@@ -55,6 +60,18 @@ VoxelRegion DataLog::load<VoxelRegion>(const std::string& channel)
 	}
 
 	return VoxelRegion(res.data, {rMin.x, rMin.y, rMin.z}, {rMax.x, rMax.y, rMax.z}, frame_id);
+}
+
+template <>
+VoxelRegion DataLog::load<VoxelRegion>(const std::string& channel)
+{
+	rosbag::View view(*bag, TopicTypeQuery(channel, ros::message_traits::DataType<mps_msgs::VoxelRegion>::value()));
+	if (view.size() == 0)
+	{
+		return loadLegacyRegion(*this, channel);
+	}
+
+	return fromMessage(load<mps_msgs::VoxelRegion>(channel));
 }
 
 }

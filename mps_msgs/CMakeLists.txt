@@ -19,9 +19,12 @@ find_package(catkin REQUIRED COMPONENTS ${CATKIN_PACKAGES} message_generation)
 add_message_files(
   FILES
     IndexMap.msg
+    ColorMap.msg
     SparseMatrix.msg
     FlowVector.msg
     AABBox2d.msg
+    VoxelRegion.msg
+    VoxelSegmentation.msg
 )
 
 ## Generate services in the 'srv' folder

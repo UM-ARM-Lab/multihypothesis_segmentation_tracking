@@ -62,7 +62,7 @@ Eigen::Vector3d samplePointInMesh(const shapes::Mesh& m, std::mt19937& rng)
 	return vertices * combo;
 }
 
-State stateFactory(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects)
+State stateFactory(const std::map<ObjectIndex, std::shared_ptr<Object>>& objects)
 {
 	State objectState;
 	for (const auto& obj : objects)

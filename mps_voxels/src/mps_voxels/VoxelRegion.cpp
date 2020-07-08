@@ -561,7 +561,7 @@ mps::VoxelRegion::VertexLabels objectsToVoxelLabel(const std::map<ObjectIndex, s
 }
 
 VoxelRegion::VertexLabels
-VoxelRegion::objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects,
+VoxelRegion::objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::shared_ptr<Object>>& objects,
                                           const Eigen::Vector3d& subRegionMinExtent)
 {
 	mps::VoxelRegion::VertexLabels res(num_vertices(), VoxelRegion::FREE_SPACE);

@@ -159,7 +159,7 @@ public:
 
 	mps::VoxelRegion::vertex_descriptor coordToVertexDesc(const Eigen::Vector3d& query) const;
 
-	VertexLabels objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::unique_ptr<Object>>& objects, // object in subRegion
+	VertexLabels objectsToSubRegionVoxelLabel(const std::map<ObjectIndex, std::shared_ptr<Object>>& objects, // object in subRegion
 	                                          const Eigen::Vector3d& subRegionMinExtent);
 };
 
