@@ -1,10 +1,12 @@
 <launch>
     <arg name="directory"/>
+    <arg name="trajectory"/>
     <arg name="ignore" default="[table, kinect2_victor_head, ground_plane, hammer]"/>
 
     <node pkg="mps_test" type="occupancy_evaluation" name="occupancy_evaluation">
         <rosparam param="experiment_directory" subst_value="True">$(arg directory)</rosparam>
         <rosparam param="ignore" subst_value="True">$(arg ignore)</rosparam>
+        <param name="trajectory_file" value="$(arg trajectory)"/>
     </node>
 
     <group ns="kinect_display">

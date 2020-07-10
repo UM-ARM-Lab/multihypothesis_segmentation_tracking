@@ -55,6 +55,7 @@
 #include <rviz_cinematographer_msgs/Finished.h>
 
 #include <tf/transform_broadcaster.h>
+#include <std_msgs/Float64.h>
 
 #include <opencv2/highgui.hpp>
 
@@ -136,9 +137,47 @@ public:
 	ros::Publisher trajectoryPub;
 	ros::Subscriber finishedSub;
 
-	ViewController()
+	rviz_cinematographer_msgs::CameraTrajectory trajectory;
+
+	static std::string filename(const std::string& experimentID, const Technique technique, const int generation, const int particle, const int stage)
+	{
+		const std::string particleStr = (particle == -1) ? "" : "_" + std::to_string(particle);
+		const std::string stageStr = (stage == -1) ? "" : "_" + std::to_string(stage);
+		return "/tmp/viz_" + experimentID + "_" + TECHNIQUE_NAMES[technique] + "_" + std::to_string(generation) + particleStr + stageStr + ".avi";
+	}
+
+	ViewController(const std::string& trajectoryFile)
 	{
 		ros::NodeHandle nh;
+
+		YAML::Node traj = YAML::LoadFile(trajectoryFile);
+		trajectory.interaction_disabled = true;
+		trajectory.mouse_interaction_mode = 0;
+		trajectory.allow_free_yaw_axis = false;
+		trajectory.target_frame = "table_surface";
+		for (YAML::iterator it = traj["trajectory"].begin(); it != traj["trajectory"].end(); ++it)
+		{
+			const YAML::Node& pose = *it;
+			rviz_cinematographer_msgs::CameraMovement movement;
+			movement.eye.header.frame_id = trajectory.target_frame;
+//			movement.eye.header.stamp = stamp;
+			movement.eye.point.x = pose["eye"]["x"].as<double>();
+			movement.eye.point.y = pose["eye"]["y"].as<double>();
+			movement.eye.point.z = pose["eye"]["z"].as<double>();
+			movement.focus.header.frame_id = trajectory.target_frame;
+//			movement.focus.header.stamp = stamp;
+			movement.focus.point.x = pose["focus"]["x"].as<double>();
+			movement.focus.point.y = pose["focus"]["y"].as<double>();
+			movement.focus.point.z = pose["focus"]["z"].as<double>();
+			movement.up.header.frame_id = trajectory.target_frame;
+//			movement.up.header.stamp = stamp;
+			movement.up.vector.x = 0.0;
+			movement.up.vector.y = 0.0;
+			movement.up.vector.z = 1.0;
+			movement.interpolation_speed = rviz_cinematographer_msgs::CameraMovement::WAVE;
+			movement.transition_duration = ros::Duration(1.0);
+			trajectory.trajectory.push_back(movement);
+		}
 
 		enablePub = nh.advertise<rviz_cinematographer_msgs::EnableDisplays>("/rviz/enable_displays", 1, true);
 		recordPub = nh.advertise<rviz_cinematographer_msgs::Record>("/rviz/record", 1, false);
@@ -154,43 +193,17 @@ public:
 	void renderVisuals(const std::string& experimentID, const Technique technique, const int generation, const int particle, const int stage)
 	{
 		ros::Time stamp = ros::Time::now();
-		rviz_cinematographer_msgs::CameraTrajectory trajectory;
-		trajectory.interaction_disabled = true;
-		trajectory.mouse_interaction_mode = 0;
-		trajectory.allow_free_yaw_axis = false;
-		trajectory.target_frame = "table_surface";
-		rviz_cinematographer_msgs::CameraMovement movement;
-		movement.eye.header.frame_id = trajectory.target_frame;
-		movement.eye.header.stamp = stamp;
-//		0.84263; 0.89119; 0.68528
-		movement.eye.point.x = 0.84263;
-		movement.eye.point.y = 0.89119;
-		movement.eye.point.z = 0.68528;
-//		0.21745; -0.17177; 0.35255
-		movement.focus.header.frame_id = trajectory.target_frame;
-		movement.focus.header.stamp = stamp;
-		movement.focus.point.x = 0.21745;
-		movement.focus.point.y = -0.17177;
-		movement.focus.point.z = 0.35255;
-		movement.up.header.frame_id = trajectory.target_frame;
-		movement.up.header.stamp = stamp;
-		movement.up.vector.x = 0.0;
-		movement.up.vector.y = 0.0;
-		movement.up.vector.z = 1.0;
-		movement.interpolation_speed = rviz_cinematographer_msgs::CameraMovement::WAVE;
-		movement.transition_duration = ros::Duration(0.1);
-		trajectory.trajectory.push_back(movement);
 
 		// Make sure we don't move on the first pass
 		static bool first = true;
 		if (first)
 		{
+			rviz_cinematographer_msgs::CameraTrajectory initTrajectory;
+			trajectory.trajectory.push_back(trajectory.trajectory.front());
 			first = false;
 			trajectoryPub.publish(trajectory);
 		}
 
-		const std::string particleStr = (particle == -1) ? "" : "_" + std::to_string(particle);
-		const std::string stageStr = (stage == -1) ? "" : "_" + std::to_string(stage);
 		rviz_cinematographer_msgs::EnableDisplays displays;
 //		for (int i = 0; i < 5; ++i)
 //		{
@@ -220,10 +233,8 @@ public:
 		record.add_watermark = false;
 		record.compress = true;
 		record.frames_per_second = 60;
-		record.path_to_output = "/tmp/viz_" + experimentID + "_" + TECHNIQUE_NAMES[technique] + "_" + std::to_string(generation) + particleStr + stageStr + ".avi";
+		record.path_to_output = filename(experimentID, technique, generation, particle, stage);
 		recordPub.publish(record);
-
-
 
 		trajectoryPub.publish(trajectory);
 
@@ -266,6 +277,8 @@ Eigen::Isometry3d getPose(const SensorHistoryBuffer& buffer, const std::string& 
 	return pose;
 }
 
+#define VISUAL_ONLY true
+
 int main(int argc, char* argv[])
 {
 	ros::init(argc, argv, "occupancy_evaluation");
@@ -289,6 +302,19 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
+	std::string trajectoryFile;
+	gotDir = pnh.getParam("trajectory_file", trajectoryFile);
+	if (!gotDir)
+	{
+		ROS_FATAL_STREAM("No trajectory provided.");
+		return -1;
+	}
+	if (!boost::filesystem::exists(trajectoryFile))
+	{
+		ROS_FATAL_STREAM("Provided trajectory '" << trajectoryFile << "' does not exist.");
+		return -1;
+	}
+
 	const std::string experimentID = boost::filesystem::path(workingDir).branch_path().leaf().string();
 
 //	const std::string workingDir = "/home/kunhuang/mps_ws/src/mps_pipeline/mps_test_data/2020-06-24/";
@@ -297,12 +323,6 @@ int main(int argc, char* argv[])
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-10T23:35:24.412039/";
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-08T21:57:37.545002/";
 	const std::regex my_filter( "particle_([0-9]+)_([0-9]+)\\.bag" );
-
-	const std::string evalFilename = workingDir + "eval.csv";
-	{
-		std::fstream out(evalFilename, std::ios::out);
-		out << "Generation,Stage,Particle,A3,S3,A2,S2" << std::endl;
-	}
 
 	const std::string primaryStageDir = workingDir + ExperimentDir::checkpoints[ExperimentDir::bestGuessIndex];
 	int numGenerations = 0;
@@ -332,6 +352,8 @@ int main(int argc, char* argv[])
 
 	std::shared_ptr<mps::VoxelRegion> region = std::make_shared<mps::VoxelRegion>(mps::VoxelRegionBuilder::build(rosparams["scene_explorer"]["roi"]));
 	const std::string globalFrame = region->frame_id;
+	std_msgs::Header header;
+	header.frame_id = globalFrame;
 
 	std::random_device rd;
 	int seed = rd(); //0;
@@ -346,7 +368,14 @@ int main(int argc, char* argv[])
 		particlePubs.emplace_back(std::make_shared<ros::Publisher>(nh.advertise<visualization_msgs::MarkerArray>("visualization"/* + std::to_string(p)*/, 1, true)));
 	}
 	ros::Publisher camInfoPub = nh.advertise<sensor_msgs::CameraInfo>("/kinect2_victor_head/hd/camera_info", 1, true);
-	ViewController vc;
+	ViewController vc(trajectoryFile);
+
+	#if !VISUAL_ONLY
+	const std::string evalFilename = workingDir + "eval.csv";
+	{
+		std::fstream out(evalFilename, std::ios::out);
+		out << "Generation,Stage,Particle,A3,S3,A2,S2" << std::endl;
+	}
 
 	// Load Gazebo world file and get meshes
 	const std::string gazeboWorldFilename = parsePackageURL(rosparams["simulation_world"].as<std::string>());
@@ -389,7 +418,7 @@ int main(int argc, char* argv[])
 		cmapGT.emplace(i+1, colors[i]);
 	}
 	cmapGT.emplace(VoxelRegion::FREE_SPACE, std_msgs::ColorRGBA());
-
+	#endif
 //	cv::namedWindow("Ground Truth", CV_WINDOW_NORMAL);
 //	cv::namedWindow("Mask", CV_WINDOW_NORMAL);
 
@@ -405,17 +434,19 @@ int main(int argc, char* argv[])
 		mps::DataLog sensorLog(bufferFilename, {"buffer"}, rosbag::BagMode::Read);
 		mps::SensorHistoryBuffer motionData = sensorLog.load<mps::SensorHistoryBuffer>("buffer");
 
-		// Publish images here
 		// Compute poses from buffer
 		const ros::Time queryTime = (isFinalGeneration) ? ros::Time(0)
 		                                                : motionData.rgb.begin()->second->header.stamp + ros::Duration(1.0);
+		Eigen::Isometry3d worldTcamera = getPose(motionData, globalFrame, motionData.cameraModel.tfFrame(), queryTime);
+
+		#if !VISUAL_ONLY
+
 		std::vector<Eigen::Isometry3d> statePoses;
 		for (const auto& pair : shapeModels)
 		{
 			const std::string objectFrame = "mocap_" + pair.first;
 			statePoses.push_back(getPose(motionData, globalFrame, objectFrame, queryTime));
 		}
-		Eigen::Isometry3d worldTcamera = getPose(motionData, globalFrame, motionData.cameraModel.tfFrame(), queryTime);
 
 		mps::VoxelRegion::VertexLabels labels = voxelizer->voxelize(*region, statePoses);
 		mps::OccupancyData b(region, labels);
@@ -441,8 +472,6 @@ int main(int argc, char* argv[])
 			usleep(10000);
 		}
 
-		std_msgs::Header header;
-		header.frame_id = globalFrame;
 		header.stamp = ros::Time::now();
 		particlePubGT.publish(mps::visualize(b, header, cmapGT));
 
@@ -450,11 +479,14 @@ int main(int argc, char* argv[])
 
 //		cv::imshow("Ground Truth", colorByLabel(segGT, cmapGT));
 
+		#endif
+
 //		const std::vector<size_t> stage_order{0,3,4,2};
 		const std::vector<size_t> stage_order{0,2,5};
 		const std::map<size_t, Technique> tmap{{0, Technique::SAMPLED}, {2, Technique::MERGED}, {5, Technique::TRACKED}};
+		int bestParticle = -1;
+		double bestParticleVal = -std::numeric_limits<double>::infinity();
 		for (const size_t stage : stage_order)
-//		for (size_t stage = 0; stage < ExperimentDir::checkpoints.size(); ++stage)
 		{
 			for (int p = 0; p < numParticles; ++p)
 			{
@@ -471,6 +503,16 @@ int main(int argc, char* argv[])
 				mps::DataLog particleLog(particleFilename, {"particle"}, rosbag::BagMode::Read);
 				mps::OccupancyData a = particleLog.load<mps::OccupancyData>("particle");
 
+				if (tmap.at(stage) == MERGED)
+				{
+					auto f = particleLog.load<std_msgs::Float64>("weight");
+					if (f.data > bestParticleVal)
+					{
+						bestParticle = p;
+						bestParticleVal = f.data;
+					}
+				}
+
 				if (a.vertexState.size() != a.voxelRegion->num_vertices())
 				{
 					throw std::logic_error("Fake news (a)!");
@@ -480,6 +522,7 @@ int main(int argc, char* argv[])
 				const cv::Rect objectsROI = occupancyToROI(a, motionData.cameraModel, worldTcamera);
 				cv::Mat segParticle = rayCastOccupancy(a, motionData.cameraModel, worldTcamera, objectsROI);
 
+				#if !VISUAL_ONLY
 				mps::Metrics metrics(a, b, cmapGT, rng);
 
 				JaccardMatch J2(segParticle, segGT);
@@ -499,10 +542,19 @@ int main(int argc, char* argv[])
 						<< J2.symmetricCover() << std::endl;
 				}
 
-
 				header.stamp = ros::Time::now();
 //				particlePubGT.publish(mps::visualize(b, header, cmapGT));
 				particlePubs[p]->publish(mps::visualize(a, header, metrics.cmapA));
+				#else
+				VoxelColormap cmap;
+				cmap.emplace(VoxelRegion::FREE_SPACE, std_msgs::ColorRGBA());
+				for (const auto label : a.uniqueObjectLabels)
+				{
+					cmap.emplace(label.id, randomColorMsg(rng));
+				}
+				particlePubs[p]->publish(mps::visualize(a, header, cmap));
+
+				#endif
 
 				// Send the camera info
 				for (int i = 0; i < 5; ++i)
@@ -526,6 +578,45 @@ int main(int argc, char* argv[])
 
 			}
 		}
+
+		if (generation > 0)
+		{
+			std::fstream out("/tmp/" + experimentID + ".sh", std::ios::app);
+			out << "ffmpeg \\\n";
+			#if !VISUAL_ONLY
+			out << "\t-i " + ViewController::filename(experimentID, GROUND_TRUTH, generation, -1, -1) + "\\\n";
+			out << "\t-i " + ViewController::filename(experimentID, MERGED, generation, bestParticle, 2) + "\\\n";
+			out << "\t-i " + ViewController::filename(experimentID, SAMPLED, generation, 0, 0) + "\\\n";
+			out << "\t-i " + ViewController::filename(experimentID, TRACKED, generation, 0, 5) + "\\\n";
+			out << "\t-filter_complex \"\n"
+			       "\t\tnullsrc=size=1920x1080 [base];\n"
+			       "\t\t[0:v] setpts=PTS-STARTPTS, scale=960x540 [upperleft];\n"
+			       "\t\t[1:v] setpts=PTS-STARTPTS, scale=960x540 [upperright];\n"
+			       "\t\t[2:v] setpts=PTS-STARTPTS, scale=960x540 [lowerleft];\n"
+			       "\t\t[3:v] setpts=PTS-STARTPTS, scale=960x540 [lowerright];\n"
+			       "\t\t[base][upperleft] overlay=shortest=1 [tmp1];\n"
+			       "\t\t[tmp1][upperright] overlay=shortest=1:x=960 [tmp2];\n"
+			       "\t\t[tmp2][lowerleft] overlay=shortest=1:y=540 [tmp3];\n"
+			       "\t\t[tmp3][lowerright] overlay=shortest=1:x=960:y=540\n"
+			       "\t\" \\" << std::endl;
+			#else
+			out << "\t-i " + ViewController::filename(experimentID, MERGED, generation, bestParticle, 2) + "\\\n";
+			out << "\t-i " + ViewController::filename(experimentID, SAMPLED, generation, 0, 0) + "\\\n";
+			out << "\t-i " + ViewController::filename(experimentID, TRACKED, generation, 0, 5) + "\\\n";
+			out << "\t-filter_complex \"\n"
+			       "\t\tcolor=size=1920x1080:c=black [base];\n"
+			       "\t\t[0:v] setpts=PTS-STARTPTS, scale=960x540 [upperright];\n"
+			       "\t\t[1:v] setpts=PTS-STARTPTS, scale=960x540 [lowerleft];\n"
+			       "\t\t[2:v] setpts=PTS-STARTPTS, scale=960x540 [lowerright];\n"
+			       "\t\t[base][upperright] overlay=shortest=1:x=960 [tmp1];\n"
+			       "\t\t[tmp1][lowerleft] overlay=shortest=1:y=540 [tmp2];\n"
+			       "\t\t[tmp2][lowerright] overlay=shortest=1:x=960:y=540\n"
+			       "\t\" \\" << std::endl;
+			#endif
+			out << "\t-c:v libx264 " << experimentID << "_" << generation << ".mkv;" << std::endl;
+
+		}
+
 	}
 
 	return 0;
