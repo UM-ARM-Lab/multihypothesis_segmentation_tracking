@@ -1,0 +1,37 @@
+<launch>
+    <arg name="directory"/>
+    <arg name="ignore" default="[table, kinect2_victor_head, ground_plane, hammer]"/>
+
+    <node pkg="mps_test" type="occupancy_evaluation" name="occupancy_evaluation">
+        <rosparam param="experiment_directory" subst_value="True">$(arg directory)</rosparam>
+        <rosparam param="ignore" subst_value="True">$(arg ignore)</rosparam>
+    </node>
+
+    <group ns="kinect_display">
+        <param
+          name="kinect_display/robot_description"
+          command="$(find xacro)/xacro --inorder '$(find kinect_v2_description)/urdf/kinect_v2_standalone.urdf.xacro'" />
+
+        <node
+          name="robot_state_publisher"
+          pkg="robot_state_publisher"
+          type="robot_state_publisher" />
+        <node
+          name="camera_static_offset_publisher"
+          pkg="tf"
+          type="static_transform_publisher"
+          args="0 0 0 0 0 0 1 kinect2_rgb_optical_frame kinect2_victor_head_optical_frame 10"/>
+    </group>
+
+    <node name="rviz_cinematographer_gui" pkg="rqt_gui" type="rqt_gui" output="screen" args="-s rviz_cinematographer_gui/RvizCinematographerGUI">
+        <rosparam command="load" file="$(find mps_test)/config/view_trajectory.yaml"/>
+        <param name="start_recorder" value="true"/>
+    </node>
+
+    <node
+      name="rviz"
+      pkg="rviz"
+      type="rviz"
+      args="-d $(find mps_test)/config/scene.rviz" />
+
+</launch>

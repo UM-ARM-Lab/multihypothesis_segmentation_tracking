@@ -49,6 +49,13 @@
 #include <mps_test/ROSVoxelizer.h>
 #include <tf_conversions/tf_eigen.h>
 
+#include <rviz_cinematographer_msgs/CameraTrajectory.h>
+#include <rviz_cinematographer_msgs/EnableDisplays.h>
+#include <rviz_cinematographer_msgs/Record.h>
+#include <rviz_cinematographer_msgs/Finished.h>
+
+#include <tf/transform_broadcaster.h>
+
 #include <opencv2/highgui.hpp>
 
 #include <regex>
@@ -104,6 +111,131 @@ cv::Mat colorByLabel(const cv::Mat& input, const VoxelColormap& colormap)
 	return colorByLabel(input, cv_cmap);
 }
 
+enum Technique
+{
+	GROUND_TRUTH,
+	MERGED,
+	SAMPLED,
+	TRACKED
+};
+
+std::vector<std::string> TECHNIQUE_NAMES{
+	"GROUND_TRUTH",
+	"MERGED",
+	"SAMPLED",
+	"TRACKED"
+};
+
+class ViewController
+{
+public:
+	mutable bool isFinished = true;
+
+	ros::Publisher enablePub;
+	ros::Publisher recordPub;
+	ros::Publisher trajectoryPub;
+	ros::Subscriber finishedSub;
+
+	ViewController()
+	{
+		ros::NodeHandle nh;
+
+		enablePub = nh.advertise<rviz_cinematographer_msgs::EnableDisplays>("/rviz/enable_displays", 1, true);
+		recordPub = nh.advertise<rviz_cinematographer_msgs::Record>("/rviz/record", 1, false);
+		trajectoryPub = nh.advertise<rviz_cinematographer_msgs::CameraTrajectory>("/rviz/camera_trajectory", 1, false);
+		finishedSub = nh.subscribe("/rviz/finished_rendering_trajectory", 1, &ViewController::finishedCallback, this);
+	}
+
+	void finishedCallback(const rviz_cinematographer_msgs::FinishedConstPtr& ptr)
+	{
+		isFinished = ptr->is_finished;
+	}
+
+	void renderVisuals(const std::string& experimentID, const Technique technique, const int generation, const int particle, const int stage)
+	{
+		ros::Time stamp = ros::Time::now();
+		rviz_cinematographer_msgs::CameraTrajectory trajectory;
+		trajectory.interaction_disabled = true;
+		trajectory.mouse_interaction_mode = 0;
+		trajectory.allow_free_yaw_axis = false;
+		trajectory.target_frame = "table_surface";
+		rviz_cinematographer_msgs::CameraMovement movement;
+		movement.eye.header.frame_id = trajectory.target_frame;
+		movement.eye.header.stamp = stamp;
+//		0.84263; 0.89119; 0.68528
+		movement.eye.point.x = 0.84263;
+		movement.eye.point.y = 0.89119;
+		movement.eye.point.z = 0.68528;
+//		0.21745; -0.17177; 0.35255
+		movement.focus.header.frame_id = trajectory.target_frame;
+		movement.focus.header.stamp = stamp;
+		movement.focus.point.x = 0.21745;
+		movement.focus.point.y = -0.17177;
+		movement.focus.point.z = 0.35255;
+		movement.up.header.frame_id = trajectory.target_frame;
+		movement.up.header.stamp = stamp;
+		movement.up.vector.x = 0.0;
+		movement.up.vector.y = 0.0;
+		movement.up.vector.z = 1.0;
+		movement.interpolation_speed = rviz_cinematographer_msgs::CameraMovement::WAVE;
+		movement.transition_duration = ros::Duration(0.1);
+		trajectory.trajectory.push_back(movement);
+
+		// Make sure we don't move on the first pass
+		static bool first = true;
+		if (first)
+		{
+			first = false;
+			trajectoryPub.publish(trajectory);
+		}
+
+		const std::string particleStr = (particle == -1) ? "" : "_" + std::to_string(particle);
+		const std::string stageStr = (stage == -1) ? "" : "_" + std::to_string(stage);
+		rviz_cinematographer_msgs::EnableDisplays displays;
+//		for (int i = 0; i < 5; ++i)
+//		{
+//			if (i == particle)
+//			{
+//				displays.to_enable.push_back("VoxelData" + std::to_string(i));
+//			}
+//			else
+//			{
+//				displays.to_disable.push_back("VoxelData" + std::to_string(i));
+//			}
+//		}
+//		if (particle != -1)
+//		{
+//			displays.to_disable.push_back("VoxelDataGT");
+//		}
+//		else
+//		{
+//			displays.to_enable.push_back("VoxelDataGT");
+//		}
+		enablePub.publish(displays);
+
+		ros::Duration(0.5).sleep();
+
+		rviz_cinematographer_msgs::Record record;
+		record.do_record = true;
+		record.add_watermark = false;
+		record.compress = true;
+		record.frames_per_second = 60;
+		record.path_to_output = "/tmp/viz_" + experimentID + "_" + TECHNIQUE_NAMES[technique] + "_" + std::to_string(generation) + particleStr + stageStr + ".avi";
+		recordPub.publish(record);
+
+
+
+		trajectoryPub.publish(trajectory);
+
+		isFinished = false;
+		for (int i = 0; i < 100; ++i)
+		{
+			if (isFinished) { break; }
+			usleep(100000);
+		}
+	}
+};
+
 }
 
 Eigen::Isometry3d getPose(const SensorHistoryBuffer& buffer, const std::string& globalFrame,
@@ -139,20 +271,32 @@ int main(int argc, char* argv[])
 	ros::init(argc, argv, "occupancy_evaluation");
 	ros::NodeHandle nh, pnh("~");
 
-	std::string dir;
-	bool gotDir = pnh.getParam("experiment_directory", dir);
+	std::string workingDir;
+	bool gotDir = pnh.getParam("experiment_directory", workingDir);
 	if (!gotDir)
 	{
 		ROS_FATAL_STREAM("No experiment directory provided to evaluate.");
 		return -1;
 	}
+	if (!boost::filesystem::exists(workingDir))
+	{
+		ROS_FATAL_STREAM("Provided experiment directory '" << workingDir << "' does not exist.");
+		return -1;
+	}
+	if (!boost::filesystem::is_directory(workingDir))
+	{
+		ROS_FATAL_STREAM("Provided path '" << workingDir << "' is not a directory.");
+		return -1;
+	}
 
-	const std::string workingDir = "/home/kunhuang/mps_ws/src/mps_pipeline/mps_test_data/2020-06-24/";
+	const std::string experimentID = boost::filesystem::path(workingDir).branch_path().leaf().string();
+
+//	const std::string workingDir = "/home/kunhuang/mps_ws/src/mps_pipeline/mps_test_data/2020-06-24/";
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-12T18:50:08.037350/"; // cubes?
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-12T18:08:10.469214/"; // books
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-10T23:35:24.412039/";
 //	const std::string workingDir = "/tmp/scene_explorer/2020-06-08T21:57:37.545002/";
-	const std::regex my_filter( "particle_(.+)_(.+)\\.bag" );
+	const std::regex my_filter( "particle_([0-9]+)_([0-9]+)\\.bag" );
 
 	const std::string evalFilename = workingDir + "eval.csv";
 	{
@@ -193,12 +337,16 @@ int main(int argc, char* argv[])
 	int seed = rd(); //0;
 	std::mt19937 rng = std::mt19937(seed);
 
-	ros::Publisher particlePubGT = nh.advertise<visualization_msgs::MarkerArray>("visualization_gt", 1, true);
+	// Publishers for visualizations
+	tf::TransformBroadcaster tb;
+	ros::Publisher particlePubGT = nh.advertise<visualization_msgs::MarkerArray>("visualization"/*_gt*/, 1, true);
 	std::vector<std::shared_ptr<ros::Publisher>> particlePubs;
 	for (int p = 0; p < numParticles; ++p)
 	{
-		particlePubs.emplace_back(std::make_shared<ros::Publisher>(nh.advertise<visualization_msgs::MarkerArray>("visualization_" + std::to_string(p), 1, true)));
+		particlePubs.emplace_back(std::make_shared<ros::Publisher>(nh.advertise<visualization_msgs::MarkerArray>("visualization"/* + std::to_string(p)*/, 1, true)));
 	}
+	ros::Publisher camInfoPub = nh.advertise<sensor_msgs::CameraInfo>("/kinect2_victor_head/hd/camera_info", 1, true);
+	ViewController vc;
 
 	// Load Gazebo world file and get meshes
 	const std::string gazeboWorldFilename = parsePackageURL(rosparams["simulation_world"].as<std::string>());
@@ -239,12 +387,8 @@ int main(int argc, char* argv[])
 	for (VoxelColormap::key_type i = 0; i < static_cast<VoxelColormap::key_type>(shapeModels.size()); ++i)
 	{
 		cmapGT.emplace(i+1, colors[i]);
-//		cmapGT.emplace(i+1, randomColorMsg(rng));
 	}
 	cmapGT.emplace(VoxelRegion::FREE_SPACE, std_msgs::ColorRGBA());
-
-//	b.voxelRegion = region;
-//	if (b.vertexState.size() != b.voxelRegion->num_vertices()) { throw std::logic_error("Fake news (b)!"); }
 
 //	cv::namedWindow("Ground Truth", CV_WINDOW_NORMAL);
 //	cv::namedWindow("Mask", CV_WINDOW_NORMAL);
@@ -279,18 +423,39 @@ int main(int argc, char* argv[])
 		const cv::Rect objectsROIGT = occupancyToROI(b, motionData.cameraModel, worldTcamera);
 		cv::Mat segGT = rayCastOccupancy(b, motionData.cameraModel, worldTcamera, objectsROIGT);
 
+		// Send the camera info
+		for (int i = 0; i < 5; ++i)
+		{
+			ros::Time stamp = ros::Time::now();
+
+			tf::StampedTransform cTw;
+			tf::transformEigenToTF(worldTcamera.inverse(Eigen::Isometry), cTw);
+			cTw.stamp_ = stamp;
+			cTw.frame_id_ = motionData.cameraModel.tfFrame();
+			cTw.child_frame_id_ = globalFrame;
+			tb.sendTransform(cTw);
+
+			sensor_msgs::CameraInfo camInfo = motionData.cameraModel.cameraInfo();
+			camInfo.header.stamp = stamp;
+			camInfoPub.publish(camInfo);
+			usleep(10000);
+		}
+
 		std_msgs::Header header;
 		header.frame_id = globalFrame;
 		header.stamp = ros::Time::now();
 		particlePubGT.publish(mps::visualize(b, header, cmapGT));
 
+		vc.renderVisuals(experimentID, Technique::GROUND_TRUTH, generation, -1, -1);
+
 //		cv::imshow("Ground Truth", colorByLabel(segGT, cmapGT));
 
-		const std::vector<size_t> stage_order{0,3,4,2};
+//		const std::vector<size_t> stage_order{0,3,4,2};
+		const std::vector<size_t> stage_order{0,2,5};
+		const std::map<size_t, Technique> tmap{{0, Technique::SAMPLED}, {2, Technique::MERGED}, {5, Technique::TRACKED}};
 		for (const size_t stage : stage_order)
 //		for (size_t stage = 0; stage < ExperimentDir::checkpoints.size(); ++stage)
 		{
-//			if (stage == 1) { continue; }
 			for (int p = 0; p < numParticles; ++p)
 			{
 				const std::string particleFilename =
@@ -299,7 +464,7 @@ int main(int argc, char* argv[])
 					+ std::to_string(p) + ".bag";
 				if (!boost::filesystem::exists(particleFilename))
 				{
-					ROS_ERROR_STREAM("Could not find '" << particleFilename << "'");
+					ROS_WARN_STREAM("Could not find '" << particleFilename << "'");
 					continue;
 				}
 
@@ -336,49 +501,29 @@ int main(int argc, char* argv[])
 
 
 				header.stamp = ros::Time::now();
+//				particlePubGT.publish(mps::visualize(b, header, cmapGT));
 				particlePubs[p]->publish(mps::visualize(a, header, metrics.cmapA));
-				particlePubGT.publish(mps::visualize(b, header, cmapGT));
 
-//				if (!isFinalGeneration)
-//				{
-//					const std::string trackingFilename =
-//						workingDir + "dense_track_"
-//						+ std::to_string(generation) + "_"
-//						+ std::to_string(p) + ".bag";
-//
-//					mps::DataLog trackingLog(trackingFilename, {}, rosbag::BagMode::Read);
-//
-//					// For each (perceived) object
-//					for (const auto& obj : a.objects)
-//					{
-//						cv::Mat display1(segGT.size(), CV_8UC3, cv::Scalar(0, 0, 0));
-//						auto bestGTMatch = metrics.match.match.second.left.find(obj.first.id);
-//						if (bestGTMatch != metrics.match.match.second.left.end())
-//						{
-//							display1.setTo(cv::Scalar(0, 255, 0), segGT == bestGTMatch->second);
-//						}
-//						else
-//						{
-//							std::cerr << "No match found for " << obj.first.id << std::endl;
-//						}
-//
-////						cv::Mat display1(segParticle.size(), CV_8UC3, cv::Scalar(0, 0, 0));
-////						display1.setTo(cv::Scalar(0, 255, 0), segParticle == obj.first.id);
-//
-//						trackingLog.activeChannels.insert(std::to_string(obj.first.id));
-//						auto trackMask = trackingLog.load<cv::Mat>("/" + std::to_string(obj.first.id));
-//						cv::Mat display2(segParticle.size(), CV_8UC3, cv::Scalar(0, 0, 0));
-//						display2.setTo(cv::Scalar(0, 0, 255), trackMask);
-//
-//						cv::imshow("Mask", display1 + display2);
-////						cv::waitKey(0);
-//					}
+				// Send the camera info
+				for (int i = 0; i < 5; ++i)
+				{
+					ros::Time stamp = ros::Time::now();
 
-				// For each time
-				// Compute and Display 2D overlap
-				// Compute and Display 3D overlap
-				// Plot scores
-//				}
+					tf::StampedTransform cTw;
+					tf::transformEigenToTF(worldTcamera.inverse(Eigen::Isometry), cTw);
+					cTw.stamp_ = stamp;
+					cTw.frame_id_ = motionData.cameraModel.tfFrame();
+					cTw.child_frame_id_ = globalFrame;
+					tb.sendTransform(cTw);
+
+					sensor_msgs::CameraInfo camInfo = motionData.cameraModel.cameraInfo();
+					camInfo.header.stamp = stamp;
+					camInfoPub.publish(camInfo);
+					usleep(10000);
+				}
+
+				vc.renderVisuals(experimentID, tmap.at(stage), generation, p, stage);
+
 			}
 		}
 	}

@@ -10,6 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(catkin REQUIRED COMPONENTS
   mps_simulation
   mps_voxels
+  rviz_cinematographer_msgs
 )
 
 include(${mps_voxels_SOURCE_PREFIX}/cmake/mps_macros.cmake)
