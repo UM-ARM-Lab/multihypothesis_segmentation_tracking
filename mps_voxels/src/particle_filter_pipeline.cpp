@@ -1,7 +1,3 @@
-//
-// Created by kunhuang on 6/24/20.
-//
-
 #include <iostream>
 #include <ros/ros.h>
 #include <tf_conversions/tf_eigen.h>
@@ -49,7 +45,7 @@ const int numParticles = 5;
 const std::vector<int> particleIDs = {1,6,7,8,9};
 const int generation = 3;
 const std::string testDirName = "package://mps_test_data/";
-const std::string expDirName = "2020-06-31/";
+const std::string expDirName = "2020-06-30/";
 const std::string logDir = parsePackageURL(testDirName);
 const std::string trackingFilename = logDir + expDirName + "dense_track_" + std::to_string(generation) + "_" + std::to_string(0) + ".bag";
 const ExperimentDir checkpointDir;

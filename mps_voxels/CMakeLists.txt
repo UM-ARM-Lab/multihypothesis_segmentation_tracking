@@ -9,7 +9,7 @@ include(cmake/mps_macros.cmake)
 
 ## Find catkin macros and libraries
 find_package(catkin REQUIRED COMPONENTS
-  arm_video_recorder
+  # arm_video_recorder
   cv_bridge
   depth_image_proc
   image_geometry
@@ -272,13 +272,13 @@ target_link_libraries(${PROJECT_NAME}_shape_completion_manager
 )
 
 
-add_executable(${PROJECT_NAME}_entropy src/entropy.cpp)
-set_target_properties(${PROJECT_NAME}_entropy PROPERTIES OUTPUT_NAME entropy PREFIX "")
-add_dependencies(${PROJECT_NAME}_entropy ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_entropy
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-)
+# add_executable(${PROJECT_NAME}_entropy src/entropy.cpp)
+# set_target_properties(${PROJECT_NAME}_entropy PROPERTIES OUTPUT_NAME entropy PREFIX "")
+# add_dependencies(${PROJECT_NAME}_entropy ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# target_link_libraries(${PROJECT_NAME}_entropy
+#   ${PROJECT_NAME}
+#   ${catkin_LIBRARIES}
+# )
 
 
 #cuda_add_executable(${PROJECT_NAME}_tracker src/tracker.cpp)
@@ -298,13 +298,13 @@ target_link_libraries(${PROJECT_NAME}_entropy
 #)
 
 
-cuda_add_executable(${PROJECT_NAME}_explorer src/explorer.cpp)
-set_target_properties(${PROJECT_NAME}_explorer PROPERTIES OUTPUT_NAME explorer PREFIX "")
-add_dependencies(${PROJECT_NAME}_explorer ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_explorer
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-)
+# cuda_add_executable(${PROJECT_NAME}_explorer src/explorer.cpp)
+# set_target_properties(${PROJECT_NAME}_explorer PROPERTIES OUTPUT_NAME explorer PREFIX "")
+# add_dependencies(${PROJECT_NAME}_explorer ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# target_link_libraries(${PROJECT_NAME}_explorer
+#   ${PROJECT_NAME}
+#   ${catkin_LIBRARIES}
+# )
 
 #cuda_add_executable(${PROJECT_NAME}_test_segmentation_sampling src/test_segmentation_sampling.cpp)
 #set_target_properties(${PROJECT_NAME}_test_segmentation_sampling PROPERTIES OUTPUT_NAME test_segmentation_sampling PREFIX "")
@@ -322,61 +322,69 @@ target_link_libraries(${PROJECT_NAME}_explorer
 #  ${catkin_LIBRARIES}
 #)
 
-add_executable(${PROJECT_NAME}_test_icp src/test_icp.cpp)
-set_target_properties(${PROJECT_NAME}_test_icp PROPERTIES OUTPUT_NAME test_icp PREFIX "")
-add_dependencies(${PROJECT_NAME}_test_icp ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_test_icp
+# add_executable(${PROJECT_NAME}_test_icp src/test_icp.cpp)
+# set_target_properties(${PROJECT_NAME}_test_icp PROPERTIES OUTPUT_NAME test_icp PREFIX "")
+# add_dependencies(${PROJECT_NAME}_test_icp ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# target_link_libraries(${PROJECT_NAME}_test_icp
+#   ${PROJECT_NAME}
+#   ${catkin_LIBRARIES}
+# )
+
+# add_executable(${PROJECT_NAME}_test_particle_filter src/test_particle_filter.cpp)
+# set_target_properties(${PROJECT_NAME}_test_particle_filter PROPERTIES OUTPUT_NAME test_particle_filter PREFIX "")
+# add_dependencies(${PROJECT_NAME}_test_particle_filter ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# target_link_libraries(${PROJECT_NAME}_test_particle_filter
+#   ${PROJECT_NAME}
+#   ${catkin_LIBRARIES}
+# )
+
+# add_executable(${PROJECT_NAME}_test_refinement src/test_refinement.cpp)
+# set_target_properties(${PROJECT_NAME}_test_refinement PROPERTIES OUTPUT_NAME test_refinement PREFIX "")
+# add_dependencies(${PROJECT_NAME}_test_refinement ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# target_link_libraries(${PROJECT_NAME}_test_refinement
+#   ${PROJECT_NAME}
+#   ${catkin_LIBRARIES}
+# )
+
+# add_executable(${PROJECT_NAME}_particle_filter_pipeline src/particle_filter_pipeline.cpp)
+# set_target_properties(${PROJECT_NAME}_particle_filter_pipeline PROPERTIES OUTPUT_NAME particle_filter_pipeline PREFIX "")
+# add_dependencies(${PROJECT_NAME}_particle_filter_pipeline ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# target_link_libraries(${PROJECT_NAME}_particle_filter_pipeline
+#   ${PROJECT_NAME}
+#   ${catkin_LIBRARIES}
+# )
+
+add_executable(${PROJECT_NAME}_demo_resample src/demo_resample.cpp)
+set_target_properties(${PROJECT_NAME}_demo_resample PROPERTIES OUTPUT_NAME demo_resample PREFIX "")
+add_dependencies(${PROJECT_NAME}_demo_resample ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_demo_resample
   ${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
 
-add_executable(${PROJECT_NAME}_test_particle_filter src/test_particle_filter.cpp)
-set_target_properties(${PROJECT_NAME}_test_particle_filter PROPERTIES OUTPUT_NAME test_particle_filter PREFIX "")
-add_dependencies(${PROJECT_NAME}_test_particle_filter ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_test_particle_filter
+add_executable(${PROJECT_NAME}_demo_seg_sample src/demo_seg_sample.cpp)
+set_target_properties(${PROJECT_NAME}_demo_seg_sample PROPERTIES OUTPUT_NAME demo_seg_sample PREFIX "")
+add_dependencies(${PROJECT_NAME}_demo_seg_sample ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME}_demo_seg_sample
   ${PROJECT_NAME}
   ${catkin_LIBRARIES}
 )
 
-add_executable(${PROJECT_NAME}_test_refinement src/test_refinement.cpp)
-set_target_properties(${PROJECT_NAME}_test_refinement PROPERTIES OUTPUT_NAME test_refinement PREFIX "")
-add_dependencies(${PROJECT_NAME}_test_refinement ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_test_refinement
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-)
+# add_executable(${PROJECT_NAME}_measurement_particle_factory src/measurement_particle_factory.cpp)
+# set_target_properties(${PROJECT_NAME}_measurement_particle_factory PROPERTIES OUTPUT_NAME measurement_particle_factory PREFIX "")
+# add_dependencies(${PROJECT_NAME}_measurement_particle_factory ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# target_link_libraries(${PROJECT_NAME}_measurement_particle_factory
+#   ${PROJECT_NAME}
+#   ${catkin_LIBRARIES}
+# )
 
-add_executable(${PROJECT_NAME}_particle_filter_pipeline src/particle_filter_pipeline.cpp)
-set_target_properties(${PROJECT_NAME}_particle_filter_pipeline PROPERTIES OUTPUT_NAME particle_filter_pipeline PREFIX "")
-add_dependencies(${PROJECT_NAME}_particle_filter_pipeline ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_particle_filter_pipeline
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-)
-
-add_executable(${PROJECT_NAME}_test_resample src/test_resample.cpp)
-set_target_properties(${PROJECT_NAME}_test_resample PROPERTIES OUTPUT_NAME test_resample PREFIX "")
-add_dependencies(${PROJECT_NAME}_test_resample ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_test_resample
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-)
-
-add_executable(${PROJECT_NAME}_measurement_particle_factory src/measurement_particle_factory.cpp)
-set_target_properties(${PROJECT_NAME}_measurement_particle_factory PROPERTIES OUTPUT_NAME measurement_particle_factory PREFIX "")
-add_dependencies(${PROJECT_NAME}_measurement_particle_factory ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_measurement_particle_factory
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-)
-
-add_executable(${PROJECT_NAME}_particle_visualizer src/particle_visualizer.cpp)
-set_target_properties(${PROJECT_NAME}_particle_visualizer PROPERTIES OUTPUT_NAME particle_visualizer PREFIX "")
-add_dependencies(${PROJECT_NAME}_particle_visualizer ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME}_particle_visualizer
-  ${PROJECT_NAME}
-  ${catkin_LIBRARIES}
-)
+# add_executable(${PROJECT_NAME}_particle_visualizer src/particle_visualizer.cpp)
+# set_target_properties(${PROJECT_NAME}_particle_visualizer PROPERTIES OUTPUT_NAME particle_visualizer PREFIX "")
+# add_dependencies(${PROJECT_NAME}_particle_visualizer ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# target_link_libraries(${PROJECT_NAME}_particle_visualizer
+#   ${PROJECT_NAME}
+#   ${catkin_LIBRARIES}
+# )
 
 # Notify any IDE that headers are part of project
 file(GLOB_RECURSE IncludeFiles "include/*")

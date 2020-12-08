@@ -1,7 +1,3 @@
-//
-// Created by kunhuang on 2/12/20.
-//
-
 #include <iostream>
 #include <ros/ros.h>
 #include <tf_conversions/tf_eigen.h>
@@ -34,9 +30,8 @@
 using namespace mps;
 
 const std::string testDirName = "package://mps_test_data/";
-const std::string expDirName = "2020-06-07T08:55:02.095309/";
+const std::string expDirName = "2020-06-30/";
 const std::string logDir = parsePackageURL(testDirName);
-const std::string trackingFilename = logDir + expDirName + "dense_track_" + std::to_string(0) + "_" + std::to_string(0) + ".bag";
 
 class ParticleFilterTestFixture
 {
