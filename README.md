@@ -5,9 +5,9 @@ Documentation and dependency cleanup is still a work in progress, but please cre
 
 ## Related Repositories
 
-[SceneCut Segmentation](https://github.com/UM-ARM-Lab/scenecut-segmentation)
-[Shape Completion](https://github.com/UM-ARM-Lab/mps_shape_completion)
-[SiamMask Tracker](https://github.com/UM-ARM-Lab/SiamMask)
+* [SceneCut Segmentation](https://github.com/UM-ARM-Lab/scenecut-segmentation)
+* [Shape Completion](https://github.com/UM-ARM-Lab/mps_shape_completion)
+* [SiamMask Tracker](https://github.com/UM-ARM-Lab/SiamMask)
 
 ## Project Structure
 
